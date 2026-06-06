@@ -1,0 +1,22 @@
+{
+  "bridge_token": {
+    "description": "Shared bearer token required by live-room gateway.",
+    "type": "string",
+    "default": ""
+  },
+  "host": {
+    "description": "Bind host inside AstrBot container. Use 0.0.0.0 for Docker-network-only access.",
+    "type": "string",
+    "default": "0.0.0.0"
+  },
+  "port": {
+    "description": "Internal bridge port.",
+    "type": "int",
+    "default": 18081
+  },
+  "system_prompt": {
+    "description": "Optional live-room system prompt prepended to AstrBot LLM calls.",
+    "type": "string",
+    "default": "You are Hoshia, a private cyber pixel anime live-room host. Reply briefly, warmly, and in Chinese unless the user asks otherwise."
+  }
+}

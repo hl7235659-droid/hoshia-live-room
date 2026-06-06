@@ -1,0 +1,44 @@
+name: live-room-dev
+
+services:
+  live-room-web:
+    build:
+      context: ./frontend
+    container_name: live-room-dev-web
+    restart: unless-stopped
+    depends_on:
+      - live-room-gateway
+    ports:
+      - "${LIVE_ROOM_BIND_HOST:-127.0.0.1}:${LIVE_ROOM_PORT:-18888}:80"
+    networks:
+      - live_room_dev_network
+
+  live-room-gateway:
+    build:
+      context: ./gateway
+    container_name: live-room-dev-gateway
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://live-room-redis:6379/0
+    depends_on:
+      - live-room-redis
+    networks:
+      - live_room_dev_network
+      - astrbot_astrbot_network
+
+  live-room-redis:
+    image: redis:7-alpine
+    container_name: live-room-dev-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - live_room_dev_network
+
+networks:
+  live_room_dev_network:
+    name: live_room_dev_network
+  astrbot_astrbot_network:
+    external: true
