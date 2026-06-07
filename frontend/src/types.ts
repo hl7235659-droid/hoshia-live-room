@@ -17,7 +17,9 @@ export type LiveMessage = {
 
 export type Session = {
   user_id: string;
+  username?: string;
   nickname: string;
+  avatar_url?: string;
   room_id: string;
 };
 

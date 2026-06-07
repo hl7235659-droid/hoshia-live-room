@@ -4,8 +4,8 @@ Hoshia Live Room is a mobile-first, friends-only AI live room prototype.
 
 It includes:
 
-- React/Vite frontend for the invite gate, Hoshia stage, danmaku, history drawer, input dock, and status UI.
-- Node.js gateway for invite login, HttpOnly sessions, WebSocket room events, character state, mock AI replies, and optional AstrBot bridge mode.
+- React/Vite frontend for the account gate, Hoshia stage, danmaku, history drawer, input dock, and status UI.
+- Node.js gateway for a room-token gate, one-time registration codes, account login, SQLite message history, HttpOnly sessions, WebSocket room events, character state, mock AI replies, and optional AstrBot bridge mode.
 - Optional AstrBot bridge plugin for token-protected internal AI replies.
 
 The current version is a 2.0 prototype. Real Live2D, TTS, account avatars, gifts, and action events are planned but not fully connected yet.
@@ -14,13 +14,13 @@ The current version is a 2.0 prototype. Real Live2D, TTS, account avatars, gifts
 
 ```text
 .
-├── astrbot_plugin_live_room_bridge/  # Optional AstrBot internal bridge plugin
-├── docs/                             # Frontend and Live2D planning notes
-├── frontend/                         # React + Vite mobile live-room frontend
-├── gateway/                          # Node.js API/WebSocket gateway
-├── .env.example                      # Safe environment template
-├── docker-compose.yml                # Sidecar deployment compose file
-└── README.md
+|-- astrbot_plugin_live_room_bridge/  # Optional AstrBot internal bridge plugin
+|-- docs/                             # Frontend and Live2D planning notes
+|-- frontend/                         # React + Vite mobile live-room frontend
+|-- gateway/                          # Node.js API/WebSocket gateway
+|-- .env.example                      # Safe environment template
+|-- docker-compose.yml                # Sidecar deployment compose file
+`-- README.md
 ```
 
 ## Install
@@ -47,28 +47,37 @@ Generate a session secret:
 openssl rand -hex 32
 ```
 
-Generate an invite-code hash:
+Generate a room-token hash:
 
 ```bash
-node gateway/scripts/hash-invite.mjs "your-invite-code"
+node gateway/scripts/hash-invite.mjs "your-room-token"
 ```
 
 Set at least these values in `.env`:
 
 ```env
 SESSION_SECRET=<your-random-secret>
-INVITE_CODE_HASHES=<sha256-hex>
+ROOM_TOKEN_HASHES=<sha256-hex>
 ```
+
+Generate one-time registration codes after the gateway dependencies are installed:
+
+```bash
+node gateway/scripts/generate-register-codes.mjs 20
+```
+
+The script prints the plain registration codes once and stores only their hashes in SQLite. Keep the plain codes somewhere private before sending them to friends.
 
 Important options:
 
 - `LIVE_ROOM_BIND_HOST`: defaults to `127.0.0.1` to avoid public exposure.
 - `LIVE_ROOM_PORT`: defaults to `18888`.
+- `SQLITE_DB_PATH`: defaults to `./data/live-room.sqlite` for local gateway runs.
 - `AI_MODE`: `mock` by default; set to `astrbot` only after the bridge is installed.
 - `ASTRBOT_BRIDGE_TOKEN`: shared bearer token for gateway and AstrBot bridge.
 - `ASTRBOT_FALLBACK_TO_MOCK`: keeps the room usable when AstrBot is unavailable.
 
-Never commit real `.env` files, tokens, certificates, private keys, or invite codes.
+Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.
 
 ## Run
 
@@ -152,6 +161,7 @@ Do not install or restart production AstrBot without an explicit deployment wind
 ## Notes
 
 - Current character visuals are PNG fallback assets, not a real Live2D model.
+- Chat messages are stored in SQLite and the room state API returns the latest 100 messages.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.
 - The layout is intentionally split into Stage, Overlay, and Control so future Live2D, TTS, gifts, and avatar systems can be connected without rewriting the whole page.

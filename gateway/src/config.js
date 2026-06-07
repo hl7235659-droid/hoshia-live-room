@@ -4,6 +4,8 @@ export const config = {
   sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS || 43200),
   cookieSecure: parseBool(process.env.COOKIE_SECURE, false),
   inviteCodeHashes: split(process.env.INVITE_CODE_HASHES),
+  roomTokenHashes: split(process.env.ROOM_TOKEN_HASHES || process.env.INVITE_CODE_HASHES),
+  sqliteDbPath: process.env.SQLITE_DB_PATH || "./data/live-room.sqlite",
   allowedNicknames: split(process.env.ALLOWED_NICKNAMES),
   redisUrl: process.env.REDIS_URL || "redis://127.0.0.1:6379/0",
   roomId: process.env.ROOM_ID || "private-pixel-live",

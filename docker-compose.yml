@@ -23,6 +23,9 @@ services:
         required: false
     environment:
       REDIS_URL: redis://live-room-redis:6379/0
+      SQLITE_DB_PATH: /app/data/live-room.sqlite
+    volumes:
+      - ./gateway/data:/app/data
     depends_on:
       - live-room-redis
     networks:

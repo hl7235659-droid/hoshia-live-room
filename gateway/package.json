@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "generate:codes": "node scripts/generate-register-codes.mjs 20",
     "start": "node src/server.js",
     "test": "node --test"
   },
@@ -15,4 +16,3 @@
     "ws": "^8.18.0"
   }
 }
-

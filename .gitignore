@@ -18,9 +18,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 gateway/audio-cache/
+gateway/data/
 __pycache__/
 *.pyc
 tmp/
 frontend/src/assets/*-chroma.png
 frontend/src/assets/*-green.png
 frontend/src/assets/*-placeholder.png
+frontend/public/live2d/runtime/live2dcubismcore.min.js

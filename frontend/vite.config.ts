@@ -1,6 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const gatewayTarget = process.env.VITE_GATEWAY_TARGET || "http://127.0.0.1:3000";
+const gatewayWsTarget = gatewayTarget.replace(/^http/, "ws");
+
 export default defineConfig({
   base: "/live/",
   plugins: [react()],
@@ -9,22 +12,22 @@ export default defineConfig({
       strict: false
     },
     proxy: {
-      "/api": "http://127.0.0.1:3000",
-      "/healthz": "http://127.0.0.1:3000",
+      "/api": gatewayTarget,
+      "/healthz": gatewayTarget,
       "/ws": {
-        target: "ws://127.0.0.1:3000",
+        target: gatewayWsTarget,
         ws: true
       },
       "/live/api": {
-        target: "http://127.0.0.1:3000",
+        target: gatewayTarget,
         rewrite: (path) => path.replace(/^\/live/, "")
       },
       "/live/healthz": {
-        target: "http://127.0.0.1:3000",
+        target: gatewayTarget,
         rewrite: (path) => path.replace(/^\/live/, "")
       },
       "/live/ws": {
-        target: "ws://127.0.0.1:3000",
+        target: gatewayWsTarget,
         rewrite: (path) => path.replace(/^\/live/, ""),
         ws: true
       }
