@@ -163,6 +163,7 @@ Do not install or restart production AstrBot without an explicit deployment wind
 - Current character visuals are PNG fallback assets, not a real Live2D model.
 - Chat messages are stored in SQLite and the room state API returns the latest 100 messages.
 - Hoshia reads short batches of recent danmaku instead of replying to every message one by one. Messages that explicitly mention `@Hoshia`, `@星娅`, or `@主播` are prioritized, and targeted replies should start with `@nickname`.
+- The frontend includes an `@Hoshia` shortcut in the send bar, and history nicknames can be clicked to insert `@nickname`.
 - When nobody mentions Hoshia, the AstrBot bridge can run a Heartflow-lite judge model before replying. The default judge provider is `tencentmaas/deepseek-v4-flash`; low-score batches are silently skipped so Hoshia does not over-speak.
 - AstrBot replies use a shared room session (`<room_id>:room`) so the host has room-level context instead of separate one-on-one user sessions.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.

@@ -885,7 +885,7 @@ function AnimatedStageTitle({ text }: { text: string }) {
   );
 }
 
-function DanmakuHistory({ messages }: { messages: LiveMessage[] }) {
+function DanmakuHistory({ messages, onMention }: { messages: LiveMessage[]; onMention: (nickname: string) => void }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" }), [messages.length]);
@@ -898,7 +898,14 @@ function DanmakuHistory({ messages }: { messages: LiveMessage[] }) {
           className={`line ${message.role}`}
           style={{ "--message-color": colorForMessage(message) } as CSSProperties}
         >
-          <b>{message.nickname || labelForRole(message.role)}</b>
+          <button
+            type="button"
+            className="mention-name"
+            onClick={() => onMention(message.nickname || labelForRole(message.role))}
+            title={`Mention ${message.nickname || labelForRole(message.role)}`}
+          >
+            {message.nickname || labelForRole(message.role)}
+          </button>
           <span>{message.text}</span>
         </p>
       ))}
@@ -923,6 +930,7 @@ function BottomDock({
   const [historyOpen, setHistoryOpen] = useState(true);
   const [text, setText] = useState("");
   const historyCount = Math.min(messages.length, 100);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   function toggleHistory() {
     setHistoryOpen((current) => !current);
@@ -942,6 +950,18 @@ function BottomDock({
     onSendStart();
     socket.send(JSON.stringify({ type: "danmaku", text: nextText }));
     setText("");
+  }
+
+  function insertMention(target: string) {
+    const cleanTarget = target.replace(/^@+/, "").trim();
+    if (!cleanTarget) return;
+    const mention = `@${cleanTarget} `;
+    setText((current) => {
+      if (!current.trim()) return mention;
+      if (current.endsWith(" ")) return `${current}${mention}`;
+      return `${current} ${mention}`;
+    });
+    window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   const canSend = (socketStatus === "live" || socketStatus === "demo") && Boolean(text.trim());
@@ -971,15 +991,25 @@ function BottomDock({
             {historyCount}/100
           </span>
         </div>
-        {historyOpen ? <DanmakuHistory messages={messages} /> : null}
+        {historyOpen ? <DanmakuHistory messages={messages} onMention={insertMention} /> : null}
       </section>
       <section className="live-control" aria-label="Live controls">
         <form className="sendbar" onSubmit={send}>
+          <button
+            type="button"
+            className="mention-hoshia"
+            onClick={() => insertMention("Hoshia")}
+            title="Mention Hoshia"
+            disabled={socketStatus !== "live" && socketStatus !== "demo"}
+          >
+            @Hoshia
+          </button>
           <input
+            ref={inputRef}
             value={text}
             maxLength={500}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Send a message to Hoshia..."
+            placeholder="Send a message or @Hoshia..."
           />
           <button type="submit" title="Send" disabled={!canSend}>
             <Send size={20} />

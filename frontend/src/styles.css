@@ -1609,6 +1609,29 @@ button:disabled {
   min-width: 0;
 }
 
+.mention-name {
+  width: fit-content;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 950;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mention-name::before {
+  content: "@";
+  opacity: 0.62;
+}
+
+.mention-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .line span {
   min-width: 0;
 }
@@ -1640,7 +1663,7 @@ button:disabled {
   margin: 0;
   padding: 10px 12px 3px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
+  grid-template-columns: auto minmax(0, 1fr) 48px;
   align-items: center;
   gap: 10px;
   background: transparent;
@@ -1717,6 +1740,21 @@ button:disabled {
   display: grid;
   place-items: center;
   border-radius: 16px;
+  background: #fff17b;
+}
+
+.sendbar .mention-hoshia {
+  width: auto;
+  min-width: 74px;
+  padding: 0 12px;
+  color: #294b60;
+  background: rgba(255, 255, 255, 0.78);
+  border: 2px solid rgba(43, 127, 169, 0.32);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.sendbar .mention-hoshia:hover:not(:disabled) {
   background: #fff17b;
 }
 
