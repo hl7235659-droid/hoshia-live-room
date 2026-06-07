@@ -15,13 +15,73 @@ import {
 import { generateAiReply } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 
+class MemoryStore {
+  constructor() {
+    this.values = new Map();
+    this.expiresAt = new Map();
+  }
+
+  async setex(key, ttlSeconds, value) {
+    this.values.set(key, value);
+    this.expiresAt.set(key, Date.now() + ttlSeconds * 1000);
+  }
+
+  async get(key) {
+    this.prune(key);
+    return this.values.get(key) ?? null;
+  }
+
+  async del(key) {
+    this.values.delete(key);
+    this.expiresAt.delete(key);
+  }
+
+  async lrange(key, start, stop) {
+    this.prune(key);
+    const list = this.values.get(key) || [];
+    const end = stop < 0 ? undefined : stop + 1;
+    return list.slice(start, end);
+  }
+
+  async lpush(key, value) {
+    this.prune(key);
+    const list = this.values.get(key) || [];
+    list.unshift(value);
+    this.values.set(key, list);
+  }
+
+  async ltrim(key, start, stop) {
+    this.prune(key);
+    const list = this.values.get(key) || [];
+    const end = stop < 0 ? undefined : stop + 1;
+    this.values.set(key, list.slice(start, end));
+  }
+
+  async incr(key) {
+    this.prune(key);
+    const next = Number(this.values.get(key) || 0) + 1;
+    this.values.set(key, String(next));
+    return next;
+  }
+
+  async expire(key, ttlSeconds) {
+    this.expiresAt.set(key, Date.now() + ttlSeconds * 1000);
+  }
+
+  prune(key) {
+    const expiresAt = this.expiresAt.get(key);
+    if (expiresAt && Date.now() > expiresAt) {
+      this.values.delete(key);
+      this.expiresAt.delete(key);
+    }
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
-const redis = new Redis(config.redisUrl, { lazyConnect: true });
+const store = await createStore();
 const sockets = new Map();
 let characterState = "IDLE";
-
-await redis.connect();
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -61,7 +121,7 @@ app.post("/api/auth/login", async (req, res) => {
     room_id: config.roomId,
     created_at: new Date().toISOString()
   };
-  await redis.setex(sessionKey(sessionId), config.sessionTtlSeconds, JSON.stringify(session));
+  await store.setex(sessionKey(sessionId), config.sessionTtlSeconds, JSON.stringify(session));
 
   res.setHeader(
     "Set-Cookie",
@@ -78,7 +138,7 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/auth/logout", async (req, res) => {
   const sessionId = getSessionIdFromReq(req);
-  if (sessionId) await redis.del(sessionKey(sessionId));
+  if (sessionId) await store.del(sessionKey(sessionId));
   res.setHeader("Set-Cookie", cookie.serialize(cookieName, "", { path: "/", maxAge: 0 }));
   res.json({ ok: true });
 });
@@ -88,7 +148,7 @@ app.get("/api/auth/me", requireSession, (req, res) => {
 });
 
 app.get("/api/room/state", requireSession, async (_req, res) => {
-  const recent = await redis.lrange(messagesKey(), 0, 49);
+  const recent = await store.lrange(messagesKey(), 0, 49);
   res.json({
     room: roomInfo(),
     state: characterState,
@@ -184,7 +244,7 @@ async function requireSession(req, res, next) {
 async function loadSessionFromReq(req) {
   const sessionId = getSessionIdFromReq(req);
   if (!sessionId) return null;
-  const raw = await redis.get(sessionKey(sessionId));
+  const raw = await store.get(sessionKey(sessionId));
   return raw ? JSON.parse(raw) : null;
 }
 
@@ -195,14 +255,14 @@ function getSessionIdFromReq(req) {
 
 async function consumeRateLimit(userId) {
   const key = `live-room:rate:${userId}`;
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expire(key, config.rateWindowSeconds);
+  const count = await store.incr(key);
+  if (count === 1) await store.expire(key, config.rateWindowSeconds);
   return count <= config.rateLimitCount;
 }
 
 async function storeMessage(event) {
-  await redis.lpush(messagesKey(), JSON.stringify(event));
-  await redis.ltrim(messagesKey(), 0, 199);
+  await store.lpush(messagesKey(), JSON.stringify(event));
+  await store.ltrim(messagesKey(), 0, 199);
 }
 
 async function setCharacterState(state) {
@@ -276,6 +336,22 @@ function messagesKey() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function createStore() {
+  const redis = new Redis(config.redisUrl, { lazyConnect: true });
+  redis.on("error", () => undefined);
+  try {
+    await redis.connect();
+    return redis;
+  } catch (error) {
+    console.warn("redis_unavailable_using_memory_store", {
+      url: config.redisUrl,
+      message: error.message
+    });
+    redis.disconnect();
+    return new MemoryStore();
+  }
 }
 
 server.listen(config.port, () => {
