@@ -1,9 +1,9 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
-import type { CharacterState, LiveMessage, RoomInfo, Session } from "./types";
+import type { AudiencePayload, AudienceUser, CharacterState, LiveMessage, RoomInfo, Session } from "./types";
 import { toCharacterState } from "./types";
 import "./styles.css";
 
@@ -11,7 +11,18 @@ const appBase = import.meta.env.BASE_URL || "/";
 const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
 const isStageDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get("demo") === "stage";
 const demoSession: Session = { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", room_id: "live-room-dev" };
-const demoRoom: RoomInfo = { room_id: "live-room-dev", online: 2, private: true, websocket_auth: true };
+const demoRoom: RoomInfo = { room_id: "live-room-dev", online: 2, registered: 4, private: true, websocket_auth: true };
+const demoAudience: AudiencePayload = {
+  ok: true,
+  online_count: 2,
+  registered_count: 4,
+  users: [
+    { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", online: true, registered_at: "2026-06-07T00:00:00.000Z", last_login_at: "2026-06-07T12:00:00.000Z", total_online_seconds: 4280, current_online_seconds: 320 },
+    { user_id: "friend-a", username: "mika", nickname: "Mika", avatar_url: "", online: true, registered_at: "2026-06-07T02:10:00.000Z", last_login_at: "2026-06-07T12:12:00.000Z", total_online_seconds: 1930, current_online_seconds: 180 },
+    { user_id: "friend-b", username: "blue", nickname: "Blue", avatar_url: "", online: false, registered_at: "2026-06-06T10:20:00.000Z", last_login_at: "2026-06-07T09:00:00.000Z", total_online_seconds: 8640, current_online_seconds: 0 },
+    { user_id: "friend-c", username: "ruru", nickname: "Ruru", avatar_url: "", online: false, registered_at: "2026-06-05T08:00:00.000Z", last_login_at: null, total_online_seconds: 0, current_online_seconds: 0 }
+  ]
+};
 
 function appPath(path: string) {
   const base = appBase.endsWith("/") ? appBase : `${appBase}/`;
@@ -26,6 +37,7 @@ function wsPath(path: string) {
 function App() {
   const [session, setSession] = useState<Session | null>(() => (isStageDemo ? demoSession : null));
   const [room, setRoom] = useState<RoomInfo | null>(() => (isStageDemo ? demoRoom : null));
+  const [audience, setAudience] = useState<AudiencePayload | null>(() => (isStageDemo ? demoAudience : null));
   const [gatePassed, setGatePassed] = useState(isStageDemo);
   const [authChecked, setAuthChecked] = useState(isStageDemo);
   const [messages, setMessages] = useState<LiveMessage[]>(seedMessages);
@@ -43,6 +55,11 @@ function App() {
         if (payload?.user) {
           setSession(payload.user);
           setRoom(payload.room);
+          setAudience((current) => current ? {
+            ...current,
+            online_count: payload.room?.online ?? current.online_count,
+            registered_count: payload.room?.registered ?? current.registered_count
+          } : current);
           setGatePassed(true);
           return;
         }
@@ -65,6 +82,22 @@ function App() {
   useEffect(() => {
     if (!session || isStageDemo) return;
 
+    async function refreshAudience() {
+      try {
+        const payload = await fetch(appPath("api/room/audience")).then((res) => (res.ok ? res.json() : null));
+        if (payload?.ok) {
+          setAudience(payload);
+          setRoom((current) => current ? {
+            ...current,
+            online: payload.online_count,
+            registered: payload.registered_count
+          } : current);
+        }
+      } catch {
+        // Audience data is optional UI chrome; keep the live room usable if it fails.
+      }
+    }
+
     fetch(appPath("api/room/state"))
       .then((res) => res.json())
       .then((payload) => {
@@ -73,6 +106,7 @@ function App() {
         if (payload.messages?.length) setMessages(payload.messages);
       })
       .catch(() => undefined);
+    void refreshAudience();
 
     let ws: WebSocket | null = null;
     let disposed = false;
@@ -98,6 +132,19 @@ function App() {
       }
       if (payload.type === "presence") {
         setRoom((current) => (current ? { ...current, online: payload.online ?? current.online } : current));
+      }
+      if (payload.type === "audience_changed") {
+        setAudience((current) => current ? {
+          ...current,
+          online_count: payload.online_count ?? current.online_count,
+          registered_count: payload.registered_count ?? current.registered_count
+        } : current);
+        setRoom((current) => current ? {
+          ...current,
+          online: payload.online_count ?? current.online,
+          registered: payload.registered_count ?? current.registered
+        } : current);
+        void refreshAudience();
       }
     }
 
@@ -178,9 +225,11 @@ function App() {
       onLeave={() => {
         setSession(null);
         setRoom(null);
+        setAudience(null);
         setSocketStatus("locked");
         setCharacterState("IDLE");
       }}
+      audience={audience}
     />
   );
 }
@@ -458,12 +507,35 @@ function avatarInitials(nickname: string) {
   return nickname.trim().slice(0, 2).toUpperCase() || "ME";
 }
 
+function formatDuration(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds || 0));
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function LiveMobile({
   session,
   room,
   messages,
   characterState,
   socketStatus,
+  audience,
   isDemo,
   onLocalSendStart,
   onDemoSend,
@@ -475,6 +547,7 @@ function LiveMobile({
   messages: LiveMessage[];
   characterState: CharacterState;
   socketStatus: string;
+  audience: AudiencePayload | null;
   isDemo: boolean;
   onLocalSendStart: () => void;
   onDemoSend?: (text: string) => void;
@@ -490,12 +563,15 @@ function LiveMobile({
         <LiveOverlay
           state={characterState}
           session={session}
+          room={room}
           socketStatus={socketStatus}
+          audience={audience}
           onOpenAccount={() => setAccountOpen(true)}
           onLeave={onLeave}
         />
         <BottomDock
           messages={messages}
+          audience={audience}
           socketStatus={socketStatus}
           nickname={session.nickname}
           onSendStart={onLocalSendStart}
@@ -517,13 +593,17 @@ function LiveMobile({
 function LiveOverlay({
   state,
   session,
+  room,
   socketStatus,
+  audience,
   onOpenAccount,
   onLeave
 }: {
   state: CharacterState;
   session: Session;
+  room: RoomInfo | null;
   socketStatus: string;
+  audience: AudiencePayload | null;
   onOpenAccount: () => void;
   onLeave: () => void;
 }) {
@@ -624,12 +704,131 @@ function LiveOverlay({
         <AnimatedStageTitle text={getAnimatedStageLabel(state)} />
       </div>
 
+      <AudienceBookmark audience={audience} room={room} />
+
       {connectionNotice(socketStatus) ? (
         <div className="connection-notice">
           <Signal size={13} />
           <span>{connectionNotice(socketStatus)}</span>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function AudienceBookmark({ audience, room }: { audience: AudiencePayload | null; room: RoomInfo | null }) {
+  const [open, setOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const users = audience?.users || [];
+  const selectedUser = users.find((user) => user.user_id === selectedUserId) || null;
+  const onlineCount = audience?.online_count ?? room?.online ?? 0;
+  const registeredCount = audience?.registered_count ?? room?.registered ?? users.length;
+
+  useEffect(() => {
+    if (!selectedUserId) return;
+    if (!users.some((user) => user.user_id === selectedUserId)) {
+      setSelectedUserId(null);
+    }
+  }, [selectedUserId, users]);
+
+  return (
+    <aside className={`audience-bookmark ${open ? "open" : ""}`} aria-label="Room audience">
+      <button
+        type="button"
+        className="audience-tab"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        title="View online and registered members"
+      >
+        <Users size={16} />
+        <strong>{onlineCount}</strong>
+        <span>/</span>
+        <small>{registeredCount}</small>
+      </button>
+
+      {open ? (
+        <section className="audience-panel">
+          <div className="audience-panel-head">
+            <div>
+              <span>Audience</span>
+              <strong>{onlineCount} online / {registeredCount} registered</strong>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close audience panel">
+              <X size={15} />
+            </button>
+          </div>
+
+          <div className="audience-list" role="list">
+            {users.length ? users.map((user) => (
+              <button
+                key={user.user_id}
+                type="button"
+                className={`audience-row ${user.online ? "online" : "offline"} ${selectedUser?.user_id === user.user_id ? "selected" : ""}`}
+                onClick={() => setSelectedUserId((current) => current === user.user_id ? null : user.user_id)}
+                role="listitem"
+              >
+                <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} size="tiny" />
+                <span className="audience-row-name">
+                  <strong>{user.nickname}</strong>
+                  <small>{user.online ? "online now" : "offline"}</small>
+                </span>
+                <i aria-label={user.online ? "online" : "offline"} />
+              </button>
+            )) : (
+              <p className="audience-empty">No registered member data yet.</p>
+            )}
+          </div>
+
+          {selectedUser ? (
+            <AudienceUserCard user={selectedUser} />
+          ) : (
+            <p className="audience-detail-hint">Tap a member to view account info and total room time.</p>
+          )}
+        </section>
+      ) : null}
+    </aside>
+  );
+}
+
+function AudienceUserCard({ user }: { user: AudienceUser }) {
+  const [liveSeconds, setLiveSeconds] = useState(user.current_online_seconds);
+  useEffect(() => {
+    setLiveSeconds(user.current_online_seconds);
+    if (!user.online) return undefined;
+    const timer = window.setInterval(() => {
+      setLiveSeconds((current) => current + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [user.user_id, user.current_online_seconds, user.online]);
+
+  const totalSeconds = user.total_online_seconds + (user.online ? liveSeconds : 0);
+  return (
+    <section className={`audience-user-card ${user.online ? "online" : "offline"}`} aria-label={`${user.nickname} account info`}>
+      <div className="audience-user-title">
+        <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} />
+        <div>
+          <span>@{user.nickname}</span>
+          <strong>{user.username || "member"}</strong>
+        </div>
+      </div>
+      <dl>
+        <div>
+          <dt>Status</dt>
+          <dd>{user.online ? "Online" : "Offline"}</dd>
+        </div>
+        <div>
+          <dt>Registered</dt>
+          <dd>{formatShortDate(user.registered_at)}</dd>
+        </div>
+        <div>
+          <dt>Last login</dt>
+          <dd>{user.last_login_at ? formatShortDate(user.last_login_at) : "No login record"}</dd>
+        </div>
+        <div>
+          <dt><Clock size={12} /> Total stay</dt>
+          <dd>{formatDuration(totalSeconds)}</dd>
+        </div>
+      </dl>
     </section>
   );
 }
@@ -916,21 +1115,25 @@ function DanmakuHistory({ messages, onMention }: { messages: LiveMessage[]; onMe
 
 function BottomDock({
   messages,
+  audience,
   socketStatus,
   nickname,
   onSendStart,
   onDemoSend
 }: {
   messages: LiveMessage[];
+  audience: AudiencePayload | null;
   socketStatus: string;
   nickname: string;
   onSendStart: () => void;
   onDemoSend?: (text: string) => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [text, setText] = useState("");
   const historyCount = Math.min(messages.length, 100);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const onlineMembers = (audience?.users || []).filter((user) => user.online && user.nickname !== nickname);
 
   function toggleHistory() {
     setHistoryOpen((current) => !current);
@@ -961,6 +1164,7 @@ function BottomDock({
       if (current.endsWith(" ")) return `${current}${mention}`;
       return `${current} ${mention}`;
     });
+    setMentionPickerOpen(false);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -995,15 +1199,46 @@ function BottomDock({
       </section>
       <section className="live-control" aria-label="Live controls">
         <form className="sendbar" onSubmit={send}>
-          <button
-            type="button"
-            className="mention-hoshia"
-            onClick={() => insertMention("Hoshia")}
-            title="Mention Hoshia"
-            disabled={socketStatus !== "live" && socketStatus !== "demo"}
-          >
-            @Hoshia
-          </button>
+          <div className={`mention-combo ${mentionPickerOpen ? "open" : ""}`}>
+            {mentionPickerOpen ? (
+              <div className="mention-picker" role="listbox" aria-label="Mention online member">
+                <span className="mention-picker-title">Mention online</span>
+                {onlineMembers.length ? onlineMembers.map((user) => (
+                  <button
+                    key={user.user_id}
+                    type="button"
+                    className="mention-picker-row"
+                    onClick={() => insertMention(user.nickname)}
+                  >
+                    <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} size="tiny" />
+                    <span>@{user.nickname}</span>
+                  </button>
+                )) : (
+                  <span className="mention-picker-empty">No one else online</span>
+                )}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="mention-expand"
+              onClick={() => setMentionPickerOpen((current) => !current)}
+              title="Mention online member"
+              aria-label="Mention online member"
+              aria-expanded={mentionPickerOpen}
+              disabled={socketStatus !== "live" && socketStatus !== "demo"}
+            >
+              <ChevronUp size={15} />
+            </button>
+            <button
+              type="button"
+              className="mention-hoshia"
+              onClick={() => insertMention("Hoshia")}
+              title="Mention Hoshia"
+              disabled={socketStatus !== "live" && socketStatus !== "demo"}
+            >
+              @Hoshia
+            </button>
+          </div>
           <input
             ref={inputRef}
             value={text}

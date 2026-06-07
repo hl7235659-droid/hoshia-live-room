@@ -124,6 +124,15 @@ test("user profile and password can be updated", () => {
     const passwordUpdated = db.updateUserPassword(user.id, hashPassword("new-password-1"));
     assert.equal(passwordUpdated.id, "user-1");
     assert.notEqual(passwordUpdated.password_hash, user.password_hash);
+
+    const onlineUpdated = db.addUserOnlineSeconds(user.id, 95);
+    assert.equal(onlineUpdated.total_online_seconds, 95);
+    assert.equal(db.countUsers(), 1);
+
+    const audience = db.listAudienceUsers();
+    assert.equal(audience.length, 1);
+    assert.equal(audience[0].nickname, "Blue Friend");
+    assert.equal(audience[0].total_online_seconds, 95);
   } finally {
     cleanup();
   }

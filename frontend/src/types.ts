@@ -1,6 +1,7 @@
 export type RoomInfo = {
   room_id: string;
   online: number;
+  registered?: number;
   private: boolean;
   websocket_auth: boolean;
 };
@@ -9,6 +10,7 @@ export type LiveMessage = {
   type: string;
   id: string;
   role: "user" | "ai" | "system";
+  user_id?: string;
   nickname?: string;
   color?: string;
   text: string;
@@ -21,6 +23,25 @@ export type Session = {
   nickname: string;
   avatar_url?: string;
   room_id: string;
+};
+
+export type AudienceUser = {
+  user_id: string;
+  username?: string;
+  nickname: string;
+  avatar_url?: string;
+  online: boolean;
+  registered_at: string;
+  last_login_at?: string | null;
+  total_online_seconds: number;
+  current_online_seconds: number;
+};
+
+export type AudiencePayload = {
+  ok: boolean;
+  online_count: number;
+  registered_count: number;
+  users: AudienceUser[];
 };
 
 export const characterStates = ["IDLE", "LISTENING", "THINKING", "SPEAKING", "ERROR"] as const;

@@ -87,6 +87,7 @@ const server = http.createServer(app);
 const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
 const sockets = new Map();
+const activeUserConnections = new Map();
 let characterState = "IDLE";
 const replyBatchWindowMs = 3200;
 const mentionReplyWindowMs = 1200;
@@ -107,7 +108,8 @@ app.get("/api/room/preview", (_req, res) => {
     ok: true,
     room: {
       room_id: config.roomId,
-      online: sockets.size,
+      online: uniqueOnlineCount(),
+      registered: db.countUsers(),
       private: true
     }
   });
@@ -227,6 +229,7 @@ app.patch("/api/account/profile", requireSession, async (req, res) => {
   };
   await saveSession(req.sessionId, nextSession);
   refreshSocketSessions(nextSession);
+  broadcastAudienceChanged();
 
   res.json({ ok: true, user: publicSession(nextSession) });
 });
@@ -256,6 +259,10 @@ app.get("/api/room/state", requireSession, async (_req, res) => {
   });
 });
 
+app.get("/api/room/audience", requireSession, async (_req, res) => {
+  res.json(audiencePayload());
+});
+
 const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", async (req, socket, head) => {
@@ -278,7 +285,9 @@ server.on("upgrade", async (req, socket, head) => {
 
 wss.on("connection", (ws, _req, session) => {
   sockets.set(ws, session);
-  broadcast(systemEvent("presence", `${session.nickname} joined`, { online: sockets.size }));
+  markUserOnline(session);
+  broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
+  broadcastAudienceChanged();
   ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
 
   ws.on("message", async (raw) => {
@@ -293,7 +302,9 @@ wss.on("connection", (ws, _req, session) => {
 
   ws.on("close", () => {
     sockets.delete(ws);
-    broadcast(systemEvent("presence", `${session.nickname} left`, { online: sockets.size }));
+    markUserOffline(session);
+    broadcast(systemEvent("presence", `${session.nickname} left`, { online: uniqueOnlineCount() }));
+    broadcastAudienceChanged();
   });
 });
 
@@ -500,6 +511,84 @@ function sendToSession(userId, payload) {
   }
 }
 
+function markUserOnline(session) {
+  const userId = session?.user_id;
+  if (!userId) return;
+  const current = activeUserConnections.get(userId);
+  if (current) {
+    current.count += 1;
+    return;
+  }
+  activeUserConnections.set(userId, {
+    count: 1,
+    connectedAtMs: Date.now()
+  });
+}
+
+function markUserOffline(session) {
+  const userId = session?.user_id;
+  if (!userId) return;
+  const current = activeUserConnections.get(userId);
+  if (!current) return;
+  current.count -= 1;
+  if (current.count > 0) return;
+
+  activeUserConnections.delete(userId);
+  const onlineSeconds = Math.floor((Date.now() - current.connectedAtMs) / 1000);
+  db.addUserOnlineSeconds(userId, onlineSeconds);
+}
+
+function uniqueOnlineCount() {
+  return activeUserConnections.size;
+}
+
+function audienceSummary() {
+  return {
+    online_count: uniqueOnlineCount(),
+    registered_count: db.countUsers()
+  };
+}
+
+function audiencePayload() {
+  const now = Date.now();
+  const users = db.listAudienceUsers().map((user) => {
+    const active = activeUserConnections.get(user.id);
+    const currentOnlineSeconds = active ? Math.max(0, Math.floor((now - active.connectedAtMs) / 1000)) : 0;
+    return {
+      user_id: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      avatar_url: user.avatar_url || "",
+      online: Boolean(active),
+      registered_at: user.created_at,
+      last_login_at: user.last_login_at,
+      total_online_seconds: Number(user.total_online_seconds || 0),
+      current_online_seconds: currentOnlineSeconds
+    };
+  }).sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    const aRecent = Date.parse(a.last_login_at || a.registered_at || "") || 0;
+    const bRecent = Date.parse(b.last_login_at || b.registered_at || "") || 0;
+    if (aRecent !== bRecent) return bRecent - aRecent;
+    return a.nickname.localeCompare(b.nickname);
+  });
+
+  return {
+    ok: true,
+    ...audienceSummary(),
+    users
+  };
+}
+
+function broadcastAudienceChanged() {
+  broadcast({
+    type: "audience_changed",
+    room_id: config.roomId,
+    ...audienceSummary(),
+    timestamp: new Date().toISOString()
+  });
+}
+
 function messageEvent(type, role, text, session, extra = {}) {
   return {
     type,
@@ -539,7 +628,8 @@ function publicSession(session) {
 function roomInfo() {
   return {
     room_id: config.roomId,
-    online: sockets.size,
+    online: uniqueOnlineCount(),
+    registered: db.countUsers(),
     private: true,
     websocket_auth: true
   };

@@ -16,7 +16,8 @@ export function openLiveRoomDatabase(databasePath) {
       nickname TEXT NOT NULL,
       avatar_url TEXT,
       created_at TEXT NOT NULL,
-      last_login_at TEXT
+      last_login_at TEXT,
+      total_online_seconds INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS registration_codes (
@@ -62,7 +63,7 @@ export class LiveRoomDatabase {
 
   findUserByUsername(username) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at, total_online_seconds
       FROM users
       WHERE username_normalized = ?
     `).get(normalizeUsername(username));
@@ -70,7 +71,7 @@ export class LiveRoomDatabase {
 
   findUserById(userId) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at, total_online_seconds
       FROM users
       WHERE id = ?
     `).get(userId);
@@ -96,6 +97,37 @@ export class LiveRoomDatabase {
       WHERE id = ?
     `).run(passwordHash, userId);
     return this.findUserById(userId);
+  }
+
+  addUserOnlineSeconds(userId, seconds) {
+    const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (!safeSeconds) return this.findUserById(userId);
+    this.db.prepare(`
+      UPDATE users
+      SET total_online_seconds = COALESCE(total_online_seconds, 0) + ?
+      WHERE id = ?
+    `).run(safeSeconds, userId);
+    return this.findUserById(userId);
+  }
+
+  countUsers() {
+    const row = this.db.prepare("SELECT COUNT(*) AS total FROM users").get();
+    return Number(row.total || 0);
+  }
+
+  listAudienceUsers() {
+    return this.db.prepare(`
+      SELECT
+        id,
+        username,
+        nickname,
+        avatar_url,
+        created_at,
+        last_login_at,
+        COALESCE(total_online_seconds, 0) AS total_online_seconds
+      FROM users
+      ORDER BY last_login_at IS NULL, datetime(last_login_at) DESC, username_normalized ASC
+    `).all();
   }
 
   createUserWithRegistrationCode({ user, registrationCodeHash, now = new Date().toISOString() }) {
@@ -253,5 +285,8 @@ function migrateUsersTable(db) {
   const columns = new Set(db.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
   if (!columns.has("avatar_url")) {
     db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
+  }
+  if (!columns.has("total_online_seconds")) {
+    db.exec("ALTER TABLE users ADD COLUMN total_online_seconds INTEGER NOT NULL DEFAULT 0");
   }
 }
