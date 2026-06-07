@@ -18,5 +18,31 @@
     "description": "Optional live-room system prompt prepended to AstrBot LLM calls.",
     "type": "string",
     "default": "You are Hoshia, a private cyber pixel anime live-room host. Reply briefly, warmly, and in Chinese unless the user asks otherwise."
+  },
+  "judge_provider_name": {
+    "description": "Small model provider used to decide whether Hoshia should proactively reply when nobody mentioned her.",
+    "type": "string",
+    "default": "tencentmaas/deepseek-v4-flash",
+    "_special": "select_provider"
+  },
+  "proactive_reply_threshold": {
+    "description": "Heartflow-lite threshold from 0 to 1. Higher means Hoshia speaks less when not mentioned.",
+    "type": "float",
+    "default": 0.62
+  },
+  "min_proactive_interval_seconds": {
+    "description": "Minimum seconds between non-mention proactive replies.",
+    "type": "int",
+    "default": 12
+  },
+  "energy_decay": {
+    "description": "Energy consumed by each proactive reply.",
+    "type": "float",
+    "default": 0.16
+  },
+  "energy_recovery": {
+    "description": "Energy recovered whenever a non-mention batch is skipped.",
+    "type": "float",
+    "default": 0.04
   }
 }

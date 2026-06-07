@@ -375,6 +375,10 @@ async function handleAiReplyBatch(batch) {
       timestamp: item.timestamp
     }))
   });
+  if (reply.skipped) {
+    await setCharacterState("IDLE");
+    return;
+  }
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
     user_id: "ai-host",

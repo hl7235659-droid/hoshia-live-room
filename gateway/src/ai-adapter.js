@@ -74,6 +74,15 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
 }
 
 function normalizeReply(reply, fallbackSource) {
+  if (reply?.skipped) {
+    return {
+      skipped: true,
+      source: String(reply?.source || "heartflow_judge"),
+      judge: reply?.judge,
+      latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined
+    };
+  }
+
   const text = String(reply?.text || "").trim();
   if (!text) throw new Error("astrbot_bridge_empty_text");
 

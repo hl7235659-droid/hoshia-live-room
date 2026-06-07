@@ -102,6 +102,27 @@ test("astrbot room batch uses shared room session and reply targets", async () =
   assert.equal(reply.source, "astrbot");
 });
 
+test("astrbot judge skip is returned without fallback", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    "最近弹幕：\n[1] Bob: 哈哈",
+    baseConfig,
+    async () => responseJson(200, {
+      ok: true,
+      skipped: true,
+      source: "heartflow_judge",
+      judge: { overall_score: 0.21, should_reply: false },
+      latency_ms: 45
+    }),
+    { roomSession: true, replyTargets: [], messages: [] }
+  );
+
+  assert.equal(reply.skipped, true);
+  assert.equal(reply.source, "heartflow_judge");
+  assert.equal(reply.latency_ms, 45);
+  assert.deepEqual(reply.judge, { overall_score: 0.21, should_reply: false });
+});
+
 test("astrbot errors fall back to mock when enabled", async () => {
   const reply = await generateAiReply(session, "tts please", baseConfig, async () => responseJson(500, { ok: false }));
 
