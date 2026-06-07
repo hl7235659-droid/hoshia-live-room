@@ -87,15 +87,21 @@ class LiveRoomBridgePlugin(Star):
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_json"}
 
         text = str(payload.get("text", "")).strip()
+        prompt_override = str(payload.get("prompt", "")).strip()
         nickname = str(payload.get("nickname", "")).strip()[:32]
         session_id = str(payload.get("session_id", "")).strip()
-        if not text or len(text) > 500:
+        reply_targets = payload.get("reply_targets", [])
+        if not text or len(text) > 2500:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid_text"}
 
         started = time.perf_counter()
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
-            prompt = f"{nickname}: {text}" if nickname else text
+            prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
+            if isinstance(reply_targets, list) and reply_targets:
+                targets = " ".join(f"@{str(name).strip()}" for name in reply_targets if str(name).strip())
+                if targets:
+                    prompt = f"{prompt}\n\n本轮明确回复对象：{targets}。如果内容是在回应这些观众，请在回复开头带上对应 @昵称。"
             llm_response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
                 prompt=prompt,

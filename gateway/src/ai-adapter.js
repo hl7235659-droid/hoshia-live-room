@@ -2,13 +2,13 @@ import { isValidState } from "./state-machine.js";
 
 const safeStates = new Set(["IDLE", "LISTENING", "THINKING", "SPEAKING", "ERROR"]);
 
-export async function generateAiReply(session, text, options, fetchImpl = globalThis.fetch) {
+export async function generateAiReply(session, text, options, fetchImpl = globalThis.fetch, metadata = {}) {
   if (options.aiMode !== "astrbot") {
     return mockAiReply(text, session.nickname);
   }
 
   try {
-    const reply = await requestAstrBotReply(session, text, options, fetchImpl);
+    const reply = await requestAstrBotReply(session, text, options, fetchImpl, metadata);
     return normalizeReply(reply, "astrbot");
   } catch (error) {
     console.error("astrbot_bridge_failed", {
@@ -31,7 +31,7 @@ export async function generateAiReply(session, text, options, fetchImpl = global
   }
 }
 
-async function requestAstrBotReply(session, text, options, fetchImpl) {
+async function requestAstrBotReply(session, text, options, fetchImpl, metadata = {}) {
   if (!fetchImpl) throw new Error("fetch_unavailable");
   if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
   if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
@@ -47,11 +47,14 @@ async function requestAstrBotReply(session, text, options, fetchImpl) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        session_id: `${options.roomId}:${session.user_id}`,
+        session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
         room_id: options.roomId,
         user_id: session.user_id,
         nickname: session.nickname,
-        text
+        text,
+        prompt: text,
+        reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
+        messages: Array.isArray(metadata.messages) ? metadata.messages : []
       }),
       signal: controller.signal
     });
@@ -85,14 +88,14 @@ function normalizeReply(reply, fallbackSource) {
 
 export function mockAiReply(text, nickname) {
   const clean = text.replace(/\s+/g, " ").trim();
-  if (/在吗|hello|hi|嗨|你好/i.test(clean)) {
-    return { text: `${nickname}，我在的。弹幕信号已经收到。`, state: "SPEAKING", source: "mock" };
+  if (/(?:\u5728\u5417|hello|hi|\u4f60\u597d)/i.test(clean)) {
+    return { text: `${nickname}\uff0c\u6211\u5728\u7684\u3002\u5f39\u5e55\u4fe1\u53f7\u5df2\u7ecf\u6536\u5230\u3002`, state: "SPEAKING", source: "mock" };
   }
-  if (/错误|坏了|失败|断线|error/i.test(clean)) {
-    return { text: "检测到异常关键词，已切换到 ERROR 提示。房间仍会保持可见。", state: "ERROR", source: "mock" };
+  if (/(?:\u9519\u8bef|\u574f\u4e86|\u5931\u8d25|\u65ad\u7ebf|error)/i.test(clean)) {
+    return { text: "\u68c0\u6d4b\u5230\u5f02\u5e38\u5173\u952e\u8bcd\uff0c\u5df2\u5207\u6362\u5230 ERROR \u63d0\u793a\u3002\u623f\u95f4\u4ecd\u4f1a\u4fdd\u6301\u53ef\u89c1\u3002", state: "ERROR", source: "mock" };
   }
-  if (/语音|tts/i.test(clean)) {
-    return { text: "当前先不播放真实 TTS，后续可以把这条回复转进 VoxCPM2 队列。", state: "SPEAKING", source: "mock" };
+  if (/(?:\u8bed\u97f3|tts)/i.test(clean)) {
+    return { text: "\u5f53\u524d\u5148\u4e0d\u64ad\u653e\u771f\u5b9e TTS\uff0c\u540e\u7eed\u53ef\u4ee5\u628a\u8fd9\u6761\u56de\u590d\u8f6c\u8fdb VoxCPM2 \u961f\u5217\u3002", state: "SPEAKING", source: "mock" };
   }
-  return { text: `收到：${clean.slice(0, 80)}。我先用 mock AI 陪你测试直播间。`, state: "SPEAKING", source: "mock" };
+  return { text: `\u6536\u5230\uff1a${clean.slice(0, 80)}\u3002\u6211\u5148\u7528 mock AI \u966a\u4f60\u6d4b\u8bd5\u76f4\u64ad\u95f4\u3002`, state: "SPEAKING", source: "mock" };
 }

@@ -41,7 +41,10 @@ test("astrbot mode sends authenticated bridge request", async () => {
       room_id: "live-room-dev",
       user_id: "user-1",
       nickname: "Tester",
-      text: "ping"
+      text: "ping",
+      prompt: "ping",
+      reply_targets: [],
+      messages: []
     });
     return responseJson(200, { ok: true, text: "AstrBot says hi", state: "SPEAKING", source: "astrbot", latency_ms: 12 });
   });
@@ -52,6 +55,51 @@ test("astrbot mode sends authenticated bridge request", async () => {
     source: "astrbot",
     latency_ms: 12
   });
+});
+
+test("astrbot room batch uses shared room session and reply targets", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    "最近弹幕：\n[1] Alice @Hoshia: hi",
+    baseConfig,
+    async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
+        session_id: "live-room-dev:room",
+        room_id: "live-room-dev",
+        user_id: "room",
+        nickname: "直播间弹幕",
+        text: "最近弹幕：\n[1] Alice @Hoshia: hi",
+        prompt: "最近弹幕：\n[1] Alice @Hoshia: hi",
+        reply_targets: ["Alice"],
+        messages: [
+          {
+            user_id: "user-a",
+            nickname: "Alice",
+            text: "@Hoshia hi",
+            mentioned: true,
+            timestamp: "2026-06-07T00:00:00.000Z"
+          }
+        ]
+      });
+      return responseJson(200, { ok: true, text: "@Alice 我在呀。", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      roomSession: true,
+      replyTargets: ["Alice"],
+      messages: [
+        {
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "@Hoshia hi",
+          mentioned: true,
+          timestamp: "2026-06-07T00:00:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.text, "@Alice 我在呀。");
+  assert.equal(reply.source, "astrbot");
 });
 
 test("astrbot errors fall back to mock when enabled", async () => {

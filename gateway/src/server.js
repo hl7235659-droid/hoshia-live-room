@@ -88,6 +88,13 @@ const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
 const sockets = new Map();
 let characterState = "IDLE";
+const replyBatchWindowMs = 3200;
+const mentionReplyWindowMs = 1200;
+const maxReplyBatchSize = 8;
+const maxReplyTargets = 3;
+let pendingReplyBatch = [];
+let replyBatchTimer = null;
+let replyBatchRunning = false;
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -306,13 +313,68 @@ async function handleDanmaku(session, payload) {
   broadcast(userMessage);
   await setCharacterState(nextCharacterState("user_message", text));
 
-  queueMicrotask(() => void handleAiReply(session, text));
+  enqueueAiReply(session, text);
 }
 
-async function handleAiReply(session, text) {
-  await setCharacterState(nextCharacterState("ai_thinking", text));
+function enqueueAiReply(session, text) {
+  pendingReplyBatch.push({
+    session,
+    text,
+    mentioned: mentionsHoshia(text),
+    timestamp: new Date().toISOString()
+  });
+
+  if (pendingReplyBatch.length >= maxReplyBatchSize) {
+    scheduleAiReplyBatch(0);
+    return;
+  }
+
+  const delay = pendingReplyBatch.some((item) => item.mentioned) ? mentionReplyWindowMs : replyBatchWindowMs;
+  scheduleAiReplyBatch(delay);
+}
+
+function scheduleAiReplyBatch(delay) {
+  if (replyBatchTimer) {
+    clearTimeout(replyBatchTimer);
+  }
+  replyBatchTimer = setTimeout(() => {
+    replyBatchTimer = null;
+    void flushAiReplyBatch();
+  }, delay);
+}
+
+async function flushAiReplyBatch() {
+  if (replyBatchRunning) return;
+  const batch = pendingReplyBatch.splice(0, maxReplyBatchSize);
+  if (!batch.length) return;
+
+  replyBatchRunning = true;
+  try {
+    await handleAiReplyBatch(batch);
+  } finally {
+    replyBatchRunning = false;
+    if (pendingReplyBatch.length) {
+      scheduleAiReplyBatch(mentionReplyWindowMs);
+    }
+  }
+}
+
+async function handleAiReplyBatch(batch) {
+  const batchText = batch.map((item) => item.text).join("\n");
+  await setCharacterState(nextCharacterState("ai_thinking", batchText));
   await sleep(450);
-  const reply = await generateAiReply(session, text, config);
+  const prompt = formatLiveRoomBatchPrompt(batch);
+  const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
+    roomSession: true,
+    replyTargets: replyTargets(batch),
+    messages: batch.map((item) => ({
+      user_id: item.session.user_id,
+      nickname: item.session.nickname,
+      text: item.text,
+      mentioned: item.mentioned,
+      timestamp: item.timestamp
+    }))
+  });
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
     user_id: "ai-host",
@@ -350,6 +412,53 @@ async function loadSessionById(sessionId) {
 function getSessionIdFromReq(req) {
   const cookies = cookie.parse(req.headers.cookie || "");
   return decodeSessionCookie(cookies[cookieName], config.sessionSecret);
+}
+
+function mentionsHoshia(text) {
+  return /@\s*(?:hoshia|Hoshia|星娅|主播)/i.test(String(text || ""));
+}
+
+function replyTargets(batch) {
+  const seen = new Set();
+  const targets = [];
+  for (const item of batch.filter((entry) => entry.mentioned)) {
+    const nickname = String(item.session.nickname || "").trim();
+    if (!nickname || seen.has(nickname)) continue;
+    seen.add(nickname);
+    targets.push(nickname);
+    if (targets.length >= maxReplyTargets) break;
+  }
+  return targets;
+}
+
+function roomAiSession(batch) {
+  const first = batch[0]?.session || {};
+  return {
+    user_id: "room",
+    username: "room",
+    nickname: "直播间弹幕",
+    room_id: first.room_id || config.roomId
+  };
+}
+
+function formatLiveRoomBatchPrompt(batch) {
+  const targets = replyTargets(batch);
+  const lines = batch.map((item, index) => {
+    const mentionMark = item.mentioned ? " @Hoshia" : "";
+    return `[${index + 1}] ${item.session.nickname}${mentionMark}: ${item.text}`;
+  });
+
+  const targetInstruction = targets.length
+    ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
+    : "本轮没有人明确 @ 你。请像主播读弹幕一样自然挑重点回应；如果只回应某个具体观众，请在开头 @昵称，否则不用 @。";
+
+  return [
+    "你正在朋友限定的 Hoshia AI 直播间里读一小批最近弹幕。",
+    targetInstruction,
+    "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、亲切、有直播感。",
+    "最近弹幕：",
+    ...lines
+  ].join("\n");
 }
 
 function hasGateAccess(req) {
