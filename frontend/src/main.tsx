@@ -580,8 +580,10 @@ function LiveMobile({
           audience={audience}
           socketStatus={socketStatus}
           nickname={session.nickname}
+          danmakuColor={session.danmaku_color || ""}
           onSendStart={onLocalSendStart}
           onDemoSend={onDemoSend}
+          onOpenAccount={() => setAccountOpen(true)}
         />
         {accountOpen ? (
           <AccountSettingsModal
@@ -1153,15 +1155,19 @@ function BottomDock({
   audience,
   socketStatus,
   nickname,
+  danmakuColor,
   onSendStart,
-  onDemoSend
+  onDemoSend,
+  onOpenAccount
 }: {
   messages: LiveMessage[];
   audience: AudiencePayload | null;
   socketStatus: string;
   nickname: string;
+  danmakuColor: string;
   onSendStart: () => void;
   onDemoSend?: (text: string) => void;
+  onOpenAccount: () => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
@@ -1169,6 +1175,7 @@ function BottomDock({
   const historyCount = Math.min(messages.length, 100);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const onlineMembers = (audience?.users || []).filter((user) => user.online && user.nickname !== nickname);
+  const visibleDanmakuColor = normalizeColorInput(danmakuColor) || "#FF5F9B";
 
   function toggleHistory() {
     setHistoryOpen((current) => !current);
@@ -1269,9 +1276,10 @@ function BottomDock({
               className="mention-hoshia"
               onClick={() => insertMention("Hoshia")}
               title="Mention Hoshia"
+              aria-label="Mention Hoshia"
               disabled={socketStatus !== "live" && socketStatus !== "demo"}
             >
-              @Hoshia
+              @
             </button>
           </div>
           <input
@@ -1281,6 +1289,16 @@ function BottomDock({
             onChange={(event) => setText(event.target.value)}
             placeholder="Send a message or @Hoshia..."
           />
+          <button
+            type="button"
+            className="danmaku-color-button"
+            onClick={onOpenAccount}
+            title="Set my danmaku color"
+            aria-label="Set my danmaku color"
+          >
+            <i style={{ backgroundColor: visibleDanmakuColor }} aria-hidden="true" />
+            <Palette size={17} />
+          </button>
           <button type="submit" title="Send" disabled={!canSend}>
             <Send size={20} />
           </button>

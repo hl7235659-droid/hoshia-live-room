@@ -480,6 +480,7 @@ button:disabled {
 }
 
 .overlay-top.island-expanded {
+  z-index: 30;
   grid-template-columns: 42px minmax(0, 1fr) 42px;
 }
 
@@ -720,7 +721,7 @@ button:disabled {
 
 .island-menu-popover {
   position: absolute;
-  z-index: 22;
+  z-index: 40;
   top: calc(100% + 7px);
   right: 0;
   width: min(218px, calc(100vw - 150px));
@@ -1965,9 +1966,9 @@ button:disabled {
   margin: 0;
   padding: 10px 12px 3px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 48px;
+  grid-template-columns: auto minmax(0, 1fr) 42px 48px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: transparent;
   border: 0;
 }
@@ -2045,9 +2046,32 @@ button:disabled {
   background: #fff17b;
 }
 
+.sendbar .danmaku-color-button {
+  width: 42px;
+  height: 48px;
+  position: relative;
+  color: #294b60;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.danmaku-color-button i {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(23, 32, 51, 0.24);
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.64);
+}
+
+.sendbar .danmaku-color-button:hover:not(:disabled) {
+  background: #d8f5ff;
+}
+
 .mention-combo {
   position: relative;
-  width: 126px;
+  width: 76px;
   height: 48px;
   display: inline-flex;
   align-items: stretch;
@@ -2065,15 +2089,15 @@ button:disabled {
 }
 
 .sendbar .mention-hoshia {
-  width: auto;
-  min-width: 0;
-  flex: 1 1 auto;
-  padding: 0 12px;
+  width: 42px;
+  min-width: 42px;
+  flex: 0 0 42px;
+  padding: 0;
   border-radius: 0 16px 16px 0;
   color: #294b60;
   background: rgba(255, 255, 255, 0.78);
   border: 2px solid rgba(43, 127, 169, 0.32);
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 950;
 }
 
