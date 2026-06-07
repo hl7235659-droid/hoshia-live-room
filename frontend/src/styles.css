@@ -970,6 +970,19 @@ button:disabled {
   box-shadow: 0 8px 18px rgba(34, 115, 163, 0.08);
 }
 
+.danmaku-color-control {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.account-card input.danmaku-color-swatch {
+  width: 52px;
+  padding: 3px;
+  cursor: pointer;
+}
+
 .account-card input:focus {
   border-color: rgba(43, 127, 169, 0.42);
 }

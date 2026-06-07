@@ -1,6 +1,6 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Palette, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
 import type { AudiencePayload, AudienceUser, CharacterState, LiveMessage, RoomInfo, Session } from "./types";
@@ -10,17 +10,17 @@ import "./styles.css";
 const appBase = import.meta.env.BASE_URL || "/";
 const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
 const isStageDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get("demo") === "stage";
-const demoSession: Session = { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", room_id: "live-room-dev" };
+const demoSession: Session = { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", danmaku_color: "#FF5F9B", room_id: "live-room-dev" };
 const demoRoom: RoomInfo = { room_id: "live-room-dev", online: 2, registered: 4, private: true, websocket_auth: true };
 const demoAudience: AudiencePayload = {
   ok: true,
   online_count: 2,
   registered_count: 4,
   users: [
-    { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", online: true, registered_at: "2026-06-07T00:00:00.000Z", last_login_at: "2026-06-07T12:00:00.000Z", total_online_seconds: 4280, current_online_seconds: 320 },
-    { user_id: "friend-a", username: "mika", nickname: "Mika", avatar_url: "", online: true, registered_at: "2026-06-07T02:10:00.000Z", last_login_at: "2026-06-07T12:12:00.000Z", total_online_seconds: 1930, current_online_seconds: 180 },
-    { user_id: "friend-b", username: "blue", nickname: "Blue", avatar_url: "", online: false, registered_at: "2026-06-06T10:20:00.000Z", last_login_at: "2026-06-07T09:00:00.000Z", total_online_seconds: 8640, current_online_seconds: 0 },
-    { user_id: "friend-c", username: "ruru", nickname: "Ruru", avatar_url: "", online: false, registered_at: "2026-06-05T08:00:00.000Z", last_login_at: null, total_online_seconds: 0, current_online_seconds: 0 }
+    { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", danmaku_color: "#FF5F9B", online: true, registered_at: "2026-06-07T00:00:00.000Z", last_login_at: "2026-06-07T12:00:00.000Z", total_online_seconds: 4280, current_online_seconds: 320 },
+    { user_id: "friend-a", username: "mika", nickname: "Mika", avatar_url: "", danmaku_color: "#2B9CFF", online: true, registered_at: "2026-06-07T02:10:00.000Z", last_login_at: "2026-06-07T12:12:00.000Z", total_online_seconds: 1930, current_online_seconds: 180 },
+    { user_id: "friend-b", username: "blue", nickname: "Blue", avatar_url: "", danmaku_color: "#19A989", online: false, registered_at: "2026-06-06T10:20:00.000Z", last_login_at: "2026-06-07T09:00:00.000Z", total_online_seconds: 8640, current_online_seconds: 0 },
+    { user_id: "friend-c", username: "ruru", nickname: "Ruru", avatar_url: "", danmaku_color: "#8B5CF6", online: false, registered_at: "2026-06-05T08:00:00.000Z", last_login_at: null, total_online_seconds: 0, current_online_seconds: 0 }
   ]
 };
 
@@ -210,7 +210,7 @@ function App() {
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
       }}
       onDemoSend={isStageDemo ? (text) => {
-        setMessages((current) => [...current.slice(-40), localLine("user", session.nickname, text)]);
+        setMessages((current) => [...current.slice(-40), localLine("user", session.nickname, text, { color: session.danmaku_color || undefined })]);
         setCharacterState("LISTENING");
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
         window.setTimeout(() => {
@@ -497,6 +497,7 @@ function authErrorMessage(error: string | undefined, mode: "login" | "register")
 function accountErrorMessage(error: string | undefined) {
   if (error === "nickname_invalid") return "Display name needs 2-24 characters.";
   if (error === "avatar_url_invalid") return "Avatar must be a valid http(s), data image, or site-relative URL.";
+  if (error === "danmaku_color_invalid") return "Danmaku color must be a valid #RRGGBB value.";
   if (error === "current_password_invalid") return "Current password is not correct.";
   if (error === "password_invalid") return "Password needs at least 8 characters.";
   if (error === "unauthorized") return "Session expired. Log in again.";
@@ -505,6 +506,11 @@ function accountErrorMessage(error: string | undefined) {
 
 function avatarInitials(nickname: string) {
   return nickname.trim().slice(0, 2).toUpperCase() || "ME";
+}
+
+function normalizeColorInput(color: string | undefined) {
+  const value = String(color || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : "";
 }
 
 function formatDuration(totalSeconds: number) {
@@ -846,6 +852,7 @@ function AccountSettingsModal({
 }) {
   const [nickname, setNickname] = useState(session.nickname);
   const [avatarUrl, setAvatarUrl] = useState(session.avatar_url || "");
+  const [danmakuColor, setDanmakuColor] = useState(normalizeColorInput(session.danmaku_color) || "#FF5F9B");
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -859,14 +866,19 @@ function AccountSettingsModal({
     setProfileNotice(null);
     const nextNickname = nickname.trim();
     const nextAvatarUrl = avatarUrl.trim();
+    const nextDanmakuColor = normalizeColorInput(danmakuColor);
 
     if (nextNickname.length < 2) {
       setProfileNotice({ type: "error", text: "Display name needs at least 2 characters." });
       return;
     }
+    if (!nextDanmakuColor) {
+      setProfileNotice({ type: "error", text: "Choose a valid #RRGGBB danmaku color." });
+      return;
+    }
 
     if (isDemo) {
-      onSessionUpdate({ ...session, nickname: nextNickname, avatar_url: nextAvatarUrl });
+      onSessionUpdate({ ...session, nickname: nextNickname, avatar_url: nextAvatarUrl, danmaku_color: nextDanmakuColor });
       setProfileNotice({ type: "success", text: "Demo profile updated in this preview." });
       return;
     }
@@ -875,7 +887,7 @@ function AccountSettingsModal({
     const response = await fetch(appPath("api/account/profile"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nickname: nextNickname, avatarUrl: nextAvatarUrl })
+      body: JSON.stringify({ nickname: nextNickname, avatarUrl: nextAvatarUrl, danmakuColor: nextDanmakuColor })
     });
     setProfileBusy(false);
 
@@ -981,8 +993,31 @@ function AccountSettingsModal({
             <Image size={14} />
             <span>Leave blank to use initials. Uploaded avatar storage can be added later.</span>
           </div>
+          <label>
+            <span>My danmaku color</span>
+            <div className="danmaku-color-control">
+              <input
+                className="danmaku-color-swatch"
+                value={normalizeColorInput(danmakuColor) || "#FF5F9B"}
+                onChange={(event) => setDanmakuColor(event.target.value)}
+                type="color"
+                aria-label="Choose my danmaku color"
+              />
+              <input
+                value={danmakuColor}
+                onChange={(event) => setDanmakuColor(event.target.value)}
+                maxLength={7}
+                placeholder="#FF5F9B"
+                spellCheck={false}
+              />
+            </div>
+          </label>
+          <div className="avatar-url-help">
+            <Palette size={14} />
+            <span>This color is attached to your own sent danmaku, so every viewer sees it the same way.</span>
+          </div>
           {profileNotice ? <AccountNotice notice={profileNotice} /> : null}
-          <button type="submit" className="account-save-button" disabled={profileBusy || nickname.trim().length < 2}>
+          <button type="submit" className="account-save-button" disabled={profileBusy || nickname.trim().length < 2 || !normalizeColorInput(danmakuColor)}>
             {profileBusy ? <Signal size={16} /> : <Save size={16} />}
             {profileBusy ? "Saving..." : "Save profile"}
           </button>
@@ -1310,14 +1345,15 @@ function line(role: "user" | "ai" | "system", nickname: string, text: string): L
   return localLine(role, nickname, text);
 }
 
-function localLine(role: "user" | "ai" | "system", nickname: string, text: string): LiveMessage {
+function localLine(role: "user" | "ai" | "system", nickname: string, text: string, extra: Partial<LiveMessage> = {}): LiveMessage {
   return {
     type: role === "ai" ? "ai_reply" : "danmaku",
     id: `${role}-${nickname}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     role,
     nickname,
     text,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    ...extra
   };
 }
 

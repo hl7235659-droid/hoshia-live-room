@@ -7,6 +7,9 @@ const appBase = publicBase.endsWith("/") ? publicBase : `${publicBase}/`;
 const hoshiaCharacterUrl = `${appBase}assets/hoshia-character-cutout.png`;
 const live2dModelUrl = import.meta.env.VITE_LIVE2D_MODEL_URL?.trim() || "";
 const live2dCoreUrl = import.meta.env.VITE_LIVE2D_CORE_URL?.trim() || `${appBase}live2d/runtime/live2dcubismcore.min.js`;
+const stageDanmakuLaneCount = 5;
+const defaultDanmakuSpeed = 90;
+const defaultDanmakuDuration = 13;
 
 type StagePresentation = {
   label: string;
@@ -100,22 +103,45 @@ export function CharacterStage({
 function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
   return (
     <div className="stage-danmaku" aria-label="Floating danmaku behind character">
-      {messages.map((message, index) => (
-        <span
-          key={`stage-${message.id}-${index}`}
-          className={`stage-danmaku-line ${message.role}`}
-          style={{
-            "--danmaku-color": message.color || colorForMessage(message),
-            "--lane-top": `${118 + (index % 5) * 42}px`,
-            "--duration": `${11 + (index % 3) * 2}s`,
-            "--delay": `${index * -1.7}s`
-          } as CSSProperties}
-        >
-          {message.text}
-        </span>
-      ))}
+      {messages.map((message, index) => {
+        const lane = stableDanmakuLane(message);
+        const speed = validDanmakuSpeed(message.danmaku_speed) || defaultDanmakuSpeed;
+        const duration = defaultDanmakuDuration * (defaultDanmakuSpeed / speed);
+        return (
+          <span
+            key={`stage-${message.id}-${index}`}
+            className={`stage-danmaku-line ${message.role}`}
+            style={{
+              "--danmaku-color": message.color || colorForMessage(message),
+              "--lane-top": `${118 + lane * 42}px`,
+              "--duration": `${duration}s`,
+              "--delay": `${index * -1.4}s`
+            } as CSSProperties}
+          >
+            {message.text}
+          </span>
+        );
+      })}
     </div>
   );
+}
+
+function stableDanmakuLane(message: LiveMessage) {
+  if (Number.isInteger(message.danmaku_lane)) {
+    return Math.max(0, Math.min(stageDanmakuLaneCount - 1, Number(message.danmaku_lane)));
+  }
+  return stableHash(message.id || message.text) % stageDanmakuLaneCount;
+}
+
+function validDanmakuSpeed(speed: unknown) {
+  const value = Number(speed);
+  return Number.isFinite(value) && value >= 40 && value <= 180 ? value : null;
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash;
 }
 
 function Live2DAdapter({

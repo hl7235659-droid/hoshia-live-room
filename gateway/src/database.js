@@ -63,7 +63,7 @@ export class LiveRoomDatabase {
 
   findUserByUsername(username) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at, total_online_seconds
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds
       FROM users
       WHERE username_normalized = ?
     `).get(normalizeUsername(username));
@@ -71,7 +71,7 @@ export class LiveRoomDatabase {
 
   findUserById(userId) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, created_at, last_login_at, total_online_seconds
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds
       FROM users
       WHERE id = ?
     `).get(userId);
@@ -81,12 +81,12 @@ export class LiveRoomDatabase {
     this.db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(now, userId);
   }
 
-  updateUserProfile(userId, { nickname, avatarUrl }) {
+  updateUserProfile(userId, { nickname, avatarUrl, danmakuColor }) {
     this.db.prepare(`
       UPDATE users
-      SET nickname = ?, avatar_url = ?
+      SET nickname = ?, avatar_url = ?, danmaku_color = ?
       WHERE id = ?
-    `).run(nickname, avatarUrl || null, userId);
+    `).run(nickname, avatarUrl || null, danmakuColor || null, userId);
     return this.findUserById(userId);
   }
 
@@ -122,6 +122,7 @@ export class LiveRoomDatabase {
         username,
         nickname,
         avatar_url,
+        danmaku_color,
         created_at,
         last_login_at,
         COALESCE(total_online_seconds, 0) AS total_online_seconds
@@ -285,6 +286,9 @@ function migrateUsersTable(db) {
   const columns = new Set(db.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
   if (!columns.has("avatar_url")) {
     db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
+  }
+  if (!columns.has("danmaku_color")) {
+    db.exec("ALTER TABLE users ADD COLUMN danmaku_color TEXT");
   }
   if (!columns.has("total_online_seconds")) {
     db.exec("ALTER TABLE users ADD COLUMN total_online_seconds INTEGER NOT NULL DEFAULT 0");

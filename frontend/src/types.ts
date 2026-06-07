@@ -13,6 +13,8 @@ export type LiveMessage = {
   user_id?: string;
   nickname?: string;
   color?: string;
+  danmaku_lane?: number;
+  danmaku_speed?: number;
   text: string;
   timestamp: string;
 };
@@ -22,6 +24,7 @@ export type Session = {
   username?: string;
   nickname: string;
   avatar_url?: string;
+  danmaku_color?: string;
   room_id: string;
 };
 
@@ -30,6 +33,7 @@ export type AudienceUser = {
   username?: string;
   nickname: string;
   avatar_url?: string;
+  danmaku_color?: string;
   online: boolean;
   registered_at: string;
   last_login_at?: string | null;

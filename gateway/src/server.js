@@ -210,6 +210,7 @@ app.get("/api/auth/me", requireSession, (req, res) => {
 app.patch("/api/account/profile", requireSession, async (req, res) => {
   const nickname = String(req.body?.nickname || "").trim().slice(0, 32);
   const avatarUrl = String(req.body?.avatarUrl ?? req.body?.avatar_url ?? "").trim();
+  const danmakuColor = normalizeDanmakuColor(req.body?.danmakuColor ?? req.body?.danmaku_color ?? "");
 
   if (!isValidNickname(nickname)) {
     return res.status(400).json({ error: "nickname_invalid" });
@@ -217,15 +218,19 @@ app.patch("/api/account/profile", requireSession, async (req, res) => {
   if (!isValidAvatarUrl(avatarUrl)) {
     return res.status(400).json({ error: "avatar_url_invalid" });
   }
+  if (danmakuColor === null) {
+    return res.status(400).json({ error: "danmaku_color_invalid" });
+  }
 
-  const user = db.updateUserProfile(req.session.user_id, { nickname, avatarUrl });
+  const user = db.updateUserProfile(req.session.user_id, { nickname, avatarUrl, danmakuColor });
   if (!user) return res.status(404).json({ error: "user_not_found" });
 
   const nextSession = {
     ...req.session,
     username: user.username,
     nickname: user.nickname,
-    avatar_url: user.avatar_url || ""
+    avatar_url: user.avatar_url || "",
+    danmaku_color: user.danmaku_color || ""
   };
   await saveSession(req.sessionId, nextSession);
   refreshSocketSessions(nextSession);
@@ -559,6 +564,7 @@ function audiencePayload() {
       username: user.username,
       nickname: user.nickname,
       avatar_url: user.avatar_url || "",
+      danmaku_color: user.danmaku_color || "",
       online: Boolean(active),
       registered_at: user.created_at,
       last_login_at: user.last_login_at,
@@ -590,27 +596,42 @@ function broadcastAudienceChanged() {
 }
 
 function messageEvent(type, role, text, session, extra = {}) {
-  return {
+  const id = nanoid(12);
+  const event = {
     type,
-    id: nanoid(12),
+    id,
     room_id: config.roomId,
     user_id: session.user_id,
     nickname: session.nickname,
     role,
     text,
     timestamp: new Date().toISOString(),
+    danmaku_lane: stableDanmakuLane(id),
+    danmaku_speed: 90,
     ...extra
   };
+  const danmakuColor = normalizeDanmakuColor(session.danmaku_color || "");
+  if (role === "user" && danmakuColor) event.color = danmakuColor;
+  return event;
+}
+
+function stableDanmakuLane(id) {
+  let hash = 0;
+  for (const char of String(id || "")) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % 5;
 }
 
 function systemEvent(type, text, extra = {}) {
+  const id = nanoid(12);
   return {
     type,
-    id: nanoid(12),
+    id,
     room_id: config.roomId,
     role: "system",
     text,
     timestamp: new Date().toISOString(),
+    danmaku_lane: stableDanmakuLane(id),
+    danmaku_speed: 90,
     ...extra
   };
 }
@@ -621,6 +642,7 @@ function publicSession(session) {
     username: session.username,
     nickname: session.nickname,
     avatar_url: session.avatar_url || "",
+    danmaku_color: session.danmaku_color || "",
     room_id: session.room_id
   };
 }
@@ -650,6 +672,7 @@ async function createSessionForUser(user) {
     username: user.username,
     nickname: user.nickname,
     avatar_url: user.avatar_url || "",
+    danmaku_color: user.danmaku_color || "",
     room_id: config.roomId,
     created_at: new Date().toISOString()
   };
@@ -719,6 +742,13 @@ function isValidAvatarUrl(avatarUrl) {
   } catch {
     return false;
   }
+}
+
+function normalizeDanmakuColor(color) {
+  const value = String(color || "").trim();
+  if (!value) return "";
+  if (!/^#[0-9a-fA-F]{6}$/.test(value)) return null;
+  return value.toUpperCase();
 }
 
 async function createStore() {
