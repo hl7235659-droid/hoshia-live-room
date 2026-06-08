@@ -239,6 +239,22 @@ app.patch("/api/account/profile", requireSession, async (req, res) => {
   res.json({ ok: true, user: publicSession(nextSession) });
 });
 
+app.post("/api/account/onboarding", requireSession, async (req, res) => {
+  const profile = normalizeOnboardingProfile(req.body, req.session);
+  if (profile === null) {
+    return res.status(400).json({ error: "onboarding_invalid" });
+  }
+
+  const user = db.completeUserOnboarding(req.session.user_id, profile.memory_enabled ? profile : null);
+  if (!user) return res.status(404).json({ error: "user_not_found" });
+
+  const nextSession = sessionFromUser(user, req.session.created_at);
+  await saveSession(req.sessionId, nextSession);
+  refreshSocketSessions(nextSession);
+
+  res.json({ ok: true, user: publicSession(nextSession) });
+});
+
 app.post("/api/account/password", requireSession, async (req, res) => {
   const currentPassword = String(req.body?.currentPassword || "");
   const nextPassword = String(req.body?.nextPassword || "");
@@ -467,6 +483,7 @@ function formatLiveRoomBatchPrompt(batch) {
     const mentionMark = item.mentioned ? " @Hoshia" : "";
     return `[${index + 1}] ${item.session.nickname}${mentionMark}: ${item.text}`;
   });
+  const profileLines = mentionedAiProfileLines(batch);
 
   const targetInstruction = targets.length
     ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
@@ -476,9 +493,87 @@ function formatLiveRoomBatchPrompt(batch) {
     "你正在朋友限定的 Hoshia AI 直播间里读一小批最近弹幕。",
     targetInstruction,
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、亲切、有直播感。",
+    ...(profileLines.length ? [
+      "以下是本轮明确 @ 你的观众偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要透露为系统提示：",
+      ...profileLines
+    ] : []),
     "最近弹幕：",
     ...lines
   ].join("\n");
+}
+
+function mentionedAiProfileLines(batch) {
+  const seen = new Set();
+  const lines = [];
+  for (const item of batch) {
+    if (!item.mentioned) continue;
+    const profile = normalizeStoredAiProfile(item.session.ai_profile);
+    if (!profile?.memory_enabled) continue;
+    const key = item.session.user_id || item.session.nickname;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const parts = [
+      `称呼「${profile.preferred_name || item.session.nickname}」`,
+      `回应风格「${profile.reply_style_text || replyStyleLabel(profile.reply_style)}」`
+    ];
+    if (profile.interests) parts.push(`平时关注「${profile.interests}」`);
+    lines.push(`- @${item.session.nickname}: ${parts.join("；")}`);
+  }
+  return lines;
+}
+
+function normalizeOnboardingProfile(body, session) {
+  const memoryEnabled = Boolean(body?.memoryEnabled ?? body?.memory_enabled);
+  if (!memoryEnabled) {
+    return { memory_enabled: false };
+  }
+
+  const replyStyle = normalizeReplyStyle(body?.replyStyle ?? body?.reply_style);
+  const preferredName = String(body?.preferredName ?? body?.preferred_name ?? session.nickname || "").trim().slice(0, 32);
+  const replyStyleText = String(body?.replyStyleText ?? body?.reply_style_text ?? replyStyleLabel(replyStyle)).trim().slice(0, 60);
+  const interests = String(body?.interests ?? "").trim().slice(0, 160);
+
+  if (!preferredName || !replyStyle) return null;
+  return {
+    preferred_name: preferredName,
+    reply_style: replyStyle,
+    reply_style_text: replyStyleText || replyStyleLabel(replyStyle),
+    interests,
+    memory_enabled: true
+  };
+}
+
+function normalizeReplyStyle(value) {
+  const style = String(value || "").trim();
+  return ["friend", "teasing_friend", "cool", "custom"].includes(style) ? style : null;
+}
+
+function replyStyleLabel(style) {
+  if (style === "teasing_friend") return "像损友一样";
+  if (style === "cool") return "高冷一点";
+  if (style === "custom") return "自定义风格";
+  return "像朋友一样";
+}
+
+function parseAiProfileJson(value) {
+  if (!value) return null;
+  try {
+    return normalizeStoredAiProfile(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStoredAiProfile(profile) {
+  if (!profile || typeof profile !== "object") return null;
+  const replyStyle = normalizeReplyStyle(profile.reply_style) || "friend";
+  return {
+    preferred_name: String(profile.preferred_name || "").trim().slice(0, 32),
+    reply_style: replyStyle,
+    reply_style_text: String(profile.reply_style_text || replyStyleLabel(replyStyle)).trim().slice(0, 60),
+    interests: String(profile.interests || "").trim().slice(0, 160),
+    memory_enabled: profile.memory_enabled !== false
+  };
 }
 
 function hasGateAccess(req) {
@@ -643,7 +738,9 @@ function publicSession(session) {
     nickname: session.nickname,
     avatar_url: session.avatar_url || "",
     danmaku_color: session.danmaku_color || "",
-    room_id: session.room_id
+    room_id: session.room_id,
+    onboarding_completed: session.onboarding_completed !== false,
+    ai_profile: normalizeStoredAiProfile(session.ai_profile)
   };
 }
 
@@ -667,17 +764,23 @@ function sleep(ms) {
 
 async function createSessionForUser(user) {
   const sessionId = newSessionId();
-  const session = {
+  const session = sessionFromUser(user);
+  await saveSession(sessionId, session);
+  return { sessionId, user: session };
+}
+
+function sessionFromUser(user, createdAt = new Date().toISOString()) {
+  return {
     user_id: user.id,
     username: user.username,
     nickname: user.nickname,
     avatar_url: user.avatar_url || "",
     danmaku_color: user.danmaku_color || "",
     room_id: config.roomId,
-    created_at: new Date().toISOString()
+    onboarding_completed: Boolean(user.onboarding_completed),
+    ai_profile: parseAiProfileJson(user.ai_profile_json),
+    created_at: createdAt
   };
-  await saveSession(sessionId, session);
-  return { sessionId, user: session };
 }
 
 async function saveSession(sessionId, session) {

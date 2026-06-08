@@ -26,6 +26,16 @@ export type Session = {
   avatar_url?: string;
   danmaku_color?: string;
   room_id: string;
+  onboarding_completed?: boolean;
+  ai_profile?: AiProfile | null;
+};
+
+export type AiProfile = {
+  preferred_name: string;
+  reply_style: "friend" | "teasing_friend" | "cool" | "custom";
+  reply_style_text: string;
+  interests: string;
+  memory_enabled: boolean;
 };
 
 export type AudienceUser = {

@@ -15,9 +15,12 @@ export function openLiveRoomDatabase(databasePath) {
       password_hash TEXT NOT NULL,
       nickname TEXT NOT NULL,
       avatar_url TEXT,
+      danmaku_color TEXT,
       created_at TEXT NOT NULL,
       last_login_at TEXT,
-      total_online_seconds INTEGER NOT NULL DEFAULT 0
+      total_online_seconds INTEGER NOT NULL DEFAULT 0,
+      onboarding_completed INTEGER NOT NULL DEFAULT 0,
+      ai_profile_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS registration_codes (
@@ -63,7 +66,7 @@ export class LiveRoomDatabase {
 
   findUserByUsername(username) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds, onboarding_completed, ai_profile_json
       FROM users
       WHERE username_normalized = ?
     `).get(normalizeUsername(username));
@@ -71,7 +74,7 @@ export class LiveRoomDatabase {
 
   findUserById(userId) {
     return this.db.prepare(`
-      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds
+      SELECT id, username, username_normalized, password_hash, nickname, avatar_url, danmaku_color, created_at, last_login_at, total_online_seconds, onboarding_completed, ai_profile_json
       FROM users
       WHERE id = ?
     `).get(userId);
@@ -96,6 +99,15 @@ export class LiveRoomDatabase {
       SET password_hash = ?
       WHERE id = ?
     `).run(passwordHash, userId);
+    return this.findUserById(userId);
+  }
+
+  completeUserOnboarding(userId, profile) {
+    this.db.prepare(`
+      UPDATE users
+      SET onboarding_completed = 1, ai_profile_json = ?
+      WHERE id = ?
+    `).run(profile ? JSON.stringify(profile) : null, userId);
     return this.findUserById(userId);
   }
 
@@ -125,7 +137,9 @@ export class LiveRoomDatabase {
         danmaku_color,
         created_at,
         last_login_at,
-        COALESCE(total_online_seconds, 0) AS total_online_seconds
+        COALESCE(total_online_seconds, 0) AS total_online_seconds,
+        onboarding_completed,
+        ai_profile_json
       FROM users
       ORDER BY last_login_at IS NULL, datetime(last_login_at) DESC, username_normalized ASC
     `).all();
@@ -160,9 +174,10 @@ export class LiveRoomDatabase {
           password_hash,
           nickname,
           avatar_url,
+          onboarding_completed,
           created_at,
           last_login_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         user.id,
         user.username,
@@ -170,6 +185,7 @@ export class LiveRoomDatabase {
         user.passwordHash,
         user.nickname,
         user.avatarUrl || null,
+        0,
         now,
         now
       );
@@ -292,5 +308,11 @@ function migrateUsersTable(db) {
   }
   if (!columns.has("total_online_seconds")) {
     db.exec("ALTER TABLE users ADD COLUMN total_online_seconds INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!columns.has("onboarding_completed")) {
+    db.exec("ALTER TABLE users ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!columns.has("ai_profile_json")) {
+    db.exec("ALTER TABLE users ADD COLUMN ai_profile_json TEXT");
   }
 }

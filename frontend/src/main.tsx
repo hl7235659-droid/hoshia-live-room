@@ -3,13 +3,20 @@ import { createRoot } from "react-dom/client";
 import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Palette, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
-import type { AudiencePayload, AudienceUser, CharacterState, LiveMessage, RoomInfo, Session } from "./types";
+import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, LiveMessage, RoomInfo, Session } from "./types";
 import { toCharacterState } from "./types";
 import "./styles.css";
 
 const appBase = import.meta.env.BASE_URL || "/";
 const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
-const isStageDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get("demo") === "stage";
+const awakeningBgUrl = appPath("assets/hoshia-awakening-bg.jpg");
+const awakeningCharacterUrl = appPath("assets/hoshia-awakening-character.png");
+const awakeningSoloBgUrl = appPath("assets/hoshia-awakening-solo-bg.jpg");
+const awakeningFinalBgUrl = appPath("assets/hoshia-awakening-final-bg.jpg");
+const introStorageKey = "hoshia:lastRegisteredUsername";
+const demoParams = new URLSearchParams(window.location.search);
+const isStageDemo = import.meta.env.DEV && demoParams.get("demo") === "stage";
+const isAwakeningDemo = isStageDemo && demoParams.get("intro") === "awake";
 const demoSession: Session = { user_id: "demo", username: "designer", nickname: "designer", avatar_url: "", danmaku_color: "#FF5F9B", room_id: "live-room-dev" };
 const demoRoom: RoomInfo = { room_id: "live-room-dev", online: 2, registered: 4, private: true, websocket_auth: true };
 const demoAudience: AudiencePayload = {
@@ -34,6 +41,30 @@ function wsPath(path: string) {
   return `${protocol}://${window.location.host}${appPath(path)}`;
 }
 
+function normalizeAuthName(value: string | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function rememberRegisteredUsername(username: string) {
+  try {
+    window.sessionStorage.setItem(introStorageKey, normalizeAuthName(username));
+  } catch {
+    // Session storage is only a UI hint. Login remains functional without it.
+  }
+}
+
+function shouldPlayAwakeningForUser(user: Session) {
+  try {
+    const remembered = window.sessionStorage.getItem(introStorageKey);
+    const username = normalizeAuthName(user.username || user.nickname);
+    if (!remembered || remembered !== username) return false;
+    window.sessionStorage.removeItem(introStorageKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(() => (isStageDemo ? demoSession : null));
   const [room, setRoom] = useState<RoomInfo | null>(() => (isStageDemo ? demoRoom : null));
@@ -43,6 +74,7 @@ function App() {
   const [messages, setMessages] = useState<LiveMessage[]>(seedMessages);
   const [characterState, setCharacterState] = useState<CharacterState>("IDLE");
   const [socketStatus, setSocketStatus] = useState(isStageDemo ? "demo" : "locked");
+  const [awakeningIntroOpen, setAwakeningIntroOpen] = useState(isAwakeningDemo);
 
   useEffect(() => {
     if (isStageDemo) return;
@@ -55,6 +87,7 @@ function App() {
         if (payload?.user) {
           setSession(payload.user);
           setRoom(payload.room);
+          setAwakeningIntroOpen(payload.user.onboarding_completed === false);
           setAudience((current) => current ? {
             ...current,
             online_count: payload.room?.online ?? current.online_count,
@@ -194,7 +227,11 @@ function App() {
   }
 
   if (!session) {
-    return <LoginView onLogin={(user, nextRoom) => { setSession(user); setRoom(nextRoom); }} />;
+    return <LoginView onLogin={(user, nextRoom, playAwakeningIntro) => {
+      setSession(user);
+      setRoom(nextRoom);
+      setAwakeningIntroOpen(playAwakeningIntro || user.onboarding_completed === false);
+    }} />;
   }
 
   return (
@@ -222,12 +259,15 @@ function App() {
       onSessionUpdate={(nextUser) => {
         setSession((current) => (current ? { ...current, ...nextUser } : current));
       }}
+      awakeningIntroOpen={awakeningIntroOpen}
+      onAwakeningIntroDone={() => setAwakeningIntroOpen(false)}
       onLeave={() => {
         setSession(null);
         setRoom(null);
         setAudience(null);
         setSocketStatus("locked");
         setCharacterState("IDLE");
+        setAwakeningIntroOpen(false);
       }}
       audience={audience}
     />
@@ -316,7 +356,7 @@ function GateView({ onUnlock }: { onUnlock: () => void }) {
   );
 }
 
-function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo) => void }) {
+function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playAwakeningIntro: boolean) => void }) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -364,6 +404,7 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo) => vo
     }
 
     if (isRegistering) {
+      rememberRegisteredUsername(username);
       setAuthMode("login");
       setPassword("");
       setRegistrationCode("");
@@ -373,7 +414,7 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo) => vo
 
     const payload = await response.json();
     const me = await fetch(appPath("api/auth/me")).then((res) => res.json());
-    onLogin(payload.user, me.room);
+    onLogin(payload.user, me.room, shouldPlayAwakeningForUser(payload.user));
   }
 
   return (
@@ -546,6 +587,8 @@ function LiveMobile({
   onLocalSendStart,
   onDemoSend,
   onSessionUpdate,
+  awakeningIntroOpen,
+  onAwakeningIntroDone,
   onLeave
 }: {
   session: Session;
@@ -558,6 +601,8 @@ function LiveMobile({
   onLocalSendStart: () => void;
   onDemoSend?: (text: string) => void;
   onSessionUpdate: (user: Session) => void;
+  awakeningIntroOpen: boolean;
+  onAwakeningIntroDone: () => void;
   onLeave: () => void;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
@@ -591,6 +636,14 @@ function LiveMobile({
             isDemo={isDemo}
             onClose={() => setAccountOpen(false)}
             onSessionUpdate={onSessionUpdate}
+          />
+        ) : null}
+        {awakeningIntroOpen ? (
+          <HoshiaAwakeningIntro
+            session={session}
+            isDemo={isDemo}
+            onSessionUpdate={onSessionUpdate}
+            onDone={onAwakeningIntroDone}
           />
         ) : null}
       </section>
@@ -839,6 +892,576 @@ function AudienceUserCard({ user }: { user: AudienceUser }) {
       </dl>
     </section>
   );
+}
+
+type AwakeningIntroPhase =
+  | "opening"
+  | "focusedWait"
+  | "chibiTransition"
+  | "chibiEnter"
+  | "catLine1"
+  | "catLine2"
+  | "innerTransition"
+  | "innerQuestion"
+  | "introReturn"
+  | "innerStartled"
+  | "askName"
+  | "innerMustAnswerName"
+  | "chooseName"
+  | "confirmName"
+  | "askStyle"
+  | "chooseStyle"
+  | "confirmStyle"
+  | "askInterests"
+  | "chooseInterests"
+  | "interestsFeedback"
+  | "askMemory"
+  | "chooseMemory"
+  | "finalSaving"
+  | "finalSaved"
+  | "finalUnsaved"
+  | "finalError"
+  | "finalBlackReady"
+  | "finalEyeOpening"
+  | "finalFollowLine"
+  | "finalWhiteBloom"
+  | "finalWhiteReady";
+
+type ReplyStyle = AiProfile["reply_style"];
+
+type AwakeningAnswers = {
+  preferredName: string;
+  replyStyle: ReplyStyle;
+  replyStyleText: string;
+  interests: string;
+  memoryEnabled: boolean | null;
+};
+
+type CustomChoiceKind = "name" | "style" | "interests" | null;
+
+const initialAwakeningAnswers: AwakeningAnswers = {
+  preferredName: "",
+  replyStyle: "friend",
+  replyStyleText: "像朋友一样",
+  interests: "",
+  memoryEnabled: null
+};
+
+function HoshiaAwakeningIntro({
+  session,
+  isDemo,
+  onSessionUpdate,
+  onDone
+}: {
+  session: Session;
+  isDemo: boolean;
+  onSessionUpdate: (user: Session) => void;
+  onDone: () => void;
+}) {
+  const [phase, setPhase] = useState<AwakeningIntroPhase>("opening");
+  const [typedText, setTypedText] = useState("");
+  const [typingComplete, setTypingComplete] = useState(true);
+  const [answers, setAnswers] = useState<AwakeningAnswers>(() => ({
+    ...initialAwakeningAnswers,
+    preferredName: session.nickname || session.username || "你"
+  }));
+  const [customKind, setCustomKind] = useState<CustomChoiceKind>(null);
+  const [customDraft, setCustomDraft] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const typingTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (phase !== "opening") return;
+    const timer = window.setTimeout(() => setPhase("focusedWait"), 7200);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "chibiTransition") return;
+    const timer = window.setTimeout(() => setPhase("chibiEnter"), 560);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "innerTransition") return;
+    const timer = window.setTimeout(() => setPhase("innerQuestion"), 620);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "finalEyeOpening") return;
+    const timer = window.setTimeout(() => setPhase("finalFollowLine"), 7200);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "finalWhiteBloom") return;
+    const timer = window.setTimeout(() => setPhase("finalWhiteReady"), 1450);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  const dialogueText = awakeningDialogueText(phase, answers, saveError);
+  const innerThought = awakeningInnerThought(phase);
+  const choicePhase = isAwakeningChoicePhase(phase);
+  const finalCenterText = phase === "finalBlackReady" ? "都准备就绪了喵。" : "";
+  const isFinalImagePhase = phase === "finalEyeOpening" || phase === "finalFollowLine" || phase === "finalWhiteBloom" || phase === "finalWhiteReady";
+  const isFinalBloomPhase = phase === "finalWhiteBloom" || phase === "finalWhiteReady";
+  const showInnerContent = Boolean(innerThought) || choicePhase;
+  const showChibi = isAwakeningCharacterPhase(phase);
+  const showParticles = phase !== "opening" && phase !== "finalBlackReady" && !isFinalBloomPhase;
+  const canAdvanceDialogue = nextAwakeningPhase(phase) !== phase;
+
+  useEffect(() => {
+    if (typingTimerRef.current) {
+      window.clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+
+    if (!dialogueText) {
+      setTypedText("");
+      setTypingComplete(true);
+      return;
+    }
+
+    setTypedText("");
+    setTypingComplete(false);
+    let index = 0;
+    const characters = Array.from(dialogueText);
+    typingTimerRef.current = window.setInterval(() => {
+      index += 1;
+      setTypedText(characters.slice(0, index).join(""));
+      if (index >= characters.length) {
+        if (typingTimerRef.current) {
+          window.clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
+        }
+        setTypingComplete(true);
+      }
+    }, 42);
+
+    return () => {
+      if (typingTimerRef.current) {
+        window.clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    };
+  }, [dialogueText]);
+
+  function advanceIntro() {
+    if (choicePhase || customKind || phase === "finalSaving") return;
+    if (phase === "finalWhiteBloom") return;
+    if (phase === "finalWhiteReady") {
+      onDone();
+      return;
+    }
+    if (dialogueText && !typingComplete) {
+      if (typingTimerRef.current) {
+        window.clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      setTypedText(dialogueText);
+      setTypingComplete(true);
+      return;
+    }
+
+    setPhase((current) => nextAwakeningPhase(current));
+  }
+
+  function chooseName(name: string) {
+    setAnswers((current) => ({ ...current, preferredName: name.trim() || session.nickname || "你" }));
+    setCustomKind(null);
+    setCustomDraft("");
+    setPhase("confirmName");
+  }
+
+  function chooseStyle(replyStyle: ReplyStyle, replyStyleText: string) {
+    setAnswers((current) => ({ ...current, replyStyle, replyStyleText }));
+    setCustomKind(null);
+    setCustomDraft("");
+    setPhase("confirmStyle");
+  }
+
+  function chooseInterests(interests: string) {
+    setAnswers((current) => ({ ...current, interests }));
+    setCustomKind(null);
+    setCustomDraft("");
+    setPhase("interestsFeedback");
+  }
+
+  async function chooseMemory(memoryEnabled: boolean) {
+    const nextAnswers = { ...answers, memoryEnabled };
+    setAnswers(nextAnswers);
+    setCustomKind(null);
+    setCustomDraft("");
+    setSaveError("");
+    setPhase("finalSaving");
+
+    try {
+      const nextUser = await saveAwakeningProfile(nextAnswers, session, isDemo);
+      onSessionUpdate(nextUser);
+      setPhase(memoryEnabled ? "finalSaved" : "finalUnsaved");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "save_failed");
+      setPhase("finalError");
+    }
+  }
+
+  function openCustom(kind: Exclude<CustomChoiceKind, null>) {
+    setCustomKind(kind);
+    setCustomDraft("");
+  }
+
+  function submitCustom(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const value = customDraft.trim();
+    if (!value || !customKind) return;
+    if (customKind === "name") chooseName(value.slice(0, 24));
+    if (customKind === "style") chooseStyle("custom", value.slice(0, 48));
+    if (customKind === "interests") chooseInterests(value.slice(0, 80));
+  }
+
+  function stopChoiceClick(event: MouseEvent<HTMLElement>) {
+    event.stopPropagation();
+  }
+
+  return (
+    <section
+      className={`awakening-intro phase-${phase}${showChibi ? " is-character-phase" : ""}${showInnerContent ? " is-inner-phase" : ""}${isFinalImagePhase ? " is-final-image-phase" : ""}${isFinalBloomPhase ? " is-final-bloom-phase" : ""}`}
+      style={{
+        "--awakening-bg": `url(${awakeningBgUrl})`,
+        "--awakening-solo-bg": `url(${awakeningSoloBgUrl})`,
+        "--awakening-final-bg": `url(${awakeningFinalBgUrl})`
+      } as CSSProperties}
+      aria-label="Hoshia awakening intro"
+      onClick={advanceIntro}
+    >
+      <div className="awakening-bg" aria-hidden="true" />
+      <div className="awakening-vignette" aria-hidden="true" />
+      {showParticles ? (
+        <div className="awakening-particles" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : null}
+      <div className="awakening-call" aria-hidden="true">
+        <span className="awakening-rule" />
+        <strong>你终于来啦，Hoshia 等了你好久！</strong>
+        <span className="awakening-rule" />
+      </div>
+      <p className="awakening-thought">是，是谁在叫我？</p>
+      <div className="eyelid eyelid-top" aria-hidden="true" />
+      <div className="eyelid eyelid-bottom" aria-hidden="true" />
+      {phase === "focusedWait" ? <span className="awakening-touch-cue">轻触继续</span> : null}
+      {finalCenterText ? (
+        <div className="awakening-final-center" aria-live="polite">{finalCenterText}</div>
+      ) : null}
+      {showChibi ? (
+        <div className="awakening-chibi-stage" aria-hidden="true">
+          <span className="chibi-aura" />
+          <img src={awakeningCharacterUrl} alt="" draggable={false} />
+        </div>
+      ) : null}
+      {dialogueText || showInnerContent ? (
+        <section className="awakening-galgame-box" aria-live="polite">
+          {dialogueText ? (
+            <>
+              <p key={phase} className={typingComplete ? "typing-complete" : "typing-active"}>{typedText}</p>
+              {canAdvanceDialogue ? <span className="cat-continue-cue" aria-hidden="true">✦</span> : null}
+            </>
+          ) : null}
+          {!dialogueText && showInnerContent ? (
+            <span className="awakening-empty-cursor" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          ) : null}
+          <span className="cat-paw paw-one" aria-hidden="true" />
+          <span className="cat-paw paw-two" aria-hidden="true" />
+          <span className="cat-tail" aria-hidden="true" />
+        </section>
+      ) : null}
+      {innerThought ? (
+        <div className="awakening-inner-question" aria-live="polite">
+          <span className="awakening-rule" />
+          <strong>{innerThought}</strong>
+          <span className="awakening-rule" />
+        </div>
+      ) : null}
+      {choicePhase ? (
+        <div className="awakening-inner-question awakening-choice-panel" aria-live="polite" onClick={stopChoiceClick}>
+          <AwakeningChoiceBranches
+            phase={phase}
+            session={session}
+            customKind={customKind}
+            customDraft={customDraft}
+            onCustomDraftChange={setCustomDraft}
+            onCustomSubmit={submitCustom}
+            onChooseName={chooseName}
+            onChooseStyle={chooseStyle}
+            onChooseInterests={chooseInterests}
+            onChooseMemory={(enabled) => void chooseMemory(enabled)}
+            onOpenCustom={openCustom}
+          />
+        </div>
+      ) : null}
+      {isFinalBloomPhase ? <div className="awakening-white-bloom" aria-hidden="true" /> : null}
+    </section>
+  );
+}
+
+function AwakeningChoiceBranches({
+  phase,
+  session,
+  customKind,
+  customDraft,
+  onCustomDraftChange,
+  onCustomSubmit,
+  onChooseName,
+  onChooseStyle,
+  onChooseInterests,
+  onChooseMemory,
+  onOpenCustom
+}: {
+  phase: AwakeningIntroPhase;
+  session: Session;
+  customKind: CustomChoiceKind;
+  customDraft: string;
+  onCustomDraftChange: (value: string) => void;
+  onCustomSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChooseName: (name: string) => void;
+  onChooseStyle: (style: ReplyStyle, text: string) => void;
+  onChooseInterests: (interests: string) => void;
+  onChooseMemory: (enabled: boolean) => void;
+  onOpenCustom: (kind: Exclude<CustomChoiceKind, null>) => void;
+}) {
+  if (phase === "chooseName") {
+    return (
+      <>
+        <div className="awakening-choice-branches">
+          <button type="button" onClick={() => onChooseName(session.nickname || session.username || "你")}>直接叫我名字</button>
+          <button type="button" onClick={() => onChooseName("主人")}>主人</button>
+          <button type="button" onClick={() => onChooseName("前辈")}>前辈</button>
+          <button type="button" onClick={() => onOpenCustom("name")}>我自己说</button>
+        </div>
+        {customKind === "name" ? (
+          <AwakeningCustomChoiceForm
+            value={customDraft}
+            placeholder="告诉猫猫一个称呼..."
+            submitLabel="这样叫我"
+            maxLength={24}
+            onChange={onCustomDraftChange}
+            onSubmit={onCustomSubmit}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  if (phase === "chooseStyle") {
+    return (
+      <>
+        <div className="awakening-choice-branches">
+          <button type="button" onClick={() => onChooseStyle("friend", "像朋友一样")}>像朋友一样</button>
+          <button type="button" onClick={() => onChooseStyle("teasing_friend", "像损友一样")}>像损友一样</button>
+          <button type="button" onClick={() => onChooseStyle("cool", "高冷一点")}>高冷一点</button>
+          <button type="button" onClick={() => onOpenCustom("style")}>我自己说</button>
+        </div>
+        {customKind === "style" ? (
+          <AwakeningCustomChoiceForm
+            value={customDraft}
+            placeholder="写下你想要的回应风格..."
+            submitLabel="就是这样"
+            maxLength={48}
+            onChange={onCustomDraftChange}
+            onSubmit={onCustomSubmit}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  if (phase === "chooseInterests") {
+    return (
+      <>
+        <div className="awakening-choice-branches compact">
+          <button type="button" onClick={() => onOpenCustom("interests")}>写给猫猫听</button>
+          <button type="button" onClick={() => onChooseInterests("")}>你猜</button>
+        </div>
+        {customKind === "interests" ? (
+          <AwakeningCustomChoiceForm
+            value={customDraft}
+            placeholder="比如游戏、音乐、动画、日常..."
+            submitLabel="告诉猫猫"
+            maxLength={80}
+            onChange={onCustomDraftChange}
+            onSubmit={onCustomSubmit}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  if (phase === "chooseMemory") {
+    return (
+      <div className="awakening-choice-branches compact">
+        <button type="button" onClick={() => onChooseMemory(true)}>是</button>
+        <button type="button" onClick={() => onChooseMemory(false)}>否</button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function AwakeningCustomChoiceForm({
+  value,
+  placeholder,
+  submitLabel,
+  maxLength,
+  onChange,
+  onSubmit
+}: {
+  value: string;
+  placeholder: string;
+  submitLabel: string;
+  maxLength: number;
+  onChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="awakening-custom-choice" onSubmit={onSubmit}>
+      <input
+        value={value}
+        maxLength={maxLength}
+        autoFocus
+        placeholder={placeholder}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button type="submit" disabled={!value.trim()}>{submitLabel}</button>
+    </form>
+  );
+}
+
+function awakeningDialogueText(phase: AwakeningIntroPhase, answers: AwakeningAnswers, saveError: string) {
+  if (phase === "catLine1") return "终于回来了喵，猫猫等了你好久！";
+  if (phase === "catLine2") return "猫猫听到神明说话啦，今天会有一个十分重要的人来到我的直播间";
+  if (phase === "introReturn") return "是的喵，不过在进入直播间以前，猫猫想要更了解你一点...让我们开始吧";
+  if (phase === "askName") return "首先，你希望我怎么称呼你？";
+  if (phase === "confirmName") return `很好！以后我就叫你${answers.preferredName || "你"}`;
+  if (phase === "askStyle") return "你希望我怎样回应你？";
+  if (phase === "confirmStyle") return `原来${answers.preferredName || "你"}，喜欢${answers.replyStyleText || "像朋友一样"}这样的风格呀`;
+  if (phase === "askInterests") return "不要着急哦，马上就结束啦。现在是第三个问题~你平时喜欢关注一些什么呀？";
+  if (phase === "interestsFeedback") return answers.interests
+    ? `嗯嗯，${answers.interests}，猫猫记下这个小信号啦。`
+    : "嘿嘿，要猫猫猜呀？那我以后就一边陪你一边慢慢发现。";
+  if (phase === "askMemory") return "最后一个啦，你希望我保存这些信息来更好地回应你吗？";
+  if (phase === "finalSaving") return "猫猫正在把这份约定轻轻收好...";
+  if (phase === "finalSaved") return "好哦，猫猫记住啦。以后你 @ 我的时候，我会更懂你一点。";
+  if (phase === "finalUnsaved") return "嗯嗯，也没关系喵。猫猫不会乱记，还是会认真陪着你。";
+  if (phase === "finalError") return saveError ? "呜...刚才没能保存成功。猫猫先停在这里，等你再看看。" : "呜...刚才没能保存成功。";
+  if (phase === "finalFollowLine") return "那么，现在就跟我走吧！";
+  return "";
+}
+
+function awakeningInnerThought(phase: AwakeningIntroPhase) {
+  if (phase === "innerQuestion") return "是...是我吗？";
+  if (phase === "innerStartled") return "欸...欸?!";
+  if (phase === "innerMustAnswerName") return "我知道我必须作出回答——";
+  return "";
+}
+
+function isAwakeningChoicePhase(phase: AwakeningIntroPhase) {
+  return phase === "chooseName" || phase === "chooseStyle" || phase === "chooseInterests" || phase === "chooseMemory";
+}
+
+function isAwakeningCharacterPhase(phase: AwakeningIntroPhase) {
+  return phase === "chibiEnter" ||
+    phase === "catLine1" ||
+    phase === "catLine2" ||
+    phase === "innerTransition" ||
+    phase === "introReturn" ||
+    phase === "askName" ||
+    phase === "confirmName" ||
+    phase === "askStyle" ||
+    phase === "confirmStyle" ||
+    phase === "askInterests" ||
+    phase === "interestsFeedback" ||
+    phase === "askMemory" ||
+    phase === "finalSaving" ||
+    phase === "finalSaved" ||
+    phase === "finalUnsaved" ||
+    phase === "finalError";
+}
+
+function nextAwakeningPhase(phase: AwakeningIntroPhase): AwakeningIntroPhase {
+  if (phase === "opening") return "focusedWait";
+  if (phase === "focusedWait") return "chibiTransition";
+  if (phase === "chibiTransition" || phase === "innerTransition") return phase;
+  if (phase === "chibiEnter") return "catLine1";
+  if (phase === "catLine1") return "catLine2";
+  if (phase === "catLine2") return "innerTransition";
+  if (phase === "innerQuestion") return "introReturn";
+  if (phase === "introReturn") return "innerStartled";
+  if (phase === "innerStartled") return "askName";
+  if (phase === "askName") return "innerMustAnswerName";
+  if (phase === "innerMustAnswerName") return "chooseName";
+  if (phase === "confirmName") return "askStyle";
+  if (phase === "askStyle") return "chooseStyle";
+  if (phase === "confirmStyle") return "askInterests";
+  if (phase === "askInterests") return "chooseInterests";
+  if (phase === "interestsFeedback") return "askMemory";
+  if (phase === "askMemory") return "chooseMemory";
+  if (phase === "finalSaved" || phase === "finalUnsaved") return "finalBlackReady";
+  if (phase === "finalBlackReady") return "finalEyeOpening";
+  if (phase === "finalEyeOpening") return phase;
+  if (phase === "finalFollowLine") return "finalWhiteBloom";
+  if (phase === "finalWhiteBloom" || phase === "finalWhiteReady") return phase;
+  return phase;
+}
+
+async function saveAwakeningProfile(answers: AwakeningAnswers, session: Session, isDemo: boolean): Promise<Session> {
+  const profile: AiProfile | null = answers.memoryEnabled ? {
+    preferred_name: answers.preferredName || session.nickname || "你",
+    reply_style: answers.replyStyle,
+    reply_style_text: answers.replyStyleText || "像朋友一样",
+    interests: answers.interests || "",
+    memory_enabled: true
+  } : null;
+
+  if (isDemo) {
+    return {
+      ...session,
+      onboarding_completed: true,
+      ai_profile: profile
+    };
+  }
+
+  const response = await fetch(appPath("api/account/onboarding"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile ? {
+      preferred_name: profile.preferred_name,
+      reply_style: profile.reply_style,
+      reply_style_text: profile.reply_style_text,
+      interests: profile.interests,
+      memory_enabled: true
+    } : {
+      memory_enabled: false
+    })
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.user) {
+    throw new Error(payload?.error || "onboarding_save_failed");
+  }
+  return payload.user;
 }
 
 function AccountSettingsModal({

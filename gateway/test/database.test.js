@@ -141,6 +141,42 @@ test("user profile and password can be updated", () => {
   }
 });
 
+test("onboarding profile can be completed or skipped", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    db.insertRegistrationCode({ id: "code-1", codeHash: hashAccessCode("HOSHA-AI-1111") });
+    const user = db.createUserWithRegistrationCode({
+      registrationCodeHash: hashAccessCode("HOSHA-AI-1111"),
+      user: {
+        id: "user-ai",
+        username: "AiFriend",
+        passwordHash: hashPassword("password-1"),
+        nickname: "Ai Friend"
+      }
+    });
+
+    assert.equal(user.onboarding_completed, 0);
+    assert.equal(user.ai_profile_json, null);
+
+    const profile = {
+      preferred_name: "前辈",
+      reply_style: "teasing_friend",
+      reply_style_text: "像损友一样",
+      interests: "游戏和音乐",
+      memory_enabled: true
+    };
+    const completed = db.completeUserOnboarding(user.id, profile);
+    assert.equal(completed.onboarding_completed, 1);
+    assert.deepEqual(JSON.parse(completed.ai_profile_json), profile);
+
+    const skipped = db.completeUserOnboarding(user.id, null);
+    assert.equal(skipped.onboarding_completed, 1);
+    assert.equal(skipped.ai_profile_json, null);
+  } finally {
+    cleanup();
+  }
+});
+
 function openTempDb() {
   const dir = mkdtempSync(path.join(tmpdir(), "live-room-db-"));
   const db = openLiveRoomDatabase(path.join(dir, "live-room.sqlite"));

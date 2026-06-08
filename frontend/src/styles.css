@@ -6,6 +6,14 @@
   font-synthesis: none;
 }
 
+@font-face {
+  font-family: "Fusion Pixel Hoshia";
+  src: url("/live/assets/fonts/fusion-pixel-10px-zh-hans.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -2556,5 +2564,1349 @@ button:disabled {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* First-person Hoshia awakening intro */
+.awakening-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 100%;
+  background: #020617;
+  color: #fff;
+  pointer-events: auto;
+  animation: awakeningSceneExit 7.2s ease forwards;
+}
+
+.awakening-bg {
+  position: absolute;
+  inset: -5%;
+  z-index: -4;
+  background:
+    linear-gradient(180deg, rgba(2, 10, 32, 0.1), rgba(2, 10, 32, 0.22)),
+    var(--awakening-bg) center 38% / cover no-repeat;
+  filter: blur(28px) brightness(1.55) contrast(0.72) saturate(1.18);
+  transform: scale(1.1);
+  opacity: 0;
+  animation: awakeningFocus 7.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  transition:
+    filter 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 420ms ease;
+}
+
+.awakening-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 42%, transparent 36%, rgba(0, 9, 28, 0.22) 62%, rgba(0, 0, 0, 0.68) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 10, 30, 0.08));
+  opacity: 0;
+  animation: awakeningVignette 7.2s ease forwards;
+}
+
+.awakening-call,
+.awakening-thought {
+  position: absolute;
+  left: 50%;
+  z-index: 9;
+  width: min(94vw, 410px);
+  transform: translate(-50%, -50%);
+  text-align: center;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.45), 0 2px 22px rgba(0, 0, 0, 0.8);
+}
+
+.awakening-call {
+  top: 46%;
+  display: grid;
+  gap: 15px;
+  justify-items: center;
+  opacity: 0;
+  animation: awakeningCallText 7.2s ease forwards;
+}
+
+.awakening-call strong {
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(17px, 4.8vw, 23px);
+  line-height: 1.65;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.awakening-rule {
+  display: block;
+  width: min(240px, 62vw);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95), transparent);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.62);
+}
+
+.awakening-thought {
+  top: 49%;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(18px, 4.8vw, 23px);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  animation: awakeningThoughtText 7.2s ease forwards;
+}
+
+.eyelid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 8;
+  height: 50.5%;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(15, 23, 42, 0.86), #000 62%),
+    #000;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.92);
+  animation-duration: 7.2s;
+  animation-timing-function: cubic-bezier(0.22, 0.92, 0.2, 1);
+  animation-fill-mode: forwards;
+}
+
+.eyelid-top {
+  top: 0;
+  transform-origin: top center;
+  animation-name: awakeningTopLid;
+}
+
+.eyelid-bottom {
+  bottom: 0;
+  transform-origin: bottom center;
+  animation-name: awakeningBottomLid;
+}
+
+.awakening-skip {
+  position: absolute;
+  right: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 10;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.86);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  background: rgba(5, 18, 45, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  opacity: 0;
+  cursor: pointer;
+  animation: awakeningSkipIn 7.2s ease forwards;
+}
+
+.awakening-skip:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+@keyframes awakeningTopLid {
+  0%, 59% { transform: translateY(0); }
+  63% { transform: translateY(-6%); }
+  68%, 100% { transform: translateY(-101%); }
+}
+
+@keyframes awakeningBottomLid {
+  0%, 59% { transform: translateY(0); }
+  63% { transform: translateY(6%); }
+  68%, 100% { transform: translateY(101%); }
+}
+
+@keyframes awakeningCallText {
+  0%, 15% { opacity: 0; filter: blur(8px); transform: translate(-50%, -45%) scale(0.98); }
+  21%, 39% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%) scale(1); }
+  47%, 100% { opacity: 0; filter: blur(7px); transform: translate(-50%, -55%) scale(1.02); }
+}
+
+@keyframes awakeningThoughtText {
+  0%, 42% { opacity: 0; filter: blur(6px); transform: translate(-50%, -45%); }
+  49%, 58% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%); }
+  64%, 100% { opacity: 0; filter: blur(9px); transform: translate(-50%, -58%); }
+}
+
+@keyframes awakeningFocus {
+  0%, 58% { opacity: 0; filter: blur(34px) brightness(0.38) contrast(0.6) saturate(0.8); transform: scale(1.16); }
+  61% { opacity: 1; filter: blur(30px) brightness(1.85) contrast(0.62) saturate(1.15); transform: scale(1.13); }
+  72% { opacity: 1; filter: blur(15px) brightness(1.35) contrast(0.82) saturate(1.2); transform: scale(1.08); }
+  88%, 100% { opacity: 1; filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08); transform: scale(1.02); }
+}
+
+@keyframes finalAwakeningFocus {
+  0%, 48% { opacity: 0; filter: blur(34px) brightness(0.24) contrast(0.62) saturate(0.78); transform: scale(1.16); }
+  54% { opacity: 1; filter: blur(30px) brightness(1.68) contrast(0.66) saturate(1.18); transform: scale(1.13); }
+  68% { opacity: 1; filter: blur(16px) brightness(1.34) contrast(0.84) saturate(1.16); transform: scale(1.08); }
+  86%, 100% { opacity: 1; filter: blur(0) brightness(1.05) contrast(1.05) saturate(1.12); transform: scale(1.02); }
+}
+
+@keyframes finalTopLid {
+  0%, 48% { transform: translateY(0); opacity: 1; }
+  54% { transform: translateY(-8%); opacity: 1; }
+  68%, 100% { transform: translateY(-101%); opacity: 1; }
+}
+
+@keyframes finalBottomLid {
+  0%, 48% { transform: translateY(0); opacity: 1; }
+  54% { transform: translateY(8%); opacity: 1; }
+  68%, 100% { transform: translateY(101%); opacity: 1; }
+}
+
+@keyframes finalCenterTextIn {
+  0% { opacity: 0; filter: blur(8px); transform: translate(-50%, calc(-50% + 7px)); }
+  100% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%); }
+}
+
+@keyframes finalCenterBreath {
+  0%, 100% { opacity: 0.84; text-shadow: 0 0 10px rgba(91, 232, 255, 0.58), 0 0 22px rgba(91, 232, 255, 0.34), 0 4px 22px rgba(0, 0, 0, 0.86); }
+  50% { opacity: 1; text-shadow: 0 0 14px rgba(91, 232, 255, 0.88), 0 0 30px rgba(91, 232, 255, 0.52), 0 4px 22px rgba(0, 0, 0, 0.86); }
+}
+
+@keyframes finalWhiteBloom {
+  0% { opacity: 0; transform: scale(0.02); filter: blur(0); }
+  24% { opacity: 1; transform: scale(0.12); filter: blur(2px); }
+  58% { opacity: 1; transform: scale(1.6); filter: blur(3px); }
+  100% { opacity: 1; transform: scale(2.8); filter: blur(0); }
+}
+
+@keyframes awakeningVignette {
+  0%, 58% { opacity: 0; }
+  64%, 100% { opacity: 1; }
+}
+
+@keyframes awakeningSkipIn {
+  0%, 70% { opacity: 0; pointer-events: none; }
+  78%, 96% { opacity: 1; pointer-events: auto; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
+@keyframes awakeningSceneExit {
+  0%, 93% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awakening-intro,
+  .awakening-bg,
+  .awakening-vignette,
+  .awakening-call,
+  .awakening-thought,
+  .eyelid,
+  .awakening-skip {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .awakening-bg {
+    opacity: 1;
+    filter: blur(0) brightness(1) contrast(1) saturate(1.05);
+    transform: scale(1.02);
+  }
+
+  .eyelid {
+    display: none;
+  }
+}
+
+/* Awakening intro step 2: click-driven chibi dialogue scene */
+.awakening-intro {
+  animation: none;
+}
+
+.awakening-intro.phase-focusedWait .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08);
+  transform: scale(1.02);
+  animation: none;
+}
+
+.awakening-intro.phase-innerQuestion .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.18) contrast(1.05) saturate(1.12);
+  transform: scale(1.015);
+  animation: none;
+}
+
+.awakening-intro.phase-chibiTransition .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08);
+  transform: scale(1.02);
+  animation: none;
+}
+
+.awakening-intro.phase-chibiEnter .awakening-bg,
+.awakening-intro.phase-catLine1 .awakening-bg,
+.awakening-intro.phase-catLine2 .awakening-bg,
+.awakening-intro.phase-innerTransition .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08);
+  transform: scale(1.02);
+  animation: none;
+}
+
+.awakening-intro.phase-focusedWait .awakening-vignette,
+.awakening-intro.phase-chibiTransition .awakening-vignette,
+.awakening-intro.phase-chibiEnter .awakening-vignette,
+.awakening-intro.phase-catLine1 .awakening-vignette,
+.awakening-intro.phase-catLine2 .awakening-vignette,
+.awakening-intro.phase-innerTransition .awakening-vignette,
+.awakening-intro.phase-innerQuestion .awakening-vignette {
+  opacity: 1;
+  animation: none;
+}
+
+.awakening-intro.phase-focusedWait .eyelid-top,
+.awakening-intro.phase-chibiTransition .eyelid-top,
+.awakening-intro.phase-chibiEnter .eyelid-top,
+.awakening-intro.phase-catLine1 .eyelid-top,
+.awakening-intro.phase-catLine2 .eyelid-top,
+.awakening-intro.phase-innerTransition .eyelid-top,
+.awakening-intro.phase-innerQuestion .eyelid-top {
+  transform: translateY(-101%);
+  animation: none;
+}
+
+.awakening-intro.phase-focusedWait .eyelid-bottom,
+.awakening-intro.phase-chibiTransition .eyelid-bottom,
+.awakening-intro.phase-chibiEnter .eyelid-bottom,
+.awakening-intro.phase-catLine1 .eyelid-bottom,
+.awakening-intro.phase-catLine2 .eyelid-bottom,
+.awakening-intro.phase-innerTransition .eyelid-bottom,
+.awakening-intro.phase-innerQuestion .eyelid-bottom {
+  transform: translateY(101%);
+  animation: none;
+}
+
+.awakening-intro.phase-focusedWait .awakening-call,
+.awakening-intro.phase-focusedWait .awakening-thought,
+.awakening-intro.phase-chibiTransition .awakening-call,
+.awakening-intro.phase-chibiTransition .awakening-thought,
+.awakening-intro.phase-chibiEnter .awakening-call,
+.awakening-intro.phase-chibiEnter .awakening-thought,
+.awakening-intro.phase-catLine1 .awakening-call,
+.awakening-intro.phase-catLine1 .awakening-thought,
+.awakening-intro.phase-catLine2 .awakening-call,
+.awakening-intro.phase-catLine2 .awakening-thought,
+.awakening-intro.phase-innerTransition .awakening-call,
+.awakening-intro.phase-innerTransition .awakening-thought,
+.awakening-intro.phase-innerQuestion .awakening-call,
+.awakening-intro.phase-innerQuestion .awakening-thought {
+  opacity: 0;
+  animation: none;
+  pointer-events: none;
+}
+
+.awakening-intro:not(.phase-opening) .awakening-call,
+.awakening-intro:not(.phase-opening) .awakening-thought {
+  opacity: 0;
+  animation: none;
+  pointer-events: none;
+}
+
+.awakening-intro:not(.phase-opening) .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08);
+  transform: scale(1.02);
+  animation: none;
+}
+
+.awakening-intro:not(.phase-opening) .awakening-vignette {
+  opacity: 1;
+  animation: none;
+}
+
+.awakening-intro:not(.phase-opening) .eyelid-top {
+  transform: translateY(-101%);
+  animation: none;
+}
+
+.awakening-intro:not(.phase-opening) .eyelid-bottom {
+  transform: translateY(101%);
+  animation: none;
+}
+
+.awakening-intro.is-character-phase .awakening-chibi-stage {
+  display: grid;
+  opacity: 1;
+  visibility: visible;
+}
+
+.awakening-intro.phase-finalBlackReady {
+  background: #000;
+}
+
+.awakening-intro.phase-finalBlackReady .awakening-bg,
+.awakening-intro.phase-finalBlackReady .awakening-vignette,
+.awakening-intro.phase-finalBlackReady .eyelid,
+.awakening-intro.phase-finalBlackReady .awakening-particles {
+  opacity: 0;
+  animation: none;
+  pointer-events: none;
+}
+
+.awakening-final-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 14;
+  width: min(86vw, 390px);
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.98);
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(24px, 7.2vw, 34px);
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-shadow:
+    0 0 10px rgba(91, 232, 255, 0.72),
+    0 0 22px rgba(91, 232, 255, 0.46),
+    0 4px 22px rgba(0, 0, 0, 0.86);
+  animation: finalCenterTextIn 620ms steps(5, end) both, finalCenterBreath 2.6s ease-in-out 620ms infinite;
+}
+
+.awakening-intro.is-final-image-phase .awakening-bg {
+  background:
+    linear-gradient(180deg, rgba(2, 10, 32, 0.02), rgba(2, 10, 32, 0.12)),
+    var(--awakening-final-bg) center 48% / cover no-repeat;
+  opacity: 1;
+  filter: blur(0) brightness(1.05) contrast(1.05) saturate(1.12);
+  transform: scale(1.02);
+  animation: none;
+}
+
+.awakening-intro.phase-finalEyeOpening .awakening-bg {
+  animation: finalAwakeningFocus 7.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.awakening-intro.phase-finalEyeOpening .eyelid-top {
+  animation: finalTopLid 7.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.awakening-intro.phase-finalEyeOpening .eyelid-bottom {
+  animation: finalBottomLid 7.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.awakening-intro.phase-finalEyeOpening .awakening-vignette,
+.awakening-intro.phase-finalFollowLine .awakening-vignette {
+  opacity: 0.82;
+}
+
+.awakening-intro.is-final-bloom-phase {
+  background: #fff;
+}
+
+.awakening-white-bloom {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, #fff 0 2px, rgba(255, 255, 255, 0.96) 3px 7px, rgba(160, 234, 255, 0.52) 8px 15px, transparent 18px),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.90), rgba(255, 255, 255, 0.78) 34%, rgba(255, 255, 255, 0.98) 70%);
+  opacity: 0;
+  transform: scale(0.02);
+  animation: finalWhiteBloom 1.45s cubic-bezier(0.12, 0.9, 0.22, 1) forwards;
+}
+
+.awakening-intro.phase-finalWhiteReady .awakening-white-bloom {
+  opacity: 1;
+  transform: scale(1);
+  animation: none;
+}
+
+.awakening-transition-flash {
+  position: absolute;
+  inset: -2%;
+  z-index: 12;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0.84), #000 62%, #000 100%),
+    #000;
+  animation: awakeningBlackBlink 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.awakening-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.64;
+  overflow: hidden;
+}
+
+.awakening-intro.phase-catLine1 .awakening-particles,
+.awakening-intro.phase-catLine2 .awakening-particles {
+  opacity: 0.88;
+}
+
+.awakening-intro.phase-innerQuestion .awakening-particles {
+  opacity: 0.34;
+}
+
+.awakening-particles span {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(185, 236, 255, 0.88);
+  box-shadow: 0 0 18px rgba(117, 217, 255, 0.9);
+  animation: awakeningParticleDrift 5.8s ease-in-out infinite;
+}
+
+.awakening-particles span::after {
+  content: "✦";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  color: rgba(255, 244, 155, 0.8);
+  font-size: 12px;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 0 12px rgba(255, 239, 120, 0.8);
+}
+
+.awakening-particles span:nth-child(1) { left: 14%; top: 18%; animation-delay: -0.6s; }
+.awakening-particles span:nth-child(2) { left: 78%; top: 16%; animation-delay: -2.1s; transform: scale(0.72); }
+.awakening-particles span:nth-child(3) { left: 86%; top: 48%; animation-delay: -3.4s; }
+.awakening-particles span:nth-child(4) { left: 18%; top: 62%; animation-delay: -4.7s; transform: scale(0.62); }
+.awakening-particles span:nth-child(5) { left: 66%; top: 72%; animation-delay: -1.5s; transform: scale(0.86); }
+.awakening-particles span:nth-child(6) { left: 34%; top: 34%; animation-delay: -5.1s; transform: scale(0.52); }
+
+.awakening-touch-cue {
+  position: absolute;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 10;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 16px rgba(70, 190, 255, 0.76), 0 2px 18px rgba(0, 0, 0, 0.72);
+  animation: awakeningCuePulse 1.8s ease-in-out infinite;
+}
+
+.awakening-chibi-stage {
+  position: absolute;
+  left: 50%;
+  top: auto;
+  bottom: -24px;
+  z-index: 5;
+  width: min(88vw, 390px);
+  height: 83vh;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: end center;
+  pointer-events: none;
+  animation: chibiEnter 540ms cubic-bezier(0.22, 1, 0.28, 1) both;
+}
+
+.awakening-intro.phase-innerTransition .awakening-chibi-stage {
+  animation: chibiExitToLight 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.awakening-chibi-stage img {
+  position: relative;
+  z-index: 2;
+  width: auto !important;
+  height: min(83vh, 700px) !important;
+  max-width: 96vw;
+  max-height: none;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 30px rgba(3, 12, 42, 0.46));
+  animation: chibiFloat 3.8s ease-in-out infinite, chibiBreath 4.6s ease-in-out infinite;
+}
+
+.chibi-aura {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  width: 88%;
+  height: 16%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(ellipse, rgba(126, 218, 255, 0.28), transparent 68%);
+  border: 1px solid rgba(255, 240, 142, 0.36);
+  filter: blur(2px);
+  animation: chibiAura 3.4s ease-in-out infinite;
+}
+
+.awakening-galgame-box {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: auto;
+  bottom: max(28px, env(safe-area-inset-bottom));
+  translate: none;
+  z-index: 9;
+  min-height: clamp(106px, 16vh, 134px);
+  padding: 24px 8px 20px;
+  border: 0;
+  border-radius: 0;
+  color: #effcff;
+  background:
+    linear-gradient(180deg, transparent 0 18%, rgba(1, 17, 48, 0.012) 40%, rgba(2, 10, 34, 0.026) 62%, transparent 100%),
+    radial-gradient(ellipse at 50% 64%, rgba(58, 217, 255, 0.035), transparent 60%);
+  box-shadow:
+    0 12px 34px rgba(2, 10, 30, 0.06),
+    inset 0 0 18px rgba(77, 213, 255, 0.018);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: catDialogueIn 380ms ease both;
+  overflow: visible;
+}
+
+.awakening-galgame-box::marker {
+  display: none;
+}
+
+.awakening-galgame-box::before,
+.awakening-galgame-box::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border: 0;
+  background:
+    linear-gradient(90deg, transparent 0 2%, rgba(91, 232, 255, 0.92) 2% 16%, transparent 16% 19%, rgba(91, 232, 255, 0.98) 19% 34%, transparent 34% 37%, rgba(232, 253, 255, 0.96) 37% 63%, transparent 63% 66%, rgba(91, 232, 255, 0.98) 66% 81%, transparent 81% 84%, rgba(255, 236, 118, 0.92) 84% 96%, transparent 96% 100%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.75) 0 2px, transparent 2px 10px, rgba(91, 232, 255, 0.62) 10px 12px, transparent 12px 20px);
+  box-shadow:
+    0 0 8px rgba(96, 225, 255, 0.95),
+    0 0 20px rgba(96, 225, 255, 0.72),
+    0 0 34px rgba(255, 226, 87, 0.28);
+  clip-path: polygon(0 50%, 12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%);
+  animation: cyberLinePulse 2.8s ease-in-out infinite;
+}
+
+.awakening-galgame-box::before {
+  top: 0;
+}
+
+.awakening-galgame-box::after {
+  bottom: 0;
+  animation-delay: -1.2s;
+}
+
+.awakening-galgame-box > .cat-nameplate::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(105deg, transparent 0 34%, rgba(255, 255, 255, 0.45) 48%, transparent 62% 100%);
+  opacity: 0;
+  animation: nameplateSheen 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.cat-nameplate {
+  display: none;
+}
+
+.cat-nameplate span {
+  color: #fff18a;
+  font-weight: 950;
+}
+
+.cat-nameplate strong {
+  font-family: "Fusion Pixel Hoshia", "Press Start 2P", "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.awakening-galgame-box p {
+  margin: 8px auto 0;
+  width: min(100%, 372px);
+  max-width: none;
+  color: rgba(255, 255, 255, 0.98);
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(15px, 4.05vw, 17px);
+  font-weight: 400;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  text-align: center;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-text-stroke: 0;
+  text-shadow:
+    1px 0 0 rgba(83, 234, 255, 0.78),
+    -1px 0 0 rgba(83, 234, 255, 0.62),
+    0 0 8px rgba(84, 229, 255, 0.74),
+    0 0 18px rgba(84, 229, 255, 0.44),
+    0 3px 18px rgba(0, 9, 28, 0.82);
+  animation: dialogueTextSwap 260ms ease both;
+}
+
+.awakening-galgame-box p::after {
+  content: "█";
+  display: inline-block;
+  width: auto;
+  height: auto;
+  margin-left: 4px;
+  transform: translateY(0);
+  border: 0;
+  color: rgba(105, 232, 255, 0.98);
+  text-shadow: 0 0 8px rgba(105, 232, 255, 0.92);
+  filter: none;
+  animation: dialogueCaretBlink 1s steps(2, end) infinite;
+}
+
+.awakening-galgame-box p.typing-complete::after {
+  content: "▌";
+  color: rgba(255, 239, 119, 0.88);
+}
+
+.cat-continue-cue {
+  position: absolute;
+  right: 16px;
+  bottom: 13px;
+  color: rgba(255, 245, 142, 0.9);
+  font-size: 18px;
+  text-shadow: 0 0 16px rgba(255, 242, 125, 0.85);
+  animation: catContinueTwinkle 1.6s ease-in-out infinite;
+}
+
+.awakening-empty-cursor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  z-index: 2;
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 5px;
+  width: 44px;
+  height: 28px;
+  padding: 5px 7px;
+  opacity: 0.74;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(43, 220, 255, 0.13), transparent 68%);
+  filter: drop-shadow(0 0 8px rgba(43, 220, 255, 0.34));
+  transform: translate(-50%, -50%);
+  animation: emptyCursorBreath 2.4s ease-in-out infinite;
+}
+
+.awakening-empty-cursor span {
+  display: block;
+  width: 5px;
+  min-height: 7px;
+  background:
+    linear-gradient(180deg, rgba(134, 239, 255, 0.92), rgba(43, 220, 255, 0.62)),
+    rgba(7, 21, 39, 0.74);
+  box-shadow:
+    0 0 0 1px rgba(7, 21, 39, 0.42),
+    0 0 8px rgba(43, 220, 255, 0.58);
+  transform-origin: bottom center;
+  animation: emptyCursorBar 1.18s steps(4, end) infinite;
+}
+
+.awakening-empty-cursor span:nth-child(1) {
+  height: 10px;
+  animation-delay: -0.18s;
+}
+
+.awakening-empty-cursor span:nth-child(2) {
+  height: 18px;
+  animation-delay: -0.46s;
+}
+
+.awakening-empty-cursor span:nth-child(3) {
+  height: 13px;
+  animation-delay: -0.72s;
+}
+
+.cat-paw {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: rgba(255, 245, 155, 0.88);
+  box-shadow:
+    9px 7px 0 rgba(255, 245, 155, 0.64),
+    -8px 8px 0 rgba(255, 245, 155, 0.52),
+    0 0 18px rgba(255, 245, 155, 0.5);
+}
+
+.awakening-galgame-box .cat-paw,
+.awakening-galgame-box .cat-tail {
+  display: none;
+}
+
+.cat-paw.paw-one {
+  right: 34px;
+  top: 42px;
+  transform: rotate(-16deg);
+  animation: catPawPulse 2.6s ease-in-out infinite;
+}
+
+.cat-paw.paw-two {
+  right: 74px;
+  bottom: 24px;
+  transform: rotate(20deg) scale(0.72);
+  opacity: 0.58;
+  animation: catPawPulse 3.1s ease-in-out infinite reverse;
+}
+
+.cat-tail {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+  width: 62px;
+  height: 38px;
+  border: 2px solid rgba(126, 218, 255, 0.38);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 999px 0 0 0;
+  transform: rotate(-12deg);
+  animation: catTailFloat 3.7s ease-in-out infinite;
+}
+
+.awakening-inner-question {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 10;
+  width: min(82vw, 350px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  color: #071527;
+  text-align: center;
+  text-shadow:
+    1px 0 0 rgba(255, 255, 255, 0.42),
+    0 1px 0 rgba(255, 255, 255, 0.28);
+  animation: innerQuestionIn 520ms ease both;
+}
+
+.awakening-inner-question::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: -1;
+  width: min(330px, 78vw);
+  height: 94px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at center,
+      rgba(246, 250, 255, 0.48) 0%,
+      rgba(226, 235, 244, 0.22) 42%,
+      rgba(7, 21, 39, 0.08) 62%,
+      transparent 76%);
+  filter: blur(3px);
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.awakening-inner-question strong {
+  position: relative;
+  z-index: 1;
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(19px, 5.4vw, 24px);
+  font-weight: 400;
+  letter-spacing: 0.07em;
+  animation: innerPixelFlicker 420ms steps(4, end) both;
+}
+
+.awakening-inner-question .awakening-rule {
+  display: none;
+}
+
+.awakening-intro.is-character-phase .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.02) contrast(1.03) saturate(1.08);
+  transform: scale(1.02);
+}
+
+.awakening-intro.is-inner-phase .awakening-bg {
+  opacity: 1;
+  filter: blur(0) brightness(1.18) contrast(1.05) saturate(1.12);
+  transform: scale(1.02);
+}
+
+.awakening-intro.is-inner-phase .awakening-particles {
+  opacity: 0.34;
+}
+
+.awakening-choice-panel {
+  width: min(84vw, 340px);
+  gap: 10px;
+  color: #071527;
+}
+
+.awakening-choice-panel::before {
+  width: min(360px, 84vw);
+  height: 260px;
+  background:
+    radial-gradient(ellipse at center,
+      rgba(246, 250, 255, 0.42) 0%,
+      rgba(226, 235, 244, 0.18) 42%,
+      rgba(7, 21, 39, 0.07) 64%,
+      transparent 78%);
+}
+
+.awakening-choice-hint {
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(12px, 3.3vw, 15px);
+  letter-spacing: 0.08em;
+  color: rgba(7, 21, 39, 0.78);
+  text-shadow: 1px 0 0 rgba(255, 255, 255, 0.36);
+  animation: innerPixelFlicker 360ms steps(4, end) both;
+}
+
+.awakening-choice-branches {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  width: min(76vw, 300px);
+  justify-items: stretch;
+}
+
+.awakening-choice-branches.compact {
+  width: min(70vw, 260px);
+}
+
+.awakening-choice-branches button,
+.awakening-custom-choice button {
+  position: relative;
+  min-height: 52px;
+  border: 0;
+  border-radius: 0;
+  clip-path: none;
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: clamp(15px, 4.1vw, 18px);
+  letter-spacing: 0.085em;
+  color: rgba(7, 21, 39, 0.88);
+  text-shadow:
+    1px 0 0 rgba(255, 255, 255, 0.38),
+    0 1px 0 rgba(255, 255, 255, 0.22);
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: transform 160ms ease, color 160ms ease, text-shadow 160ms ease;
+}
+
+.awakening-choice-branches button {
+  padding: 15px 14px 14px;
+}
+
+.awakening-choice-branches button::before,
+.awakening-choice-branches button::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 88%;
+  height: 1px;
+  transform: translateX(-50%);
+  background:
+    linear-gradient(90deg,
+      transparent,
+      rgba(7, 21, 39, 0.18) 8%,
+      rgba(7, 21, 39, 0.56) 50%,
+      rgba(7, 21, 39, 0.18) 92%,
+      transparent);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.26);
+  transition: width 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.awakening-choice-branches button::before {
+  top: 0;
+}
+
+.awakening-choice-branches button::after {
+  bottom: 0;
+}
+
+.awakening-choice-branches button > span {
+  position: relative;
+}
+
+.awakening-choice-branches button:hover,
+.awakening-custom-choice button:hover {
+  transform: translateX(4px);
+  color: #2bdcff;
+  text-shadow:
+    0 0 8px rgba(43, 220, 255, 0.86),
+    1px 0 0 rgba(255, 255, 255, 0.42);
+}
+
+.awakening-choice-branches button:hover::before,
+.awakening-choice-branches button:hover::after {
+  width: 100%;
+  background:
+    linear-gradient(90deg,
+      transparent,
+      rgba(7, 21, 39, 0.22) 4%,
+      rgba(43, 220, 255, 0.88) 50%,
+      rgba(7, 21, 39, 0.22) 96%,
+      transparent);
+  box-shadow:
+    0 0 8px rgba(43, 220, 255, 0.72),
+    0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.awakening-choice-branches button:hover::before {
+  height: 2px;
+}
+
+.awakening-choice-branches button:hover::after {
+  height: 2px;
+}
+
+.awakening-choice-branches button:hover {
+  background:
+    radial-gradient(circle at 8% 50%, rgba(43, 220, 255, 0.9) 0 2px, rgba(43, 220, 255, 0.35) 2px 4px, transparent 5px),
+    linear-gradient(90deg, transparent, rgba(43, 220, 255, 0.055), transparent);
+}
+
+.awakening-choice-branches button:hover::marker {
+  display: none;
+}
+
+.awakening-choice-branches button:hover {
+  outline: none;
+}
+
+.awakening-choice-branches button:focus-visible {
+  outline: none;
+  color: #2bdcff;
+  text-shadow: 0 0 8px rgba(43, 220, 255, 0.78);
+}
+
+.awakening-choice-branches button:focus-visible::before,
+.awakening-choice-branches button:focus-visible::after {
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(43, 220, 255, 0.86), transparent);
+  box-shadow: 0 0 8px rgba(43, 220, 255, 0.62);
+}
+
+.awakening-choice-branches button:hover::selection {
+  background: transparent;
+}
+
+.awakening-choice-branches button:hover {
+  --choice-cursor-opacity: 1;
+}
+
+.awakening-choice-branches button:active,
+.awakening-custom-choice button:active {
+  transform: translateX(2px) translateY(1px);
+}
+
+.awakening-choice-branches button span,
+.awakening-choice-branches button {
+  isolation: isolate;
+}
+
+.awakening-choice-branches button::selection {
+  background: transparent;
+}
+
+.awakening-choice-branches button {
+  overflow: visible;
+}
+
+.awakening-choice-branches button:hover {
+  filter: none;
+}
+
+.awakening-choice-branches button:hover::before {
+  animation: choiceLineTick 520ms steps(4, end) both;
+}
+
+.awakening-choice-branches button:hover::after {
+  animation: choiceLineTick 520ms steps(4, end) both reverse;
+}
+
+.awakening-choice-branches button:hover {
+  --cursor-mark: "✦";
+}
+
+.awakening-choice-branches button:hover {
+  padding-left: 22px;
+}
+
+.awakening-choice-branches button:hover::after {
+  content: "";
+}
+
+.awakening-custom-choice {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: min(78vw, 300px);
+  animation: innerPixelFlicker 320ms steps(4, end) both;
+}
+
+.awakening-custom-choice input {
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 4px;
+  font-family: "Fusion Pixel Hoshia", "Microsoft YaHei", "PingFang SC", monospace;
+  font-size: 13px;
+  color: #06182b;
+  outline: none;
+  background: transparent;
+  box-shadow:
+    inset 0 -1px 0 rgba(7, 21, 39, 0.58),
+    0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.awakening-custom-choice input::placeholder {
+  color: rgba(7, 21, 39, 0.48);
+}
+
+.awakening-custom-choice button {
+  min-height: 34px;
+  padding: 0 8px;
+  color: rgba(7, 21, 39, 0.86);
+  background: transparent;
+  box-shadow: inset 0 -1px 0 rgba(7, 21, 39, 0.50);
+}
+
+.awakening-custom-choice button:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  transform: none;
+  filter: grayscale(0.4);
+}
+
+@keyframes awakeningCuePulse {
+  0%, 100% { opacity: 0.45; transform: translateX(-50%) translateY(0); }
+  50% { opacity: 1; transform: translateX(-50%) translateY(-3px); }
+}
+
+@keyframes awakeningBlackBlink {
+  0% { opacity: 0; transform: scaleY(0.08); filter: blur(8px); }
+  24% { opacity: 1; transform: scaleY(1); filter: blur(0); }
+  58% { opacity: 1; transform: scaleY(1); filter: blur(0); }
+  100% { opacity: 0; transform: scaleY(1.04); filter: blur(10px); }
+}
+
+@keyframes awakeningParticleDrift {
+  0%, 100% { opacity: 0.22; translate: 0 0; filter: blur(0); }
+  38% { opacity: 0.82; translate: 10px -18px; filter: blur(0); }
+  68% { opacity: 0.48; translate: -6px -34px; filter: blur(1px); }
+}
+
+@keyframes chibiEnter {
+  0% { opacity: 0; transform: translateX(-50%) translateY(18px) scale(0.94); filter: blur(14px) brightness(0.72); }
+  48% { opacity: 1; transform: translateX(-50%) translateY(-2px) scale(1.01); filter: blur(3px) brightness(1.04); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); filter: blur(0) brightness(1); }
+}
+
+@keyframes chibiFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes chibiBreath {
+  0%, 100% { scale: 1; }
+  45% { scale: 1.008; }
+}
+
+@keyframes chibiExitToLight {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); filter: blur(0) brightness(1); }
+  48% { opacity: 0.86; transform: translateX(-50%) translateY(-3px) scale(1.008); filter: blur(3px) brightness(0.82); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(12px) scale(0.96); filter: blur(14px) brightness(0.42); }
+}
+
+@keyframes chibiAura {
+  0%, 100% { transform: translateX(-50%) scale(0.94); opacity: 0.58; }
+  50% { transform: translateX(-50%) scale(1.05); opacity: 1; }
+}
+
+@keyframes catDialogueIn {
+  0% { opacity: 0; transform: translateY(28px); filter: blur(10px); }
+  70% { opacity: 1; transform: translateY(-3px); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes dialogueTextSwap {
+  from { opacity: 0; transform: translateY(8px); filter: blur(5px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes dialogueCaretBlink {
+  0%, 44% { opacity: 0; }
+  45%, 100% { opacity: 1; }
+}
+
+@keyframes catContinueTwinkle {
+  0%, 100% { opacity: 0.38; transform: translateY(0) scale(0.9); }
+  50% { opacity: 1; transform: translateY(-4px) scale(1.08); }
+}
+
+@keyframes emptyCursorBreath {
+  0%, 100% {
+    opacity: 0.50;
+    filter: drop-shadow(0 0 5px rgba(43, 220, 255, 0.24));
+    transform: translate(-50%, -50%);
+  }
+  50% {
+    opacity: 0.86;
+    filter: drop-shadow(0 0 12px rgba(43, 220, 255, 0.48));
+    transform: translate(-50%, calc(-50% - 1px));
+  }
+}
+
+@keyframes emptyCursorBar {
+  0% {
+    height: 7px;
+    opacity: 0.46;
+  }
+  28% {
+    height: 19px;
+    opacity: 0.92;
+  }
+  58% {
+    height: 12px;
+    opacity: 0.70;
+  }
+  100% {
+    height: 23px;
+    opacity: 1;
+  }
+}
+
+@keyframes cyberLinePulse {
+  0%, 100% {
+    opacity: 0.68;
+    filter: drop-shadow(0 0 2px rgba(92, 229, 255, 0.7));
+    transform: scaleX(0.985);
+  }
+  46% {
+    opacity: 1;
+    filter: drop-shadow(0 0 9px rgba(92, 229, 255, 0.95)) drop-shadow(0 0 14px rgba(255, 235, 95, 0.35));
+    transform: scaleX(1);
+  }
+  52% {
+    opacity: 0.78;
+    transform: translateX(1px) scaleX(0.992);
+  }
+}
+
+@keyframes catPawPulse {
+  0%, 100% { opacity: 0.5; filter: drop-shadow(0 0 0 rgba(255, 245, 155, 0)); }
+  50% { opacity: 0.92; filter: drop-shadow(0 0 10px rgba(255, 245, 155, 0.65)); }
+}
+
+@keyframes catTailFloat {
+  0%, 100% { transform: rotate(-12deg) translateY(0); opacity: 0.78; }
+  50% { transform: rotate(-7deg) translateY(-4px); opacity: 1; }
+}
+
+@keyframes catEarGlow {
+  0%, 100% { opacity: 0.58; filter: blur(0); }
+  50% { opacity: 0.94; filter: blur(1px); }
+}
+
+@keyframes nameplateSheen {
+  0%, 58% { opacity: 0; transform: translateX(-42%); }
+  72% { opacity: 0.75; }
+  100% { opacity: 0; transform: translateX(42%); }
+}
+
+@keyframes innerQuestionIn {
+  0% { opacity: 0; transform: translate(-50%, -44%) scale(0.96); filter: blur(12px); }
+  56% { opacity: 1; transform: translate(-50%, -52%) scale(1.02); filter: blur(2px); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
+}
+
+@keyframes innerPixelFlicker {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+    clip-path: inset(0 52% 0 0);
+  }
+  18% {
+    opacity: 0.38;
+    clip-path: inset(0 18% 0 0);
+  }
+  34% {
+    opacity: 0.12;
+    transform: translateY(2px);
+    clip-path: inset(0 36% 0 0);
+  }
+  58% {
+    opacity: 0.92;
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes choiceLineTick {
+  0% { opacity: 0.42; transform: translateX(-50%) scaleX(0.82); }
+  35% { opacity: 0.92; transform: translateX(-50%) scaleX(1.03); }
+  62% { opacity: 0.62; transform: translateX(-50%) scaleX(0.96); }
+  100% { opacity: 1; transform: translateX(-50%) scaleX(1); }
+}
+
+@media (max-width: 420px) {
+  .awakening-chibi-stage {
+    bottom: -24px;
+    width: 90vw;
+    height: 83vh;
+  }
+
+  .awakening-galgame-box {
+    left: 8px;
+    right: 8px;
+    min-height: 112px;
+    padding: 28px 8px 22px;
+  }
+
+  .awakening-galgame-box p {
+    width: min(100%, 374px);
+    max-width: none;
+    font-size: clamp(15px, 4.05vw, 17px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awakening-touch-cue,
+  .awakening-transition-flash,
+  .awakening-particles,
+  .awakening-chibi-stage,
+  .awakening-chibi-stage img,
+  .chibi-aura,
+  .awakening-galgame-box,
+  .awakening-galgame-box p,
+  .awakening-empty-cursor,
+  .awakening-empty-cursor span,
+  .awakening-final-center,
+  .awakening-white-bloom,
+  .cat-continue-cue,
+  .cat-paw,
+  .cat-tail,
+  .awakening-inner-question,
+  .awakening-inner-question strong,
+  .awakening-choice-hint,
+  .awakening-custom-choice {
+    animation: none;
   }
 }
