@@ -131,20 +131,50 @@ function App() {
       }
     }
 
-    fetch(appPath("api/room/state"))
-      .then((res) => res.json())
-      .then((payload) => {
-        setRoom(payload.room);
-        setCharacterState(toCharacterState(payload.state));
-        if (payload.messages?.length) setMessages(payload.messages);
-      })
-      .catch(() => undefined);
+    function refreshRoomState() {
+      return fetch(appPath("api/room/state"))
+        .then((res) => res.json())
+        .then((payload) => {
+          setRoom(payload.room);
+          setCharacterState(toCharacterState(payload.state));
+          if (payload.messages?.length) setMessages(payload.messages);
+        })
+        .catch(() => undefined);
+    }
+
+    void refreshRoomState();
     void refreshAudience();
 
     let ws: WebSocket | null = null;
     let disposed = false;
     let retryTimer: number | undefined;
     let retryCount = 0;
+
+    function scheduleReconnect() {
+      if (disposed || retryTimer) return;
+      const backoff = Math.min(10000, 1000 * Math.pow(1.6, retryCount));
+      const jitter = Math.floor(Math.random() * 450);
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        retryCount += 1;
+        connectSocket();
+      }, backoff + jitter);
+    }
+
+    function reconnectIfNeeded() {
+      if (disposed) return;
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (retryTimer) {
+          window.clearTimeout(retryTimer);
+          retryTimer = undefined;
+        }
+        connectSocket();
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") reconnectIfNeeded();
+    }
 
     function handleSocketMessage(event: MessageEvent) {
       const payload = JSON.parse(event.data);
@@ -159,6 +189,7 @@ function App() {
       if (payload.type === "room_state") {
         setRoom(payload.room);
         setCharacterState(toCharacterState(payload.state));
+        if (payload.messages?.length) setMessages(payload.messages);
       }
       if (payload.type === "character_state") {
         setCharacterState(toCharacterState(payload.state));
@@ -183,36 +214,43 @@ function App() {
 
     function connectSocket() {
       if (disposed) return;
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
       setSocketStatus(retryCount ? "reconnecting" : "connecting");
       ws = new WebSocket(wsPath("ws/live"));
+      const currentSocket = ws;
       (window as Window & { liveRoomSocket?: WebSocket }).liveRoomSocket = ws;
 
       ws.addEventListener("open", () => {
         retryCount = 0;
         setSocketStatus("live");
+        void refreshRoomState();
+        void refreshAudience();
       });
       ws.addEventListener("close", () => {
         if (disposed) return;
+        if ((window as Window & { liveRoomSocket?: WebSocket }).liveRoomSocket === currentSocket) {
+          delete (window as Window & { liveRoomSocket?: WebSocket }).liveRoomSocket;
+        }
         setSocketStatus("closed");
-        setCharacterState("ERROR");
-        retryTimer = window.setTimeout(() => {
-          retryCount += 1;
-          connectSocket();
-        }, Math.min(4200, 1200 + retryCount * 700));
+        scheduleReconnect();
       });
       ws.addEventListener("error", () => {
         if (disposed) return;
         setSocketStatus("error");
-        setCharacterState("ERROR");
+        scheduleReconnect();
       });
       ws.addEventListener("message", handleSocketMessage);
     }
 
     connectSocket();
+    window.addEventListener("online", reconnectIfNeeded);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       disposed = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      window.removeEventListener("online", reconnectIfNeeded);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       ws?.close();
       delete (window as Window & { liveRoomSocket?: WebSocket }).liveRoomSocket;
     };

@@ -285,6 +285,7 @@ app.get("/api/room/audience", requireSession, async (_req, res) => {
 });
 
 const wss = new WebSocketServer({ noServer: true });
+const websocketHeartbeatIntervalMs = 25000;
 
 server.on("upgrade", async (req, socket, head) => {
   if (new URL(req.url, "http://localhost").pathname !== "/ws/live") {
@@ -305,11 +306,16 @@ server.on("upgrade", async (req, socket, head) => {
 });
 
 wss.on("connection", (ws, _req, session) => {
+  ws.isAlive = true;
   sockets.set(ws, session);
   markUserOnline(session);
   broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
   broadcastAudienceChanged();
   ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
+
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
 
   ws.on("message", async (raw) => {
     try {
@@ -327,6 +333,21 @@ wss.on("connection", (ws, _req, session) => {
     broadcast(systemEvent("presence", `${session.nickname} left`, { online: uniqueOnlineCount() }));
     broadcastAudienceChanged();
   });
+});
+
+const websocketHeartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, websocketHeartbeatIntervalMs);
+
+wss.on("close", () => {
+  clearInterval(websocketHeartbeat);
 });
 
 async function handleDanmaku(session, payload) {
