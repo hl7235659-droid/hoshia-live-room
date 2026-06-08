@@ -74,5 +74,10 @@
     "description": "Retention hint stored in metadata for daily news memories.",
     "type": "int",
     "default": 7
+  },
+  "livingmemory_recent_state_retention_days": {
+    "description": "Default retention days for temporary recent-state viewer memories.",
+    "type": "int",
+    "default": 30
   }
 }

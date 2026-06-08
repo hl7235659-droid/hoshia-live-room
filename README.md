@@ -78,6 +78,9 @@ Important options:
 - `ASTRBOT_FALLBACK_TO_MOCK`: keeps the room usable when AstrBot is unavailable.
 - `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
 - `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
+- `SHORT_TERM_CONTEXT_MAX_MESSAGES`: recent user/AI messages sent to AstrBot as live-room short-term context; defaults to `100` (about 50 rounds).
+- `CONTEXT_SUMMARY_LOOKBACK_MESSAGES`: maximum unsummarized messages scanned for rolling context summary refresh; defaults to `600`.
+- `CONTEXT_SUMMARY_COMPRESS_MESSAGES`: older messages summarized per refresh when the recent context is over the limit; defaults to `20`.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.
 
@@ -171,7 +174,9 @@ Do not install or restart production AstrBot without an explicit deployment wind
 - When nobody mentions Hoshia, the AstrBot bridge can run a Heartflow-lite judge model before replying. The default judge provider is `tencentmaas/deepseek-v4-flash`; low-score batches are silently skipped so Hoshia does not over-speak.
 - AstrBot replies use a shared room session (`<room_id>:room`) so the host has room-level context instead of separate one-on-one user sessions.
 - When exactly one web account is online, the gateway can send `force_reply: true` so Hoshia replies to each message without requiring `@Hoshia`.
+- The gateway sends AstrBot a short-term context layer: a rolling room summary plus the latest user/AI messages. Recent transcript has priority over the summary and LivingMemory when facts conflict.
 - The AstrBot bridge can optionally connect to `astrbot_plugin_livingmemory`. Viewer memories are isolated by web account session (`live-room:<room_id>:user:<user_id>`) and require the viewer's memory consent; daily news memories use a separate `live-room:<room_id>:news` pool.
+- LivingMemory viewer memories can include `recent_state` for relatively stable but temporary user context, such as what someone is busy with recently. These memories default to 30 days and are filtered after expiry.
 - The bridge skips duplicate viewer memories, filters expired daily news memories, and exposes a token-protected internal debug recall endpoint for deployment checks.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.

@@ -20,6 +20,9 @@ export const config = {
   astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
   singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),
+  shortTermContextMaxMessages: Number(process.env.SHORT_TERM_CONTEXT_MAX_MESSAGES || 100),
+  contextSummaryLookbackMessages: Number(process.env.CONTEXT_SUMMARY_LOOKBACK_MESSAGES || 600),
+  contextSummaryCompressMessages: Number(process.env.CONTEXT_SUMMARY_COMPRESS_MESSAGES || 20),
   realityContextEnabled: parseBool(process.env.REALITY_CONTEXT_ENABLED, true),
   realityContextTimezone: process.env.REALITY_CONTEXT_TIMEZONE || "Asia/Shanghai",
   realityContextIncludeOps: parseBool(process.env.REALITY_CONTEXT_INCLUDE_OPS, true)

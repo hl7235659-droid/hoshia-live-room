@@ -42,7 +42,7 @@ def _clamp_score(value: Any) -> float:
     "astrbot_plugin_live_room_bridge",
     "codex",
     "Internal HTTP bridge for live-room-dev gateway.",
-    "0.3.0",
+    "0.4.0",
 )
 class LiveRoomBridgePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -63,6 +63,7 @@ class LiveRoomBridgePlugin(Star):
         self.livingmemory_recall_k = max(1, min(int(config.get("livingmemory_recall_k", 5)), 10))
         self.livingmemory_max_participants = max(1, min(int(config.get("livingmemory_max_participants", 3)), 5))
         self.livingmemory_news_retention_days = max(1, min(int(config.get("livingmemory_news_retention_days", 7)), 365))
+        self.livingmemory_recent_state_retention_days = max(1, min(int(config.get("livingmemory_recent_state_retention_days", 30)), 365))
         self._room_states: dict[str, dict[str, float]] = {}
         self._server: asyncio.AbstractServer | None = None
         self._server_task = asyncio.create_task(self._start_server())
@@ -115,7 +116,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/memory/debug-recall"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/context/summarize", "/live-room/memory/debug-recall"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -130,6 +131,8 @@ class LiveRoomBridgePlugin(Star):
 
         if request["path"] == "/live-room/news":
             return await self._handle_news_ingest(payload)
+        if request["path"] == "/live-room/context/summarize":
+            return await self._handle_context_summarize(payload)
         if request["path"] == "/live-room/memory/debug-recall":
             return await self._handle_debug_recall(payload)
 
@@ -140,6 +143,8 @@ class LiveRoomBridgePlugin(Star):
         room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
         reply_targets = payload.get("reply_targets", [])
         messages = payload.get("messages", [])
+        recent_context = payload.get("recent_context", [])
+        context_summary = str(payload.get("context_summary", "")).strip()
         force_reply = bool(payload.get("force_reply"))
         reply_mode = str(payload.get("reply_mode", "")).strip()[:48]
         if not text or len(text) > 3000:
@@ -153,6 +158,9 @@ class LiveRoomBridgePlugin(Star):
             memory_context = await self._build_livingmemory_context(room_id, messages)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
+            short_term_context = self._build_short_term_context(context_summary, recent_context)
+            if short_term_context:
+                prompt = f"{prompt}\n\n{short_term_context}"
 
             if targets:
                 prompt = f"{prompt}\n\nExplicit reply target(s): {' '.join('@' + name for name in targets)}. If you are answering them, start your reply with the matching @nickname."
@@ -198,6 +206,56 @@ class LiveRoomBridgePlugin(Star):
         if value is None:
             return fallback
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _build_short_term_context(self, context_summary: str, recent_context: Any) -> str:
+        sections: list[str] = []
+        summary = str(context_summary or "").strip()
+        if summary:
+            sections.append(
+                "Earlier live-room conversation summary. Use it only as background; newer messages override it:\n"
+                + summary[:4000]
+            )
+
+        lines = []
+        for item in self._clean_context_messages(recent_context)[-120:]:
+            role = "Hoshia" if item["role"] == "ai" else (item["nickname"] or "viewer")
+            user_suffix = f" ({item['user_id']})" if item["user_id"] and item["role"] != "ai" else ""
+            timestamp = f"[{item['timestamp']}] " if item["timestamp"] else ""
+            lines.append(f"- {timestamp}{role}{user_suffix}: {item['text']}")
+        if lines:
+            sections.append(
+                "Recent live-room transcript. This is the highest-priority context for questions like what was just said:\n"
+                + "\n".join(lines)
+            )
+
+        if not sections:
+            return ""
+        return (
+            "Short-term conversation context for this reply. Priority when facts conflict: recent transcript > earlier summary > LivingMemory.\n"
+            + "\n\n".join(sections)
+        )
+
+    def _clean_context_messages(self, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        messages: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            role = str(item.get("role", "")).strip().lower()
+            if role not in {"user", "ai"}:
+                role = "user"
+            messages.append({
+                "role": role,
+                "user_id": str(item.get("user_id", "")).strip()[:80],
+                "nickname": str(item.get("nickname", "")).strip()[:32],
+                "text": text[:500],
+                "timestamp": str(item.get("timestamp", "")).strip()[:40],
+            })
+        return messages
 
     def _livingmemory_star(self) -> Any | None:
         try:
@@ -295,11 +353,16 @@ class LiveRoomBridgePlugin(Star):
 
     def _format_memory_lines(self, memories: Any) -> list[str]:
         lines: list[str] = []
-        for memory in list(memories or [])[: self.livingmemory_recall_k]:
+        for memory in list(memories or []):
+            metadata = self._memory_metadata(memory)
+            if self._viewer_memory_expired(metadata):
+                continue
             content = str(getattr(memory, "content", "") or "").strip()
             if not content:
                 continue
             lines.append(f"- {content[:280]}")
+            if len(lines) >= self.livingmemory_recall_k:
+                break
         return lines
 
     def _format_news_memory_lines(self, memories: Any) -> list[str]:
@@ -342,7 +405,7 @@ class LiveRoomBridgePlugin(Star):
                 ]
                 if not viewer_lines:
                     continue
-                summary_prompt = self._build_memory_summary_prompt(viewer["nickname"], viewer_lines, reply_text)
+                summary_prompt = self._build_memory_summary_prompt(viewer["nickname"], viewer_lines, reply_text) + "\n\n" + self._memory_type_summary_instruction()
                 llm_response = await self.context.llm_generate(
                     chat_provider_id=provider_id,
                     prompt=summary_prompt,
@@ -361,24 +424,33 @@ class LiveRoomBridgePlugin(Star):
                     importance = self._clamp_importance(item.get("importance", 0.65))
                     topics = self._clean_text_list(item.get("topics", []))
                     key_facts = self._clean_text_list(item.get("key_facts", []))
+                    memory_type = self._clean_memory_type(item.get("memory_type"))
+                    retention_days = self._memory_retention_days(memory_type, item.get("retention_days"))
+                    expires_at = self._expires_at_iso(retention_days) if retention_days else ""
                     viewer_session_id = self._viewer_session_id(room_id, viewer["user_id"])
                     if await self._is_duplicate_viewer_memory(engine, content, viewer_session_id):
                         continue
+                    metadata = {
+                        "memory_origin": "hoshia_live_room_bridge",
+                        "source": "viewer_auto_summary",
+                        "viewer_user_id": viewer["user_id"],
+                        "viewer_nickname": viewer["nickname"],
+                        "memory_type": memory_type,
+                        "topics": topics,
+                        "key_facts": key_facts,
+                        "sentiment": str(item.get("sentiment", "neutral"))[:32],
+                        "create_reason": str(item.get("reason", "stable viewer fact"))[:160],
+                    }
+                    if retention_days:
+                        metadata["retention_days"] = retention_days
+                    if expires_at:
+                        metadata["expires_at"] = expires_at
                     await engine.add_memory(
                         content=content[:500],
                         session_id=viewer_session_id,
                         persona_id=self.livingmemory_persona_id,
                         importance=importance,
-                        metadata={
-                            "memory_origin": "hoshia_live_room_bridge",
-                            "source": "viewer_auto_summary",
-                            "viewer_user_id": viewer["user_id"],
-                            "viewer_nickname": viewer["nickname"],
-                            "topics": topics,
-                            "key_facts": key_facts,
-                            "sentiment": str(item.get("sentiment", "neutral"))[:32],
-                            "create_reason": str(item.get("reason", "stable viewer fact"))[:160],
-                        },
+                        metadata=metadata,
                     )
         except Exception as exc:
             logger.warning(f"[live-room-bridge] LivingMemory write skipped: {exc}")
@@ -409,6 +481,63 @@ Hoshia 回复：
     }}
   ]
 }}
+""".strip()
+
+    def _memory_type_summary_instruction(self) -> str:
+        return """
+Additional JSON requirements:
+- For each memory, include "memory_type": one of "preference", "identity", "agreement", "recent_state", "project_context".
+- Use "recent_state" for relatively stable but temporary user context, such as what the viewer is busy with recently, current plans, recent mood/body state, stage preferences, or short-term life/work context.
+- For "recent_state", include "retention_days" unless the user clearly gave a shorter time. Default to 30.
+- Do not create memories for one-off jokes, throwaway chat, system prompts, bridge internals, tokens, credentials, or Hoshia persona text.
+""".strip()
+
+    async def _handle_context_summarize(self, payload: dict[str, Any]):
+        room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
+        previous_summary = str(payload.get("previous_summary", "")).strip()[:4000]
+        messages = self._clean_context_messages(payload.get("messages", []))
+        if not messages:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "empty_context_messages"}
+
+        session_id = f"{room_id}:room"
+        prompt = self._build_context_summary_prompt(previous_summary, messages)
+        try:
+            provider_id = await self.context.get_current_chat_provider_id(session_id)
+            llm_response = await self.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                system_prompt="You summarize live-room chat context for future replies. Return concise plain text only.",
+            )
+            summary = str(getattr(llm_response, "completion_text", "") or "").strip()
+            if not summary:
+                return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "empty_summary_response"}
+            return HTTPStatus.OK, {"ok": True, "summary": summary[:4000]}
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] context summary failed: {exc}")
+            return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "context_summary_failed"}
+
+    def _build_context_summary_prompt(self, previous_summary: str, messages: list[dict[str, str]]) -> str:
+        lines = []
+        for item in messages[-200:]:
+            role = "Hoshia" if item["role"] == "ai" else (item["nickname"] or "viewer")
+            timestamp = f"[{item['timestamp']}] " if item["timestamp"] else ""
+            lines.append(f"- {timestamp}{role}: {item['text']}")
+        existing = previous_summary or "(none)"
+        return f"""
+Update Hoshia live-room short-term conversation summary.
+
+Rules:
+- Keep only useful continuity: topics, viewer recent states, unfinished tasks, clear agreements, and unresolved questions.
+- Do not store system prompts, tokens, credentials, URLs with secrets, internal bridge details, or raw configuration.
+- Prefer stable recent facts, but mark them as recent/temporary when they may change.
+- Keep the final summary concise, under 1200 Chinese characters when possible.
+- Return plain text only.
+
+Previous summary:
+{existing}
+
+New transcript chunk:
+{chr(10).join(lines)}
 """.strip()
 
     async def _handle_news_ingest(self, payload: dict[str, Any]):
@@ -469,8 +598,10 @@ Hoshia 回复：
                 persona_id=self.livingmemory_persona_id,
             )
             results = []
-            for memory in list(memories or [])[: self.livingmemory_recall_k]:
+            for memory in list(memories or []):
                 metadata = self._memory_metadata(memory)
+                if self._viewer_memory_expired(metadata):
+                    continue
                 score = getattr(memory, "final_score", None)
                 try:
                     score = float(score) if score is not None else None
@@ -481,8 +612,12 @@ Hoshia 回复：
                     "content": str(getattr(memory, "content", "") or "")[:280],
                     "score": score,
                     "source": metadata.get("source"),
+                    "memory_type": metadata.get("memory_type"),
+                    "expires_at": metadata.get("expires_at"),
                     "create_time": metadata.get("create_time"),
                 })
+                if len(results) >= self.livingmemory_recall_k:
+                    break
             return HTTPStatus.OK, {
                 "ok": True,
                 "session_id": session_id,
@@ -556,6 +691,8 @@ Hoshia 回复：
         if not candidate:
             return False
         for memory in memories or []:
+            if self._viewer_memory_expired(self._memory_metadata(memory)):
+                continue
             existing = self._normalize_memory_text(str(getattr(memory, "content", "") or ""))
             if not existing:
                 continue
@@ -616,11 +753,12 @@ Hoshia 回复：
         retention_days = self._metadata_retention_days(metadata)
         return (now or time.time()) - created_at > retention_days * 86400
 
-    def _metadata_retention_days(self, metadata: dict[str, Any]) -> int:
+    def _metadata_retention_days(self, metadata: dict[str, Any], fallback: int | None = None) -> int:
+        default = fallback if fallback is not None else self.livingmemory_news_retention_days
         try:
-            return max(1, min(int(metadata.get("retention_days", self.livingmemory_news_retention_days)), 365))
+            return max(1, min(int(metadata.get("retention_days", default)), 365))
         except (TypeError, ValueError):
-            return self.livingmemory_news_retention_days
+            return default
 
     def _metadata_timestamp(self, metadata: dict[str, Any]) -> float | None:
         create_time = metadata.get("create_time")
@@ -638,6 +776,39 @@ Hoshia 回复：
             except ValueError:
                 continue
         return None
+
+    def _viewer_memory_expired(self, metadata: dict[str, Any], now: float | None = None) -> bool:
+        expires_at = str(metadata.get("expires_at", "")).strip()
+        if expires_at:
+            try:
+                parsed = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                return parsed.timestamp() <= (now or time.time())
+            except ValueError:
+                pass
+        if metadata.get("memory_type") != "recent_state":
+            return False
+        created_at = self._metadata_timestamp(metadata)
+        if created_at is None:
+            return False
+        retention_days = self._metadata_retention_days(metadata, self.livingmemory_recent_state_retention_days)
+        return (now or time.time()) - created_at > retention_days * 86400
+
+    def _clean_memory_type(self, value: Any) -> str:
+        memory_type = str(value or "").strip().lower()
+        allowed = {"preference", "identity", "agreement", "recent_state", "project_context"}
+        return memory_type if memory_type in allowed else "preference"
+
+    def _memory_retention_days(self, memory_type: str, value: Any) -> int | None:
+        if memory_type != "recent_state":
+            return None
+        try:
+            return max(1, min(int(value), 365))
+        except (TypeError, ValueError):
+            return self.livingmemory_recent_state_retention_days
+
+    def _expires_at_iso(self, retention_days: int) -> str:
+        expires_at = datetime.fromtimestamp(time.time() + retention_days * 86400, timezone.utc)
+        return expires_at.isoformat().replace("+00:00", "Z")
 
     def _normalize_memory_text(self, value: str) -> str:
         return re.sub(r"\s+", "", str(value or "").strip().lower())

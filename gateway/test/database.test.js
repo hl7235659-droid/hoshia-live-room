@@ -100,6 +100,53 @@ test("room messages are persisted and returned oldest to newest within limit", (
   }
 });
 
+test("context messages and rolling summaries are persisted", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    db.insertRoomMessage({
+      type: "danmaku",
+      id: "message-1",
+      room_id: "room-1",
+      user_id: "user-1",
+      nickname: "Alice",
+      role: "user",
+      text: "I am preparing a demo this week",
+      timestamp: "2026-06-09T00:00:00.000Z"
+    }, "2026-06-09T00:00:00.000Z");
+    db.insertRoomMessage({
+      type: "ai_reply",
+      id: "message-2",
+      room_id: "room-1",
+      user_id: "ai-host",
+      nickname: "Hoshia",
+      role: "ai",
+      text: "I will remember the demo context.",
+      timestamp: "2026-06-09T00:00:01.000Z"
+    }, "2026-06-09T00:00:01.000Z");
+
+    const contextMessages = db.listContextMessagesAfter("room-1", "", "", 10);
+    assert.equal(contextMessages.length, 2);
+    assert.equal(contextMessages[0].nickname, "Alice");
+    assert.equal(contextMessages[1].role, "ai");
+
+    const summary = db.upsertRoomContextSummary({
+      roomId: "room-1",
+      summaryText: "Alice is preparing a demo this week.",
+      summarizedUntilCreatedAt: contextMessages[1].created_at,
+      summarizedUntilId: contextMessages[1].id,
+      coverageStartTimestamp: contextMessages[0].timestamp,
+      coverageEndTimestamp: contextMessages[1].timestamp,
+      updatedAt: "2026-06-09T00:00:02.000Z"
+    });
+    assert.equal(summary.summary_text, "Alice is preparing a demo this week.");
+
+    const afterSummary = db.listContextMessagesAfter("room-1", summary.summarized_until_created_at, summary.summarized_until_id, 10);
+    assert.equal(afterSummary.length, 0);
+  } finally {
+    cleanup();
+  }
+});
+
 test("user profile and password can be updated", () => {
   const { db, cleanup } = openTempDb();
   try {

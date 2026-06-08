@@ -50,6 +50,16 @@ export function openLiveRoomDatabase(databasePath) {
 
     CREATE INDEX IF NOT EXISTS idx_room_messages_recent
       ON room_messages(room_id, created_at, id);
+
+    CREATE TABLE IF NOT EXISTS room_context_summaries (
+      room_id TEXT PRIMARY KEY,
+      summary_text TEXT NOT NULL DEFAULT '',
+      summarized_until_created_at TEXT,
+      summarized_until_id TEXT,
+      coverage_start_timestamp TEXT,
+      coverage_end_timestamp TEXT,
+      updated_at TEXT NOT NULL
+    );
   `);
   migrateUsersTable(db);
   return new LiveRoomDatabase(db);
@@ -267,6 +277,81 @@ export class LiveRoomDatabase {
     return rows.reverse().map((row) => JSON.parse(row.event_json));
   }
 
+  listRecentContextMessages(roomId, limit = 100) {
+    const rows = this.db.prepare(`
+      SELECT id, room_id, type, role, user_id, nickname, text, timestamp, created_at
+      FROM room_messages
+      WHERE room_id = ?
+        AND role IN ('user', 'ai')
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).all(roomId, limit);
+    return rows.reverse().map(compactContextMessage);
+  }
+
+  listContextMessagesAfter(roomId, afterCreatedAt = "", afterId = "", limit = 600) {
+    const rows = this.db.prepare(`
+      SELECT id, room_id, type, role, user_id, nickname, text, timestamp, created_at
+      FROM room_messages
+      WHERE room_id = ?
+        AND role IN ('user', 'ai')
+        AND (
+          ? = ''
+          OR created_at > ?
+          OR (created_at = ? AND id > ?)
+        )
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `).all(roomId, afterCreatedAt || "", afterCreatedAt || "", afterCreatedAt || "", afterId || "", limit);
+    return rows.map(compactContextMessage);
+  }
+
+  getRoomContextSummary(roomId) {
+    return this.db.prepare(`
+      SELECT room_id, summary_text, summarized_until_created_at, summarized_until_id, coverage_start_timestamp, coverage_end_timestamp, updated_at
+      FROM room_context_summaries
+      WHERE room_id = ?
+    `).get(roomId) || null;
+  }
+
+  upsertRoomContextSummary({
+    roomId,
+    summaryText,
+    summarizedUntilCreatedAt,
+    summarizedUntilId,
+    coverageStartTimestamp,
+    coverageEndTimestamp,
+    updatedAt = new Date().toISOString()
+  }) {
+    this.db.prepare(`
+      INSERT INTO room_context_summaries (
+        room_id,
+        summary_text,
+        summarized_until_created_at,
+        summarized_until_id,
+        coverage_start_timestamp,
+        coverage_end_timestamp,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(room_id) DO UPDATE SET
+        summary_text = excluded.summary_text,
+        summarized_until_created_at = excluded.summarized_until_created_at,
+        summarized_until_id = excluded.summarized_until_id,
+        coverage_start_timestamp = COALESCE(room_context_summaries.coverage_start_timestamp, excluded.coverage_start_timestamp),
+        coverage_end_timestamp = excluded.coverage_end_timestamp,
+        updated_at = excluded.updated_at
+    `).run(
+      roomId,
+      String(summaryText || "").trim(),
+      summarizedUntilCreatedAt || null,
+      summarizedUntilId || null,
+      coverageStartTimestamp || null,
+      coverageEndTimestamp || null,
+      updatedAt
+    );
+    return this.getRoomContextSummary(roomId);
+  }
+
   pruneRoomMessages(roomId, keep = 500) {
     this.db.prepare(`
       DELETE FROM room_messages
@@ -284,6 +369,20 @@ export class LiveRoomDatabase {
   close() {
     this.db.close();
   }
+}
+
+function compactContextMessage(row) {
+  return {
+    id: row.id,
+    room_id: row.room_id,
+    type: row.type,
+    role: row.role,
+    user_id: row.user_id || "",
+    nickname: row.nickname || "",
+    text: row.text,
+    timestamp: row.timestamp,
+    created_at: row.created_at
+  };
 }
 
 export class DatabaseError extends Error {

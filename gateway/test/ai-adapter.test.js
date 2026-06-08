@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateAiReply } from "../src/ai-adapter.js";
+import { generateAiReply, summarizeLiveRoomContext } from "../src/ai-adapter.js";
 
 const session = {
   user_id: "user-1",
@@ -148,6 +148,81 @@ test("astrbot room batch can force single-viewer direct replies", async () => {
 
   assert.equal(reply.text, "@Alice 辛苦啦。");
   assert.equal(reply.source, "astrbot");
+});
+
+test("astrbot room batch can include short-term context", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice: do you remember?",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.context_summary, "Alice said she is preparing a demo.");
+      assert.deepEqual(body.recent_context, [
+        {
+          role: "user",
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "I am preparing a demo this week",
+          timestamp: "2026-06-09T00:00:00.000Z"
+        }
+      ]);
+      return responseJson(200, { ok: true, text: "@Alice 我记得，你这周在准备 demo。", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      roomSession: true,
+      contextSummary: "Alice said she is preparing a demo.",
+      recentContext: [
+        {
+          role: "user",
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "I am preparing a demo this week",
+          timestamp: "2026-06-09T00:00:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.source, "astrbot");
+});
+
+test("context summary uses dedicated bridge endpoint", async () => {
+  const summary = await summarizeLiveRoomContext(
+    baseConfig,
+    {
+      previousSummary: "Alice likes cozy replies.",
+      messages: [
+        {
+          role: "user",
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "I am preparing a demo this week",
+          timestamp: "2026-06-09T00:00:00.000Z"
+        }
+      ]
+    },
+    async (url, options) => {
+      assert.equal(url, "http://astrbot:18081/live-room/context/summarize");
+      assert.equal(options.headers.Authorization, "Bearer secret-token");
+      assert.deepEqual(JSON.parse(options.body), {
+        room_id: "live-room-dev",
+        previous_summary: "Alice likes cozy replies.",
+        messages: [
+          {
+            role: "user",
+            user_id: "user-a",
+            nickname: "Alice",
+            text: "I am preparing a demo this week",
+            timestamp: "2026-06-09T00:00:00.000Z"
+          }
+        ]
+      });
+      return responseJson(200, { ok: true, summary: "Alice is preparing a demo this week." });
+    }
+  );
+
+  assert.equal(summary, "Alice is preparing a demo this week.");
 });
 
 test("astrbot judge skip is returned without fallback", async () => {

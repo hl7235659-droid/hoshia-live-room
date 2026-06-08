@@ -17,7 +17,7 @@ import {
   verifyAccessCode,
   verifyPassword
 } from "./security.js";
-import { generateAiReply } from "./ai-adapter.js";
+import { generateAiReply, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
 
@@ -430,11 +430,14 @@ async function handleAiReplyBatch(batch) {
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
   await sleep(450);
   const prompt = formatLiveRoomBatchPrompt(batch);
+  const shortTermContext = await buildShortTermAiContext(batch);
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
     forceReply: batch.some((item) => item.forceReply),
     replyMode: batch.some((item) => item.forceReply) ? "single_user_direct" : "",
+    recentContext: shortTermContext.recentContext,
+    contextSummary: shortTermContext.contextSummary,
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
       nickname: item.session.nickname,
@@ -460,6 +463,87 @@ async function handleAiReplyBatch(batch) {
   broadcast(aiMessage);
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
+}
+
+async function buildShortTermAiContext(batch) {
+  await refreshRoomContextSummary(config.roomId);
+  const maxMessages = positiveInt(config.shortTermContextMaxMessages, 100, 20, 500);
+  const fetchLimit = Math.min(Math.max(maxMessages * 2, maxMessages), 1000);
+  const messages = db.listRecentContextMessages(config.roomId, fetchLimit);
+  const focusedMessages = selectContextMessagesForBatch(messages, batch, maxMessages);
+  const summary = db.getRoomContextSummary(config.roomId);
+  return {
+    recentContext: focusedMessages.map(contextPayloadMessage),
+    contextSummary: summary?.summary_text || ""
+  };
+}
+
+async function refreshRoomContextSummary(roomId) {
+  if (config.aiMode !== "astrbot") return;
+  const maxMessages = positiveInt(config.shortTermContextMaxMessages, 100, 20, 500);
+  const lookbackMessages = positiveInt(config.contextSummaryLookbackMessages, 600, maxMessages + 20, 2000);
+  const compressMessages = positiveInt(config.contextSummaryCompressMessages, 20, 1, 200);
+  try {
+    const existing = db.getRoomContextSummary(roomId);
+    const messages = db.listContextMessagesAfter(
+      roomId,
+      existing?.summarized_until_created_at || "",
+      existing?.summarized_until_id || "",
+      lookbackMessages
+    );
+    if (messages.length <= maxMessages) return;
+
+    const overflowCount = messages.length - maxMessages;
+    const toSummarize = messages.slice(0, Math.min(compressMessages, overflowCount));
+    if (!toSummarize.length) return;
+
+    const summaryText = await summarizeLiveRoomContext(config, {
+      previousSummary: existing?.summary_text || "",
+      messages: toSummarize.map(contextPayloadMessage)
+    }, globalThis.fetch);
+    if (!summaryText) return;
+
+    const first = toSummarize[0];
+    const last = toSummarize[toSummarize.length - 1];
+    db.upsertRoomContextSummary({
+      roomId,
+      summaryText,
+      summarizedUntilCreatedAt: last.created_at,
+      summarizedUntilId: last.id,
+      coverageStartTimestamp: existing?.coverage_start_timestamp || first.timestamp || first.created_at,
+      coverageEndTimestamp: last.timestamp || last.created_at
+    });
+  } catch (error) {
+    console.warn("context_summary_refresh_failed", {
+      type: error.name || "Error",
+      message: error.message
+    });
+  }
+}
+
+function selectContextMessagesForBatch(messages, batch, limit) {
+  if (!batch.some((item) => item.forceReply)) {
+    return messages.slice(-limit);
+  }
+  const userId = String(batch[0]?.session?.user_id || "");
+  const focused = messages.filter((message) => message.role === "ai" || message.user_id === userId);
+  return focused.slice(-limit);
+}
+
+function contextPayloadMessage(message) {
+  return {
+    role: message.role,
+    user_id: message.user_id || "",
+    nickname: message.nickname || "",
+    text: String(message.text || "").slice(0, config.maxMessageLength),
+    timestamp: message.timestamp || message.created_at || ""
+  };
+}
+
+function positiveInt(value, fallback, min, max) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
 }
 
 async function requireSession(req, res, next) {

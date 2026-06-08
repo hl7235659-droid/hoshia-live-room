@@ -52,6 +52,8 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     };
     if (metadata.forceReply === true) body.force_reply = true;
     if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
+    if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
+    if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
 
     const response = await fetchImpl(options.astrbotBridgeUrl, {
       method: "POST",
@@ -75,6 +77,51 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function summarizeLiveRoomContext(options, payload, fetchImpl = globalThis.fetch) {
+  if (!fetchImpl) throw new Error("fetch_unavailable");
+  if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
+  if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+
+  try {
+    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, "/live-room/context/summarize"), {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        room_id: options.roomId,
+        previous_summary: String(payload?.previousSummary || "").slice(0, 4000),
+        messages: Array.isArray(payload?.messages) ? payload.messages : []
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`astrbot_context_summary_http_${response.status}`);
+    }
+
+    const body = await response.json();
+    if (!body?.ok) {
+      throw new Error(`astrbot_context_summary_${body?.error || "failed"}`);
+    }
+    return String(body.summary || "").trim().slice(0, 4000);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function bridgeEndpoint(baseUrl, pathname) {
+  const url = new URL(baseUrl);
+  url.pathname = pathname;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 function normalizeReply(reply, fallbackSource) {
