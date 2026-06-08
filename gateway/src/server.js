@@ -529,7 +529,7 @@ function normalizeOnboardingProfile(body, session) {
   }
 
   const replyStyle = normalizeReplyStyle(body?.replyStyle ?? body?.reply_style);
-  const preferredName = String(body?.preferredName ?? body?.preferred_name ?? session.nickname || "").trim().slice(0, 32);
+  const preferredName = String((body?.preferredName ?? body?.preferred_name ?? session.nickname) || "").trim().slice(0, 32);
   const replyStyleText = String(body?.replyStyleText ?? body?.reply_style_text ?? replyStyleLabel(replyStyle)).trim().slice(0, 60);
   const interests = String(body?.interests ?? "").trim().slice(0, 160);
 
