@@ -21,7 +21,13 @@ import { generateAiReply, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
-import { buildWelcomeGreetingPrompt, fallbackWelcomeGreeting, welcomeCooldownKey } from "./welcome-greeting.js";
+import {
+  buildWelcomeGreetingPrompt,
+  fallbackWelcomeGreeting,
+  shouldScheduleWelcomeGreeting,
+  welcomeCooldownKey,
+  welcomeInflightKey
+} from "./welcome-greeting.js";
 
 class MemoryStore {
   constructor() {
@@ -256,6 +262,9 @@ app.post("/api/account/onboarding", requireSession, async (req, res) => {
   const nextSession = sessionFromUser(user, req.session.created_at);
   await saveSession(req.sessionId, nextSession);
   refreshSocketSessions(nextSession);
+  if (shouldScheduleWelcomeGreeting(nextSession, false) && activeUserConnections.has(nextSession.user_id)) {
+    scheduleWelcomeGreeting(nextSession);
+  }
 
   res.json({ ok: true, user: publicSession(nextSession) });
 });
@@ -349,7 +358,7 @@ wss.on("connection", (ws, _req, session) => {
   broadcastAudienceChanged();
   ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
   ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
-  if (!alreadyOnline) scheduleWelcomeGreeting(session);
+  if (shouldScheduleWelcomeGreeting(session, alreadyOnline)) scheduleWelcomeGreeting(session);
 
   ws.on("pong", () => {
     ws.isAlive = true;
@@ -520,77 +529,92 @@ async function handleAiReplyBatch(batch) {
 
 function scheduleWelcomeGreeting(session) {
   if (!config.welcomeGreetingEnabled || !session?.user_id) return;
+  if (session.onboarding_completed === false) return;
   const delay = positiveInt(config.welcomeGreetingDelayMs, 900, 0, 10000);
   setTimeout(() => {
-    void handleWelcomeGreeting(session);
+    void handleWelcomeGreeting(session).catch((error) => {
+      console.warn("welcome_greeting_failed", {
+        type: error.name || "Error",
+        message: error.message
+      });
+    });
   }, delay);
 }
 
 async function handleWelcomeGreeting(session) {
   if (!config.welcomeGreetingEnabled || !session?.user_id) return;
+  if (session.onboarding_completed === false) return;
   if (!activeUserConnections.has(session.user_id)) return;
 
   const key = welcomeCooldownKey(config.roomId, session.user_id);
+  const inflightKey = welcomeInflightKey(config.roomId, session.user_id);
   if (await store.get(key)) return;
-  await store.setex(key, positiveInt(config.welcomeGreetingCooldownSeconds, 1800, 60, 86400), "1");
+  if (await store.get(inflightKey)) return;
+  await store.setex(inflightKey, 60, "1");
 
-  const active = activeUserConnections.get(session.user_id);
-  const currentOnlineSeconds = active ? Math.max(0, Math.floor((Date.now() - active.connectedAtMs) / 1000)) : 0;
-  const totalOnlineSeconds = Number(session.total_online_seconds || 0) + currentOnlineSeconds;
-  const room = roomInfo();
-  const realityContextLines = buildRealityContext({
-    config,
-    room,
-    batch: [{
-      session,
-      text: "进入直播间",
-      mentioned: true,
-      timestamp: new Date().toISOString()
-    }],
-    audienceUsers: audiencePayload().users,
-    activeConnections: activeUserConnections
-  });
-  const prompt = buildWelcomeGreetingPrompt({
-    session,
-    room,
-    realityContextLines,
-    currentOnlineSeconds,
-    totalOnlineSeconds
-  });
-
-  let reply;
-  if (config.aiMode === "astrbot") {
-    reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
-      roomSession: true,
-      forceReply: true,
-      replyMode: "entry_welcome",
-      replyTargets: [session.nickname].filter(Boolean),
-      messages: [{
-        user_id: session.user_id,
-        nickname: session.nickname,
-        text: "进入直播间",
+  try {
+    const active = activeUserConnections.get(session.user_id);
+    const currentOnlineSeconds = active ? Math.max(0, Math.floor((Date.now() - active.connectedAtMs) / 1000)) : 0;
+    const totalOnlineSeconds = Number(session.total_online_seconds || 0) + currentOnlineSeconds;
+    const room = roomInfo();
+    const realityContextLines = buildRealityContext({
+      config,
+      room,
+      batch: [{
+        session,
+        text: "\u8fdb\u5165\u76f4\u64ad\u95f4",
         mentioned: true,
-        memory_enabled: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
         timestamp: new Date().toISOString()
-      }]
+      }],
+      audienceUsers: audiencePayload().users,
+      activeConnections: activeUserConnections
     });
-  }
+    const prompt = buildWelcomeGreetingPrompt({
+      session,
+      room,
+      realityContextLines,
+      contextSummary: db.getRoomContextSummary(config.roomId)?.summary_text || "",
+      currentOnlineSeconds,
+      totalOnlineSeconds
+    });
 
-  const text = reply?.source && !String(reply.source).startsWith("mock")
-    ? reply.text
-    : fallbackWelcomeGreeting(session);
-  const aiMessage = messageEvent("ai_reply", "ai", text, {
-    user_id: "ai-host",
-    nickname: "Hoshia"
-  }, {
-    source: reply?.source || "welcome_fallback",
-    latency_ms: reply?.latency_ms,
-    welcome: true
-  });
-  await storeMessage(aiMessage);
-  broadcast(aiMessage);
-  await setCharacterState(isValidState(reply?.state) ? reply.state : "SPEAKING");
-  setTimeout(() => void setCharacterState("IDLE"), 1200);
+    let reply;
+    if (config.aiMode === "astrbot") {
+      reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
+        roomSession: true,
+        forceReply: true,
+        replyMode: "entry_welcome",
+        replyTargets: [session.nickname].filter(Boolean),
+        messages: [{
+          user_id: session.user_id,
+          nickname: session.nickname,
+          text: "\u8fdb\u5165\u76f4\u64ad\u95f4",
+          mentioned: true,
+          memory_enabled: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
+          timestamp: new Date().toISOString()
+        }]
+      });
+    }
+
+    const text = reply?.source && !String(reply.source).startsWith("mock")
+      ? reply.text
+      : fallbackWelcomeGreeting(session);
+    const aiMessage = messageEvent("ai_reply", "ai", text, {
+      user_id: "ai-host",
+      nickname: "Hoshia"
+    }, {
+      source: reply?.source || "welcome_fallback",
+      latency_ms: reply?.latency_ms,
+      welcome: true
+    });
+    await storeMessage(aiMessage);
+    broadcast(aiMessage);
+    await store.setex(key, positiveInt(config.welcomeGreetingCooldownSeconds, 1800, 60, 86400), "1");
+    await setCharacterState(isValidState(reply?.state) ? reply.state : "SPEAKING");
+    setTimeout(() => void setCharacterState("IDLE"), 1200);
+  } finally {
+    await store.del(inflightKey);
+  }
 }
 
 async function buildShortTermAiContext(batch) {
