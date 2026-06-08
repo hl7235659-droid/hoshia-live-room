@@ -163,6 +163,43 @@ test("music service resolves URL requests through xiaomusic real-url proxy", asy
   assert.equal(result.state.current.stream_url.startsWith("/api/music/stream/"), true);
 });
 
+test("music service skips unplayable search candidates", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const playedTitles = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("/api/search/online")) {
+      return jsonResponse({
+        success: true,
+        data: [
+          { title: "Broken Candidate", artist: "Plugin", platform: "bilibili" },
+          { title: "Playable Candidate", artist: "Plugin", platform: "bilibili" }
+        ]
+      });
+    }
+    if (href.includes("/api/play/getMediaSource")) {
+      const song = JSON.parse(options.body);
+      playedTitles.push(song.title);
+      if (song.title === "Broken Candidate") {
+        return jsonResponse({ success: false, error: "plugin failed" });
+      }
+      return jsonResponse({ success: true, data: { url: "/music/playable.mp3" } });
+    }
+    throw new Error(`unexpected fetch ${href}`);
+  };
+
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  const result = await service.requestSong("candidate", { user_id: "u-candidate", username: "friend" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(playedTitles, ["Broken Candidate", "Playable Candidate"]);
+  assert.equal(result.track.title, "Playable Candidate");
+});
+
 function jsonResponse(value) {
   return {
     ok: true,

@@ -189,30 +189,34 @@ export class MusicService {
 
     const search = await fetchJson(searchUrl, { timeoutMs: this.config.musicProviderTimeoutMs });
     if (search && search.success === false) throw new Error(search.error || "music_provider_unavailable");
-    const song = findFirstSong(search);
-    if (!song) throw new Error("music_not_found");
+    const candidates = findSongCandidates(search);
+    if (!candidates.length) throw new Error("music_not_found");
 
-    const media = await fetchJson(new URL("/api/play/getMediaSource", baseUrl), {
-      method: "POST",
-      body: JSON.stringify(song),
-      headers: { "content-type": "application/json" },
-      timeoutMs: this.config.musicProviderTimeoutMs
-    });
-    if (media && media.success === false) throw new Error(media.error || "music_unplayable");
+    for (const song of candidates.slice(0, 8)) {
+      const media = await fetchJson(new URL("/api/play/getMediaSource", baseUrl), {
+        method: "POST",
+        body: JSON.stringify(song),
+        headers: { "content-type": "application/json" },
+        timeoutMs: this.config.musicProviderTimeoutMs
+      }).catch(() => null);
+      if (media && media.success === false) continue;
 
-    const streamUrl = extractMediaUrl(media) || song.url;
-    if (!streamUrl) throw new Error("music_unplayable");
+      const streamUrl = extractMediaUrl(media) || song.url;
+      if (!streamUrl) continue;
 
-    return {
-      title: song.title || song.name || query,
-      artist: artistText(song),
-      album: song.album || song.albumName || "",
-      cover: song.cover || song.artwork || song.albumPic || "",
-      duration: song.duration || song.interval || 0,
-      source: normalizeSource(song.platform || song.source || attempt.label),
-      streamUrl,
-      streamHeaders: media?.headers || media?.data?.headers || {}
-    };
+      return {
+        title: song.title || song.name || query,
+        artist: artistText(song),
+        album: song.album || song.albumName || "",
+        cover: song.cover || song.artwork || song.albumPic || "",
+        duration: song.duration || song.interval || 0,
+        source: normalizeSource(song.platform || song.source || attempt.label),
+        streamUrl,
+        streamHeaders: media?.headers || media?.data?.headers || {}
+      };
+    }
+
+    throw new Error("music_unplayable");
   }
 
   async resolveXiaomusicUrlSong(baseUrl, url) {
@@ -369,13 +373,24 @@ function normalizedBaseUrl(value) {
 }
 
 function findFirstSong(payload) {
+  return findSongCandidates(payload)[0] || null;
+}
+
+function findSongCandidates(payload) {
   const arrays = [];
   collectArrays(payload, arrays);
+  const seen = new Set();
+  const songs = [];
   for (const array of arrays) {
-    const song = array.find((item) => item && typeof item === "object" && (item.title || item.name) && !item.data);
-    if (song) return song;
+    for (const item of array) {
+      if (!item || typeof item !== "object" || !(item.title || item.name) || item.data) continue;
+      const key = `${item.platform || item.source || ""}:${item.id || item.mid || item.url || item.title || item.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      songs.push(item);
+    }
   }
-  return null;
+  return songs;
 }
 
 function collectArrays(value, arrays) {
