@@ -76,6 +76,8 @@ Important options:
 - `AI_MODE`: `mock` by default; set to `astrbot` only after the bridge is installed.
 - `ASTRBOT_BRIDGE_TOKEN`: shared bearer token for gateway and AstrBot bridge.
 - `ASTRBOT_FALLBACK_TO_MOCK`: keeps the room usable when AstrBot is unavailable.
+- `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
+- `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.
 
@@ -168,6 +170,8 @@ Do not install or restart production AstrBot without an explicit deployment wind
 - The frontend includes an `@Hoshia` shortcut in the send bar, and history nicknames can be clicked to insert `@nickname`.
 - When nobody mentions Hoshia, the AstrBot bridge can run a Heartflow-lite judge model before replying. The default judge provider is `tencentmaas/deepseek-v4-flash`; low-score batches are silently skipped so Hoshia does not over-speak.
 - AstrBot replies use a shared room session (`<room_id>:room`) so the host has room-level context instead of separate one-on-one user sessions.
+- When exactly one web account is online, the gateway can send `force_reply: true` so Hoshia replies to each message without requiring `@Hoshia`.
+- The AstrBot bridge can optionally connect to `astrbot_plugin_livingmemory`. Viewer memories are isolated by web account session (`live-room:<room_id>:user:<user_id>`) and require the viewer's memory consent; daily news memories use a separate `live-room:<room_id>:news` pool.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.
 - The layout is intentionally split into Stage, Overlay, and Control so future Live2D, TTS, gifts, and avatar systems can be connected without rewriting the whole page.

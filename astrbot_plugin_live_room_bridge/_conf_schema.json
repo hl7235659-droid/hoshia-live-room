@@ -44,5 +44,35 @@
     "description": "Energy recovered whenever a non-mention batch is skipped.",
     "type": "float",
     "default": 0.04
+  },
+  "livingmemory_enabled": {
+    "description": "Enable LivingMemory recall/write integration for web live-room viewers.",
+    "type": "bool",
+    "default": false
+  },
+  "livingmemory_auto_summary_enabled": {
+    "description": "Summarize stable viewer facts and write them to LivingMemory after successful replies.",
+    "type": "bool",
+    "default": true
+  },
+  "livingmemory_persona_id": {
+    "description": "Persona ID used to isolate Hoshia live-room memories.",
+    "type": "string",
+    "default": "hoshia-live-room"
+  },
+  "livingmemory_recall_k": {
+    "description": "Maximum LivingMemory items recalled for each viewer or news pool.",
+    "type": "int",
+    "default": 5
+  },
+  "livingmemory_max_participants": {
+    "description": "Maximum live-room viewers recalled/summarized per batch.",
+    "type": "int",
+    "default": 3
+  },
+  "livingmemory_news_retention_days": {
+    "description": "Retention hint stored in metadata for daily news memories.",
+    "type": "int",
+    "default": 7
   }
 }

@@ -93,6 +93,7 @@ const replyBatchWindowMs = 3200;
 const mentionReplyWindowMs = 1200;
 const maxReplyBatchSize = 8;
 const maxReplyTargets = 3;
+const singleUserReplyDelayMs = Math.max(0, Math.min(Number(config.singleUserReplyDelayMs || 600), 3000));
 let pendingReplyBatch = [];
 let replyBatchTimer = null;
 let replyBatchRunning = false;
@@ -370,12 +371,19 @@ async function handleDanmaku(session, payload) {
 }
 
 function enqueueAiReply(session, text) {
+  const forceReply = isSingleUserDirectReply(session);
   pendingReplyBatch.push({
     session,
     text,
     mentioned: mentionsHoshia(text),
+    forceReply,
     timestamp: new Date().toISOString()
   });
+
+  if (forceReply) {
+    scheduleAiReplyBatch(singleUserReplyDelayMs);
+    return;
+  }
 
   if (pendingReplyBatch.length >= maxReplyBatchSize) {
     scheduleAiReplyBatch(0);
@@ -397,8 +405,12 @@ function scheduleAiReplyBatch(delay) {
 }
 
 async function flushAiReplyBatch() {
-  if (replyBatchRunning) return;
-  const batch = pendingReplyBatch.splice(0, maxReplyBatchSize);
+  if (replyBatchRunning) {
+    scheduleAiReplyBatch(nextReplyDelay());
+    return;
+  }
+  const batchSize = pendingReplyBatch[0]?.forceReply ? 1 : maxReplyBatchSize;
+  const batch = pendingReplyBatch.splice(0, batchSize);
   if (!batch.length) return;
 
   replyBatchRunning = true;
@@ -407,7 +419,7 @@ async function flushAiReplyBatch() {
   } finally {
     replyBatchRunning = false;
     if (pendingReplyBatch.length) {
-      scheduleAiReplyBatch(mentionReplyWindowMs);
+      scheduleAiReplyBatch(nextReplyDelay());
     }
   }
 }
@@ -420,11 +432,14 @@ async function handleAiReplyBatch(batch) {
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
+    forceReply: batch.some((item) => item.forceReply),
+    replyMode: batch.some((item) => item.forceReply) ? "single_user_direct" : "",
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
       nickname: item.session.nickname,
       text: item.text,
       mentioned: item.mentioned,
+      memory_enabled: normalizeStoredAiProfile(item.session.ai_profile)?.memory_enabled === true,
       timestamp: item.timestamp
     }))
   });
@@ -473,6 +488,19 @@ function getSessionIdFromReq(req) {
 
 function mentionsHoshia(text) {
   return /@\s*(?:hoshia|Hoshia|星娅|主播)/i.test(String(text || ""));
+}
+
+function isSingleUserDirectReply(session) {
+  return Boolean(
+    config.singleUserDirectReplyEnabled
+    && uniqueOnlineCount() === 1
+    && activeUserConnections.has(session.user_id)
+  );
+}
+
+function nextReplyDelay() {
+  if (pendingReplyBatch[0]?.forceReply) return singleUserReplyDelayMs;
+  return pendingReplyBatch.some((item) => item.mentioned) ? mentionReplyWindowMs : replyBatchWindowMs;
 }
 
 function replyTargets(batch) {

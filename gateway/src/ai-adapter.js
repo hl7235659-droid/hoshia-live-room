@@ -40,22 +40,26 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
   const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
 
   try {
+    const body = {
+      session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
+      room_id: options.roomId,
+      user_id: session.user_id,
+      nickname: session.nickname,
+      text,
+      prompt: text,
+      reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
+      messages: Array.isArray(metadata.messages) ? metadata.messages : []
+    };
+    if (metadata.forceReply === true) body.force_reply = true;
+    if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
+
     const response = await fetchImpl(options.astrbotBridgeUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${options.astrbotBridgeToken}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
-        room_id: options.roomId,
-        user_id: session.user_id,
-        nickname: session.nickname,
-        text,
-        prompt: text,
-        reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
-        messages: Array.isArray(metadata.messages) ? metadata.messages : []
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
 

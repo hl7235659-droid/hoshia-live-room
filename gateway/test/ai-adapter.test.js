@@ -102,6 +102,54 @@ test("astrbot room batch uses shared room session and reply targets", async () =
   assert.equal(reply.source, "astrbot");
 });
 
+test("astrbot room batch can force single-viewer direct replies", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    "最近弹幕：\n[1] Alice: 今天好累",
+    baseConfig,
+    async (_url, options) => {
+      assert.deepEqual(JSON.parse(options.body), {
+        session_id: "live-room-dev:room",
+        room_id: "live-room-dev",
+        user_id: "room",
+        nickname: "直播间弹幕",
+        text: "最近弹幕：\n[1] Alice: 今天好累",
+        prompt: "最近弹幕：\n[1] Alice: 今天好累",
+        reply_targets: [],
+        messages: [
+          {
+            user_id: "user-a",
+            nickname: "Alice",
+            text: "今天好累",
+            mentioned: false,
+            timestamp: "2026-06-09T00:00:00.000Z"
+          }
+        ],
+        force_reply: true,
+        reply_mode: "single_user_direct"
+      });
+      return responseJson(200, { ok: true, text: "@Alice 辛苦啦。", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      roomSession: true,
+      forceReply: true,
+      replyMode: "single_user_direct",
+      messages: [
+        {
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "今天好累",
+          mentioned: false,
+          timestamp: "2026-06-09T00:00:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.text, "@Alice 辛苦啦。");
+  assert.equal(reply.source, "astrbot");
+});
+
 test("astrbot judge skip is returned without fallback", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "直播间弹幕" },

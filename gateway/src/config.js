@@ -17,7 +17,9 @@ export const config = {
   astrbotBridgeUrl: process.env.ASTRBOT_BRIDGE_URL || "",
   astrbotBridgeToken: process.env.ASTRBOT_BRIDGE_TOKEN || "",
   astrbotTimeoutMs: Number(process.env.ASTRBOT_TIMEOUT_MS || 15000),
-  astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true)
+  astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true),
+  singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
+  singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600)
 };
 
 function required(name) {
