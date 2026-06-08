@@ -19,7 +19,10 @@ export const config = {
   astrbotTimeoutMs: Number(process.env.ASTRBOT_TIMEOUT_MS || 15000),
   astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
-  singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600)
+  singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),
+  realityContextEnabled: parseBool(process.env.REALITY_CONTEXT_ENABLED, true),
+  realityContextTimezone: process.env.REALITY_CONTEXT_TIMEZONE || "Asia/Shanghai",
+  realityContextIncludeOps: parseBool(process.env.REALITY_CONTEXT_INCLUDE_OPS, true)
 };
 
 function required(name) {

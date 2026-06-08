@@ -19,6 +19,7 @@ import {
 } from "./security.js";
 import { generateAiReply } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
+import { buildRealityContext } from "./reality-context.js";
 
 class MemoryStore {
   constructor() {
@@ -551,6 +552,13 @@ function formatLiveRoomBatchPrompt(batch) {
     return `[${index + 1}] ${item.session.nickname}${mentionMark}: ${item.text}`;
   });
   const profileLines = mentionedAiProfileLines(batch);
+  const realityContextLines = buildRealityContext({
+    config,
+    room: roomInfo(),
+    batch,
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections
+  });
 
   const targetInstruction = targets.length
     ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
@@ -559,6 +567,9 @@ function formatLiveRoomBatchPrompt(batch) {
   return [
     hoshiaPersonaPrompt,
     "你正在朋友限定的 Hoshia AI 直播间里读一小批最近弹幕。",
+    ...(realityContextLines.length ? [
+      ...realityContextLines
+    ] : []),
     targetInstruction,
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、亲切、有直播感。",
     ...(profileLines.length ? [
