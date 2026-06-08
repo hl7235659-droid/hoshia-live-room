@@ -11,6 +11,7 @@ const stageDanmakuLaneCount = 5;
 const defaultDanmakuSpeed = 90;
 const defaultStageDanmakuWidth = 430;
 const danmakuExitPadding = 80;
+const danmakuVisualSpeedScale = 0.8;
 
 type StagePresentation = {
   label: string;
@@ -136,7 +137,7 @@ function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
       {messages.map((message, index) => {
         const lane = stableDanmakuLane(message);
         const speed = validDanmakuSpeed(message.danmaku_speed) || defaultDanmakuSpeed;
-        const duration = (stageWidth + danmakuExitPadding) / speed;
+        const duration = (stageWidth + danmakuExitPadding) / (speed * danmakuVisualSpeedScale);
         return (
           <span
             key={`stage-${message.id}-${index}`}
