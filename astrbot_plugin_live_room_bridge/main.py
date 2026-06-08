@@ -2,6 +2,8 @@ import asyncio
 import json
 import re
 import time
+from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from http import HTTPStatus
 from typing import Any
 
@@ -40,7 +42,7 @@ def _clamp_score(value: Any) -> float:
     "astrbot_plugin_live_room_bridge",
     "codex",
     "Internal HTTP bridge for live-room-dev gateway.",
-    "0.2.0",
+    "0.3.0",
 )
 class LiveRoomBridgePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -113,7 +115,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/memory/debug-recall"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -128,6 +130,8 @@ class LiveRoomBridgePlugin(Star):
 
         if request["path"] == "/live-room/news":
             return await self._handle_news_ingest(payload)
+        if request["path"] == "/live-room/memory/debug-recall":
+            return await self._handle_debug_recall(payload)
 
         text = str(payload.get("text", "")).strip()
         prompt_override = str(payload.get("prompt", "")).strip()
@@ -268,13 +272,14 @@ class LiveRoomBridgePlugin(Star):
 
             news_query = self._news_query(messages)
             if news_query:
+                await self._cleanup_expired_news_memories(engine, room_id)
                 news_memories = await engine.search_memories(
                     query=news_query,
                     k=self.livingmemory_recall_k,
                     session_id=self._news_session_id(room_id),
                     persona_id=self.livingmemory_persona_id,
                 )
-                news_lines = self._format_memory_lines(news_memories)
+                news_lines = self._format_news_memory_lines(news_memories)
                 if news_lines:
                     sections.append(
                         "近期新闻热点参考（只用于话题灵感，不代表任何观众个人记忆）：\n"
@@ -295,6 +300,21 @@ class LiveRoomBridgePlugin(Star):
             if not content:
                 continue
             lines.append(f"- {content[:280]}")
+        return lines
+
+    def _format_news_memory_lines(self, memories: Any) -> list[str]:
+        lines: list[str] = []
+        now = time.time()
+        for memory in list(memories or []):
+            metadata = self._memory_metadata(memory)
+            if self._news_memory_expired(metadata, now):
+                continue
+            content = str(getattr(memory, "content", "") or "").strip()
+            if not content:
+                continue
+            lines.append(f"- {content[:280]}")
+            if len(lines) >= self.livingmemory_recall_k:
+                break
         return lines
 
     def _news_query(self, messages: Any) -> str:
@@ -341,9 +361,12 @@ class LiveRoomBridgePlugin(Star):
                     importance = self._clamp_importance(item.get("importance", 0.65))
                     topics = self._clean_text_list(item.get("topics", []))
                     key_facts = self._clean_text_list(item.get("key_facts", []))
+                    viewer_session_id = self._viewer_session_id(room_id, viewer["user_id"])
+                    if await self._is_duplicate_viewer_memory(engine, content, viewer_session_id):
+                        continue
                     await engine.add_memory(
                         content=content[:500],
-                        session_id=self._viewer_session_id(room_id, viewer["user_id"]),
+                        session_id=viewer_session_id,
                         persona_id=self.livingmemory_persona_id,
                         importance=importance,
                         metadata={
@@ -395,6 +418,7 @@ Hoshia 回复：
         if not engine:
             return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_unavailable"}
         room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
+        await self._cleanup_expired_news_memories(engine, room_id)
         date = str(payload.get("date", "")).strip()[:32]
         raw_items = payload.get("items", [])
         if isinstance(raw_items, str):
@@ -425,6 +449,124 @@ Hoshia 回复：
             logger.warning(f"[live-room-bridge] news memory write failed: {exc}")
             return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "news_memory_write_failed"}
 
+    async def _handle_debug_recall(self, payload: dict[str, Any]):
+        if not self.livingmemory_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_disabled"}
+        engine = self._livingmemory_engine()
+        if not engine:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_unavailable"}
+        room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
+        user_id = str(payload.get("user_id", "")).strip()
+        query = str(payload.get("query", "")).strip()
+        if not user_id or not query:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "user_id_and_query_required"}
+        try:
+            session_id = self._viewer_session_id(room_id, user_id)
+            memories = await engine.search_memories(
+                query=query[:500],
+                k=self.livingmemory_recall_k,
+                session_id=session_id,
+                persona_id=self.livingmemory_persona_id,
+            )
+            results = []
+            for memory in list(memories or [])[: self.livingmemory_recall_k]:
+                metadata = self._memory_metadata(memory)
+                score = getattr(memory, "final_score", None)
+                try:
+                    score = float(score) if score is not None else None
+                except (TypeError, ValueError):
+                    score = None
+                results.append({
+                    "id": getattr(memory, "doc_id", None),
+                    "content": str(getattr(memory, "content", "") or "")[:280],
+                    "score": score,
+                    "source": metadata.get("source"),
+                    "create_time": metadata.get("create_time"),
+                })
+            return HTTPStatus.OK, {
+                "ok": True,
+                "session_id": session_id,
+                "persona_id": self.livingmemory_persona_id,
+                "count": len(results),
+                "results": results,
+            }
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] debug recall failed: {exc}")
+            return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "debug_recall_failed"}
+
+    async def _cleanup_expired_news_memories(self, engine: Any, room_id: str):
+        storage = getattr(getattr(engine, "faiss_db", None), "document_storage", None)
+        if not storage:
+            return
+        session_id = self._news_session_id(room_id)
+        now = time.time()
+        deleted = 0
+        try:
+            offset = 0
+            while True:
+                try:
+                    docs = await storage.get_documents(
+                        metadata_filters={"session_id": session_id},
+                        limit=100,
+                        offset=offset,
+                    )
+                except TypeError:
+                    docs = await storage.get_documents(
+                        metadata_filters={"session_id": session_id},
+                        limit=100,
+                    )
+                if not docs:
+                    break
+                batch_deleted = 0
+                for doc in docs:
+                    metadata = self._memory_metadata(doc)
+                    if metadata.get("source") != "daily_news" or not self._news_memory_expired(metadata, now):
+                        continue
+                    memory_id = self._memory_id(doc)
+                    if memory_id is None:
+                        continue
+                    try:
+                        if await engine.delete_memory(memory_id):
+                            deleted += 1
+                            batch_deleted += 1
+                    except Exception as exc:
+                        logger.debug(f"[live-room-bridge] expired news delete failed: {exc}")
+                if len(docs) < 100:
+                    break
+                if not batch_deleted:
+                    offset += len(docs)
+            if deleted:
+                logger.info(f"[live-room-bridge] cleaned expired news memories: {deleted} room={room_id}")
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] expired news cleanup skipped: {exc}")
+
+    async def _is_duplicate_viewer_memory(self, engine: Any, content: str, session_id: str) -> bool:
+        try:
+            memories = await engine.search_memories(
+                query=content[:500],
+                k=max(5, self.livingmemory_recall_k),
+                session_id=session_id,
+                persona_id=self.livingmemory_persona_id,
+            )
+        except Exception as exc:
+            logger.debug(f"[live-room-bridge] duplicate memory lookup failed: {exc}")
+            return False
+
+        candidate = self._normalize_memory_text(content)
+        if not candidate:
+            return False
+        for memory in memories or []:
+            existing = self._normalize_memory_text(str(getattr(memory, "content", "") or ""))
+            if not existing:
+                continue
+            if candidate == existing:
+                return True
+            if min(len(candidate), len(existing)) >= 12 and (candidate in existing or existing in candidate):
+                return True
+            if SequenceMatcher(None, candidate, existing).ratio() >= 0.9:
+                return True
+        return False
+
     def _summarize_news_items(self, items: list[str], date: str) -> str:
         prefix = f"每日新闻热点摘要（{date}）" if date else "每日新闻热点摘要"
         lines = [f"- {item[:360]}" for item in items[:20]]
@@ -442,6 +584,63 @@ Hoshia 回复：
             return max(0.0, min(1.0, float(value)))
         except (TypeError, ValueError):
             return 0.65
+
+    def _memory_metadata(self, item: Any) -> dict[str, Any]:
+        if isinstance(item, dict):
+            metadata = item.get("metadata", {})
+        else:
+            metadata = getattr(item, "metadata", {})
+        if isinstance(metadata, dict):
+            return metadata
+        if isinstance(metadata, str):
+            try:
+                parsed = json.loads(metadata)
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    def _memory_id(self, item: Any) -> int | None:
+        value = item.get("id") if isinstance(item, dict) else getattr(item, "doc_id", None)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _news_memory_expired(self, metadata: dict[str, Any], now: float | None = None) -> bool:
+        if metadata.get("source") != "daily_news":
+            return False
+        created_at = self._metadata_timestamp(metadata)
+        if created_at is None:
+            return False
+        retention_days = self._metadata_retention_days(metadata)
+        return (now or time.time()) - created_at > retention_days * 86400
+
+    def _metadata_retention_days(self, metadata: dict[str, Any]) -> int:
+        try:
+            return max(1, min(int(metadata.get("retention_days", self.livingmemory_news_retention_days)), 365))
+        except (TypeError, ValueError):
+            return self.livingmemory_news_retention_days
+
+    def _metadata_timestamp(self, metadata: dict[str, Any]) -> float | None:
+        create_time = metadata.get("create_time")
+        try:
+            if create_time is not None:
+                return float(create_time)
+        except (TypeError, ValueError):
+            pass
+        date_text = str(metadata.get("date", "")).strip()
+        if not date_text:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+            try:
+                return datetime.strptime(date_text[:10], fmt).replace(tzinfo=timezone.utc).timestamp()
+            except ValueError:
+                continue
+        return None
+
+    def _normalize_memory_text(self, value: str) -> str:
+        return re.sub(r"\s+", "", str(value or "").strip().lower())
 
     def _clean_targets(self, reply_targets: Any) -> list[str]:
         if not isinstance(reply_targets, list):

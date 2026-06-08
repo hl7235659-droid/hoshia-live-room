@@ -172,6 +172,7 @@ Do not install or restart production AstrBot without an explicit deployment wind
 - AstrBot replies use a shared room session (`<room_id>:room`) so the host has room-level context instead of separate one-on-one user sessions.
 - When exactly one web account is online, the gateway can send `force_reply: true` so Hoshia replies to each message without requiring `@Hoshia`.
 - The AstrBot bridge can optionally connect to `astrbot_plugin_livingmemory`. Viewer memories are isolated by web account session (`live-room:<room_id>:user:<user_id>`) and require the viewer's memory consent; daily news memories use a separate `live-room:<room_id>:news` pool.
+- The bridge skips duplicate viewer memories, filters expired daily news memories, and exposes a token-protected internal debug recall endpoint for deployment checks.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.
 - The layout is intentionally split into Stage, Overlay, and Control so future Live2D, TTS, gifts, and avatar systems can be connected without rewriting the whole page.
