@@ -1,9 +1,9 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Palette, Save, Send, ShieldCheck, Signal, UserCircle, UserPlus, Users, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Palette, Pause, Play, Save, Send, ShieldCheck, Signal, SkipForward, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
-import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, LiveMessage, RoomInfo, Session } from "./types";
+import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
 import { toCharacterState } from "./types";
 import "./styles.css";
 
@@ -29,6 +29,26 @@ const demoAudience: AudiencePayload = {
     { user_id: "friend-b", username: "blue", nickname: "Blue", avatar_url: "", danmaku_color: "#19A989", online: false, registered_at: "2026-06-06T10:20:00.000Z", last_login_at: "2026-06-07T09:00:00.000Z", total_online_seconds: 8640, current_online_seconds: 0 },
     { user_id: "friend-c", username: "ruru", nickname: "Ruru", avatar_url: "", danmaku_color: "#8B5CF6", online: false, registered_at: "2026-06-05T08:00:00.000Z", last_login_at: null, total_online_seconds: 0, current_online_seconds: 0 }
   ]
+};
+const demoMusicState: MusicState = {
+  ok: true,
+  enabled: true,
+  provider: "xiaomusic",
+  status: "playing",
+  current: {
+    id: "demo-track",
+    title: "StellaNet Night Drive",
+    artist: "Hoshia",
+    duration: 188,
+    source: "demo",
+    requested_by: "Mika",
+    stream_url: ""
+  },
+  queue: [
+    { id: "demo-track-2", title: "Pixel Cat Parade", artist: "Blue", duration: 164, source: "demo", requested_by: "Blue", stream_url: "" }
+  ],
+  last_error: "",
+  can_control: true
 };
 
 function appPath(path: string) {
@@ -72,6 +92,7 @@ function App() {
   const [gatePassed, setGatePassed] = useState(isStageDemo);
   const [authChecked, setAuthChecked] = useState(isStageDemo);
   const [messages, setMessages] = useState<LiveMessage[]>(seedMessages);
+  const [musicState, setMusicState] = useState<MusicState>(demoMusicState);
   const [characterState, setCharacterState] = useState<CharacterState>("IDLE");
   const [socketStatus, setSocketStatus] = useState(isStageDemo ? "demo" : "locked");
   const [awakeningIntroOpen, setAwakeningIntroOpen] = useState(isAwakeningDemo);
@@ -131,6 +152,15 @@ function App() {
       }
     }
 
+    function refreshMusicState() {
+      return fetch(appPath("api/music/state"))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((payload) => {
+          if (payload?.ok) setMusicState(payload);
+        })
+        .catch(() => undefined);
+    }
+
     function refreshRoomState() {
       return fetch(appPath("api/room/state"))
         .then((res) => res.json())
@@ -144,6 +174,7 @@ function App() {
 
     void refreshRoomState();
     void refreshAudience();
+    void refreshMusicState();
 
     let ws: WebSocket | null = null;
     let disposed = false;
@@ -191,6 +222,12 @@ function App() {
         setCharacterState(toCharacterState(payload.state));
         if (payload.messages?.length) setMessages(payload.messages);
       }
+      if (payload.type === "music_state") {
+        setMusicState(payload);
+      }
+      if (payload.type === "music_error") {
+        setMusicState((current) => ({ ...current, status: "error", last_error: payload.error }));
+      }
       if (payload.type === "character_state") {
         setCharacterState(toCharacterState(payload.state));
       }
@@ -225,6 +262,7 @@ function App() {
         setSocketStatus("live");
         void refreshRoomState();
         void refreshAudience();
+        void refreshMusicState();
       });
       ws.addEventListener("close", () => {
         if (disposed) return;
@@ -278,6 +316,8 @@ function App() {
       room={room}
       messages={messages}
       characterState={characterState}
+      musicState={musicState}
+      onMusicState={setMusicState}
       socketStatus={socketStatus}
       isDemo={isStageDemo}
       onLocalSendStart={() => {
@@ -619,6 +659,8 @@ function LiveMobile({
   room,
   messages,
   characterState,
+  musicState,
+  onMusicState,
   socketStatus,
   audience,
   isDemo,
@@ -633,6 +675,8 @@ function LiveMobile({
   room: RoomInfo | null;
   messages: LiveMessage[];
   characterState: CharacterState;
+  musicState: MusicState;
+  onMusicState: (state: MusicState) => void;
   socketStatus: string;
   audience: AudiencePayload | null;
   isDemo: boolean;
@@ -660,6 +704,8 @@ function LiveMobile({
         />
         <BottomDock
           messages={messages}
+          musicState={musicState}
+          onMusicState={onMusicState}
           audience={audience}
           socketStatus={socketStatus}
           nickname={session.nickname}
@@ -1813,6 +1859,8 @@ function DanmakuHistory({ messages, onMention }: { messages: LiveMessage[]; onMe
 
 function BottomDock({
   messages,
+  musicState,
+  onMusicState,
   audience,
   socketStatus,
   nickname,
@@ -1822,6 +1870,8 @@ function BottomDock({
   onOpenAccount
 }: {
   messages: LiveMessage[];
+  musicState: MusicState;
+  onMusicState: (state: MusicState) => void;
   audience: AudiencePayload | null;
   socketStatus: string;
   nickname: string;
@@ -1875,6 +1925,11 @@ function BottomDock({
 
   return (
     <section className={`bottom-dock ${historyOpen ? "history-open" : ""}`} aria-label="Live chat dock">
+      <MusicRoomPanel
+        musicState={musicState}
+        socketStatus={socketStatus}
+        onMusicState={onMusicState}
+      />
       <section className={`history-drawer ${historyOpen ? "open" : ""}`} aria-label="Message history">
         <div className="history-header">
           <button
@@ -1972,6 +2027,184 @@ function BottomDock({
       </section>
     </section>
   );
+}
+
+function MusicRoomPanel({
+  musicState,
+  socketStatus,
+  onMusicState
+}: {
+  musicState: MusicState;
+  socketStatus: string;
+  onMusicState: (state: MusicState) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [requestText, setRequestText] = useState("");
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [notice, setNotice] = useState("");
+  const current = musicState.current;
+  const canUseMusic = musicState.enabled && socketStatus !== "demo";
+  const canControl = musicState.can_control && canUseMusic;
+  const isPlaying = musicState.status === "playing";
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const nextSrc = current?.stream_url ? appPath(current.stream_url) : "";
+    if (!nextSrc) {
+      audio.removeAttribute("src");
+      audio.load();
+      return;
+    }
+    if (audio.getAttribute("src") !== nextSrc) {
+      audio.src = nextSrc;
+      audio.load();
+    }
+    if (!audioUnlocked || musicState.status !== "playing") {
+      audio.pause();
+      return;
+    }
+    void audio.play().catch(() => setNotice("Tap enable sound to start music on this device."));
+  }, [audioUnlocked, current?.id, current?.stream_url, musicState.status]);
+
+  async function enableAudio() {
+    setAudioUnlocked(true);
+    setNotice("");
+    const audio = audioRef.current;
+    if (audio && current?.stream_url && musicState.status === "playing") {
+      await audio.play().catch(() => setNotice("Browser blocked autoplay. Tap once more after the track loads."));
+    }
+  }
+
+  async function requestSong(event: FormEvent) {
+    event.preventDefault();
+    const query = requestText.trim();
+    if (!query || !canUseMusic) return;
+    setNotice("Searching...");
+    const payload = await postMusic("request", { query });
+    if (payload?.state) onMusicState(payload.state);
+    setNotice(payload?.ok ? "Added to queue." : friendlyMusicNotice(payload?.error));
+    if (payload?.ok) setRequestText("");
+  }
+
+  async function control(action: string, id?: string) {
+    const payload = await postMusic("control", { action, id });
+    if (payload?.state) onMusicState(payload.state);
+    if (!payload?.ok) setNotice(friendlyMusicNotice(payload?.error));
+  }
+
+  return (
+    <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"}`} aria-label="Music room player">
+      <audio ref={audioRef} preload="none" onEnded={() => void control("next")} />
+      <div className="music-room-now">
+        <div className="music-room-icon" aria-hidden="true">
+          <Music size={16} />
+        </div>
+        <div className="music-room-title">
+          <span>{musicState.enabled ? statusText(musicState.status) : "music off"}</span>
+          <strong>{current ? trackLabel(current) : "No song playing"}</strong>
+        </div>
+        <button
+          type="button"
+          className="music-sound-button"
+          onClick={enableAudio}
+          disabled={!current?.stream_url || audioUnlocked}
+          title="Enable sound on this device"
+        >
+          <Volume2 size={15} />
+          <span>{audioUnlocked ? "on" : "sound"}</span>
+        </button>
+      </div>
+      <form className="music-request" onSubmit={requestSong}>
+        <input
+          value={requestText}
+          onChange={(event) => setRequestText(event.target.value)}
+          placeholder={musicState.enabled ? "点歌 / song name" : "Music provider disabled"}
+          disabled={!canUseMusic}
+          maxLength={160}
+        />
+        <button type="submit" disabled={!canUseMusic || !requestText.trim()}>
+          <Music size={14} />
+          <span>点歌</span>
+        </button>
+      </form>
+      <div className="music-room-controls">
+        {canControl ? (
+          <>
+            <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
+              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+              <span>{isPlaying ? "pause" : "play"}</span>
+            </button>
+            <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
+              <SkipForward size={14} />
+              <span>next</span>
+            </button>
+            <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
+              <Trash2 size={14} />
+              <span>clear</span>
+            </button>
+          </>
+        ) : (
+          <span className="music-room-hint">Friends can request songs. Host controls playback.</span>
+        )}
+      </div>
+      {musicState.queue.length ? (
+        <div className="music-queue" aria-label="Song queue">
+          {musicState.queue.slice(0, 3).map((track) => (
+            <span key={track.id}>
+              {trackLabel(track)}
+              {canControl ? (
+                <button type="button" onClick={() => void control("remove", track.id)} aria-label={`Remove ${track.title}`}>
+                  ×
+                </button>
+              ) : null}
+            </span>
+          ))}
+          {musicState.queue.length > 3 ? <small>+{musicState.queue.length - 3}</small> : null}
+        </div>
+      ) : null}
+      {(notice || musicState.last_error) ? (
+        <p className="music-notice">{notice || friendlyMusicNotice(musicState.last_error)}</p>
+      ) : null}
+    </section>
+  );
+}
+
+async function postMusic(kind: "request" | "control", body: Record<string, unknown>) {
+  const endpoint = kind === "request" ? "api/music/request" : "api/music/control";
+  try {
+    return await fetch(appPath(endpoint), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    }).then((res) => res.json());
+  } catch {
+    return { ok: false, error: "music_network_error" };
+  }
+}
+
+function trackLabel(track: MusicTrack) {
+  return track.artist ? `${track.title} · ${track.artist}` : track.title;
+}
+
+function statusText(status: MusicState["status"]) {
+  if (status === "loading") return "searching";
+  if (status === "playing") return "now playing";
+  if (status === "paused") return "paused";
+  if (status === "error") return "music issue";
+  return "music queue";
+}
+
+function friendlyMusicNotice(error?: string) {
+  if (error === "music_disabled") return "Music room is not enabled yet.";
+  if (error === "music_provider_unavailable") return "Music service is not ready.";
+  if (error === "music_provider_timeout") return "Music service timed out.";
+  if (error === "music_not_found") return "Could not find that song.";
+  if (error === "music_unplayable") return "That song is not playable right now.";
+  if (error === "music_rate_limited") return "Too many song requests. Try again later.";
+  if (error === "music_queue_full") return "Song queue is full.";
+  if (error === "music_forbidden") return "Only the host can control playback.";
+  return error ? "Music request failed." : "";
 }
 
 function labelForRole(role: string) {

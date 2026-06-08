@@ -20,6 +20,8 @@ import {
 import { generateAiReply, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
+import { MusicService, parseMusicRequestText } from "./music-service.js";
+import { buildWelcomeGreetingPrompt, fallbackWelcomeGreeting, welcomeCooldownKey } from "./welcome-greeting.js";
 
 class MemoryStore {
   constructor() {
@@ -87,6 +89,7 @@ const app = express();
 const server = http.createServer(app);
 const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
+const musicService = new MusicService(config, { store });
 const sockets = new Map();
 const activeUserConnections = new Map();
 let characterState = "IDLE";
@@ -286,6 +289,36 @@ app.get("/api/room/audience", requireSession, async (_req, res) => {
   res.json(audiencePayload());
 });
 
+app.get("/api/music/state", requireSession, async (req, res) => {
+  res.json(musicService.publicState(req.session));
+});
+
+app.post("/api/music/request", requireSession, async (req, res) => {
+  const result = await musicService.requestSong(req.body?.query, req.session);
+  if (!result.ok) {
+    broadcastMusicState(req.session);
+    return res.status(musicStatusCode(result.error)).json(result);
+  }
+  await broadcastSystemText(`♪ ${req.session.nickname} 点歌《${result.track.title}》已加入播放。`);
+  broadcastMusicState(req.session);
+  res.json(result);
+});
+
+app.post("/api/music/control", requireSession, async (req, res) => {
+  const result = musicService.control(req.body?.action, req.session, req.body || {});
+  broadcastMusicState(req.session);
+  if (!result.ok) return res.status(musicStatusCode(result.error)).json(result);
+  res.json(result);
+});
+
+app.get("/api/music/stream/:trackId", requireSession, async (req, res) => {
+  try {
+    await musicService.streamTrack(req.params.trackId, req, res);
+  } catch (error) {
+    res.status(502).json({ error: "music_stream_failed" });
+  }
+});
+
 const wss = new WebSocketServer({ noServer: true });
 const websocketHeartbeatIntervalMs = 25000;
 
@@ -310,10 +343,13 @@ server.on("upgrade", async (req, socket, head) => {
 wss.on("connection", (ws, _req, session) => {
   ws.isAlive = true;
   sockets.set(ws, session);
+  const alreadyOnline = activeUserConnections.has(session.user_id);
   markUserOnline(session);
   broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
   broadcastAudienceChanged();
   ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
+  ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
+  if (!alreadyOnline) scheduleWelcomeGreeting(session);
 
   ws.on("pong", () => {
     ws.isAlive = true;
@@ -368,7 +404,24 @@ async function handleDanmaku(session, payload) {
   broadcast(userMessage);
   await setCharacterState(nextCharacterState("user_message", text));
 
+  const musicQuery = parseMusicRequestText(text);
+  if (musicQuery) {
+    await handleMusicRequestFromDanmaku(session, musicQuery);
+    return;
+  }
+
   enqueueAiReply(session, text);
+}
+
+async function handleMusicRequestFromDanmaku(session, query) {
+  const result = await musicService.requestSong(query, session);
+  if (result.ok) {
+    await broadcastSystemText(`♪ ${session.nickname} 点歌《${result.track.title}》已加入播放。`);
+  } else {
+    await broadcastSystemText(`♪ 点歌失败：${friendlyMusicError(result.error)}`);
+    sendToSession(session.user_id, { type: "music_error", error: result.error });
+  }
+  broadcastMusicState(session);
 }
 
 function enqueueAiReply(session, text) {
@@ -463,6 +516,81 @@ async function handleAiReplyBatch(batch) {
   broadcast(aiMessage);
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
+}
+
+function scheduleWelcomeGreeting(session) {
+  if (!config.welcomeGreetingEnabled || !session?.user_id) return;
+  const delay = positiveInt(config.welcomeGreetingDelayMs, 900, 0, 10000);
+  setTimeout(() => {
+    void handleWelcomeGreeting(session);
+  }, delay);
+}
+
+async function handleWelcomeGreeting(session) {
+  if (!config.welcomeGreetingEnabled || !session?.user_id) return;
+  if (!activeUserConnections.has(session.user_id)) return;
+
+  const key = welcomeCooldownKey(config.roomId, session.user_id);
+  if (await store.get(key)) return;
+  await store.setex(key, positiveInt(config.welcomeGreetingCooldownSeconds, 1800, 60, 86400), "1");
+
+  const active = activeUserConnections.get(session.user_id);
+  const currentOnlineSeconds = active ? Math.max(0, Math.floor((Date.now() - active.connectedAtMs) / 1000)) : 0;
+  const totalOnlineSeconds = Number(session.total_online_seconds || 0) + currentOnlineSeconds;
+  const room = roomInfo();
+  const realityContextLines = buildRealityContext({
+    config,
+    room,
+    batch: [{
+      session,
+      text: "进入直播间",
+      mentioned: true,
+      timestamp: new Date().toISOString()
+    }],
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections
+  });
+  const prompt = buildWelcomeGreetingPrompt({
+    session,
+    room,
+    realityContextLines,
+    currentOnlineSeconds,
+    totalOnlineSeconds
+  });
+
+  let reply;
+  if (config.aiMode === "astrbot") {
+    reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
+      roomSession: true,
+      forceReply: true,
+      replyMode: "entry_welcome",
+      replyTargets: [session.nickname].filter(Boolean),
+      messages: [{
+        user_id: session.user_id,
+        nickname: session.nickname,
+        text: "进入直播间",
+        mentioned: true,
+        memory_enabled: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
+        timestamp: new Date().toISOString()
+      }]
+    });
+  }
+
+  const text = reply?.source && !String(reply.source).startsWith("mock")
+    ? reply.text
+    : fallbackWelcomeGreeting(session);
+  const aiMessage = messageEvent("ai_reply", "ai", text, {
+    user_id: "ai-host",
+    nickname: "Hoshia"
+  }, {
+    source: reply?.source || "welcome_fallback",
+    latency_ms: reply?.latency_ms,
+    welcome: true
+  });
+  await storeMessage(aiMessage);
+  broadcast(aiMessage);
+  await setCharacterState(isValidState(reply?.state) ? reply.state : "SPEAKING");
+  setTimeout(() => void setCharacterState("IDLE"), 1200);
 }
 
 async function buildShortTermAiContext(batch) {
@@ -756,6 +884,12 @@ async function storeMessage(event) {
   db.pruneRoomMessages(event.room_id, 500);
 }
 
+async function broadcastSystemText(text) {
+  const event = systemEvent("system", text);
+  await storeMessage(event);
+  broadcast(event);
+}
+
 async function setCharacterState(state) {
   characterState = state;
   broadcast({ type: "character_state", room_id: config.roomId, state, timestamp: new Date().toISOString() });
@@ -765,6 +899,14 @@ function broadcast(payload) {
   const data = JSON.stringify(payload);
   for (const ws of sockets.keys()) {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  }
+}
+
+function broadcastMusicState() {
+  for (const [ws, session] of sockets.entries()) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
+    }
   }
 }
 
@@ -894,6 +1036,26 @@ function systemEvent(type, text, extra = {}) {
   };
 }
 
+function musicStatusCode(error) {
+  if (error === "music_forbidden") return 403;
+  if (error === "music_disabled") return 404;
+  if (error === "music_query_required" || error === "music_control_invalid") return 400;
+  if (error === "music_rate_limited") return 429;
+  if (error === "music_queue_full") return 409;
+  return 502;
+}
+
+function friendlyMusicError(error) {
+  if (error === "music_disabled") return "音乐房间还没开启";
+  if (error === "music_provider_unavailable") return "音乐服务还没准备好";
+  if (error === "music_provider_timeout") return "音乐服务响应超时";
+  if (error === "music_not_found") return "没有找到这首歌";
+  if (error === "music_unplayable") return "这首歌暂时不能播放";
+  if (error === "music_rate_limited") return "点歌太快啦，稍等一下";
+  if (error === "music_queue_full") return "队列已经满啦";
+  return "音乐服务暂时不可用";
+}
+
 function publicSession(session) {
   return {
     user_id: session.user_id,
@@ -939,6 +1101,8 @@ function sessionFromUser(user, createdAt = new Date().toISOString()) {
     nickname: user.nickname,
     avatar_url: user.avatar_url || "",
     danmaku_color: user.danmaku_color || "",
+    last_login_at: user.last_login_at || "",
+    total_online_seconds: Number(user.total_online_seconds || 0),
     room_id: config.roomId,
     onboarding_completed: Boolean(user.onboarding_completed),
     ai_profile: parseAiProfileJson(user.ai_profile_json),

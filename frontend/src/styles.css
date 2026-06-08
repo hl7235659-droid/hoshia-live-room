@@ -2013,6 +2013,168 @@ button:disabled {
   pointer-events: auto;
 }
 
+.music-room {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px 8px;
+  border-bottom: 1px solid rgba(23, 32, 51, 0.14);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 241, 123, 0.38), transparent 38%),
+    rgba(216, 245, 255, 0.26);
+}
+
+.music-room-now,
+.music-request,
+.music-room-controls,
+.music-queue,
+.music-queue span,
+.music-room-controls button,
+.music-sound-button {
+  display: flex;
+  align-items: center;
+}
+
+.music-room-now {
+  gap: 8px;
+  min-width: 0;
+}
+
+.music-room-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #294b60;
+  background: rgba(255, 241, 123, 0.76);
+  box-shadow: 0 7px 14px rgba(34, 115, 163, 0.12);
+}
+
+.music-room-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.music-room-title span,
+.music-room-hint,
+.music-notice,
+.music-queue small {
+  color: #6c7890;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.music-room-title span {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.music-room-title strong {
+  display: block;
+  min-width: 0;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-sound-button {
+  width: auto;
+  height: 30px;
+  padding: 0 8px;
+  gap: 4px;
+  border-radius: 999px;
+  color: #294b60;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.music-request {
+  gap: 6px;
+}
+
+.music-request input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(43, 127, 169, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #172033;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.music-request button,
+.music-room-controls button {
+  height: 34px;
+  width: auto;
+  padding: 0 9px;
+  gap: 4px;
+  border-radius: 12px;
+  background: #fff17b;
+  color: #172033;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.music-room-controls {
+  gap: 6px;
+  min-height: 20px;
+  flex-wrap: wrap;
+}
+
+.music-room-controls button {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #294b60;
+}
+
+.music-queue {
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.music-queue span {
+  max-width: 100%;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #294b60;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.music-queue span button {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(23, 32, 51, 0.08);
+  color: #294b60;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.music-notice {
+  margin: 0;
+}
+
+.music-room.disabled {
+  opacity: 0.72;
+}
+
 .connection-notice {
   position: absolute;
   z-index: 8;

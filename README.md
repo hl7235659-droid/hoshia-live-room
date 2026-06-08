@@ -78,6 +78,9 @@ Important options:
 - `ASTRBOT_FALLBACK_TO_MOCK`: keeps the room usable when AstrBot is unavailable.
 - `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
 - `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
+- `MUSIC_ENABLED`: enables the private-room music queue experiment.
+- `MUSIC_PROVIDER_BASE_URL`: internal xiaomusic URL, for example `http://xiaomusic:8090`.
+- `MUSIC_ADMIN_USERNAMES`: comma-separated live-room usernames allowed to control playback.
 - `SHORT_TERM_CONTEXT_MAX_MESSAGES`: recent user/AI messages sent to AstrBot as live-room short-term context; defaults to `100` (about 50 rounds).
 - `CONTEXT_SUMMARY_LOOKBACK_MESSAGES`: maximum unsummarized messages scanned for rolling context summary refresh; defaults to `600`.
 - `CONTEXT_SUMMARY_COMPRESS_MESSAGES`: older messages summarized per refresh when the recent context is over the limit; defaults to `20`.
@@ -162,6 +165,20 @@ To connect AstrBot:
 4. Set `ASTRBOT_BRIDGE_URL`, for example `http://astrbot:18081/live-room/generate`.
 
 Do not install or restart production AstrBot without an explicit deployment window.
+
+## Music Room Experiment
+
+The music room is optional and disabled by default. When enabled, friends can request songs with `点歌 歌名`, `/song 歌名`, or `@Hoshia 点歌 歌名`. The gateway keeps the queue and proxies playback URLs through authenticated live-room endpoints.
+
+For xiaomusic, keep account cookies, tokens, and plugin credentials only in xiaomusic's private config directory. Do not put QQ Music credentials in this repository, `.env.example`, frontend code, chat logs, or committed files.
+
+Recommended private admin access:
+
+```powershell
+ssh -i E:\agent111.pem -L 58090:127.0.0.1:58090 ubuntu@43.133.229.140
+```
+
+Then open `http://127.0.0.1:58090` locally and configure xiaomusic yourself.
 
 ## Notes
 

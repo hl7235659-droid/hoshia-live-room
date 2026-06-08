@@ -25,7 +25,18 @@ export const config = {
   contextSummaryCompressMessages: Number(process.env.CONTEXT_SUMMARY_COMPRESS_MESSAGES || 20),
   realityContextEnabled: parseBool(process.env.REALITY_CONTEXT_ENABLED, true),
   realityContextTimezone: process.env.REALITY_CONTEXT_TIMEZONE || "Asia/Shanghai",
-  realityContextIncludeOps: parseBool(process.env.REALITY_CONTEXT_INCLUDE_OPS, true)
+  realityContextIncludeOps: parseBool(process.env.REALITY_CONTEXT_INCLUDE_OPS, true),
+  welcomeGreetingEnabled: parseBool(process.env.WELCOME_GREETING_ENABLED, true),
+  welcomeGreetingCooldownSeconds: Number(process.env.WELCOME_GREETING_COOLDOWN_SECONDS || 1800),
+  welcomeGreetingDelayMs: Number(process.env.WELCOME_GREETING_DELAY_MS || 900),
+  musicEnabled: parseBool(process.env.MUSIC_ENABLED, false),
+  musicProvider: enumValue(process.env.MUSIC_PROVIDER || "xiaomusic", ["xiaomusic"], "xiaomusic"),
+  musicProviderBaseUrl: process.env.MUSIC_PROVIDER_BASE_URL || "",
+  musicAdminUsernames: split(process.env.MUSIC_ADMIN_USERNAMES).map((item) => item.toLowerCase()),
+  musicQueueMax: Number(process.env.MUSIC_QUEUE_MAX || 20),
+  musicRequestWindowSeconds: Number(process.env.MUSIC_REQUEST_RATE_LIMIT_WINDOW_SECONDS || 60),
+  musicRequestLimitCount: Number(process.env.MUSIC_REQUEST_RATE_LIMIT_COUNT || 3),
+  musicProviderTimeoutMs: Number(process.env.MUSIC_PROVIDER_TIMEOUT_MS || 12000)
 };
 
 function required(name) {

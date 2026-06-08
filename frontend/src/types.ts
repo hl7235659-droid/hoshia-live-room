@@ -30,6 +30,32 @@ export type Session = {
   ai_profile?: AiProfile | null;
 };
 
+export type MusicTrack = {
+  id: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  cover?: string;
+  duration?: number;
+  source?: string;
+  requested_by?: string;
+  requested_by_id?: string;
+  requested_at?: string;
+  stream_url: string;
+};
+
+export type MusicState = {
+  ok: boolean;
+  enabled: boolean;
+  provider: string;
+  status: "idle" | "loading" | "playing" | "paused" | "error";
+  current: MusicTrack | null;
+  queue: MusicTrack[];
+  last_error?: string;
+  can_control: boolean;
+  timestamp?: string;
+};
+
 export type AiProfile = {
   preferred_name: string;
   reply_style: "friend" | "teasing_friend" | "cool" | "custom";
