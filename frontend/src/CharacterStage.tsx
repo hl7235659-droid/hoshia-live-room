@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { CharacterState, LiveMessage } from "./types";
 import { colorForMessage } from "./messageColors";
 
@@ -9,7 +9,8 @@ const live2dModelUrl = import.meta.env.VITE_LIVE2D_MODEL_URL?.trim() || "";
 const live2dCoreUrl = import.meta.env.VITE_LIVE2D_CORE_URL?.trim() || `${appBase}live2d/runtime/live2dcubismcore.min.js`;
 const stageDanmakuLaneCount = 5;
 const defaultDanmakuSpeed = 90;
-const defaultDanmakuDuration = 13;
+const defaultStageDanmakuWidth = 430;
+const danmakuExitPadding = 80;
 
 type StagePresentation = {
   label: string;
@@ -101,12 +102,41 @@ export function CharacterStage({
 }
 
 function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [stageWidth, setStageWidth] = useState(defaultStageDanmakuWidth);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const updateStageWidth = () => {
+      const nextWidth = Math.round(stage.getBoundingClientRect().width);
+      if (nextWidth > 0) setStageWidth(nextWidth);
+    };
+
+    updateStageWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateStageWidth);
+      return () => window.removeEventListener("resize", updateStageWidth);
+    }
+
+    const observer = new ResizeObserver(updateStageWidth);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="stage-danmaku" aria-label="Floating danmaku behind character">
+    <div
+      ref={stageRef}
+      className="stage-danmaku"
+      aria-label="Floating danmaku behind character"
+      style={{ "--stage-width": `${stageWidth}px` } as CSSProperties}
+    >
       {messages.map((message, index) => {
         const lane = stableDanmakuLane(message);
         const speed = validDanmakuSpeed(message.danmaku_speed) || defaultDanmakuSpeed;
-        const duration = defaultDanmakuDuration * (defaultDanmakuSpeed / speed);
+        const duration = (stageWidth + danmakuExitPadding) / speed;
         return (
           <span
             key={`stage-${message.id}-${index}`}
