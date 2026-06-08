@@ -160,6 +160,10 @@ export class MusicService {
     const baseUrl = normalizedBaseUrl(this.config.musicProviderBaseUrl);
     if (!baseUrl) throw new Error("music_provider_unavailable");
 
+    if (isHttpUrl(query)) {
+      return await this.resolveXiaomusicUrlSong(baseUrl, query);
+    }
+
     const attempts = parseXiaomusicSearchChain(this.config.musicXiaomusicSearchChain);
     const errors = [];
     for (const attempt of attempts) {
@@ -208,6 +212,36 @@ export class MusicService {
       source: normalizeSource(song.platform || song.source || attempt.label),
       streamUrl,
       streamHeaders: media?.headers || media?.data?.headers || {}
+    };
+  }
+
+  async resolveXiaomusicUrlSong(baseUrl, url) {
+    const cleanUrl = String(url || "").trim();
+    const proxyUrl = new URL("/api/proxy/real-url", baseUrl);
+    proxyUrl.searchParams.set("url", cleanUrl);
+
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(this.config.musicProviderTimeoutMs)
+    });
+    if (response.status < 200 || response.status >= 400) {
+      throw new Error(`music_provider_http_${response.status}`);
+    }
+
+    const location = response.headers.get("location");
+    const streamUrl = location ? new URL(location, baseUrl).toString() : cleanUrl;
+    if (!isHttpUrl(streamUrl)) throw new Error("music_unplayable");
+
+    return {
+      title: urlTitle(cleanUrl),
+      artist: urlHost(cleanUrl),
+      album: "",
+      cover: "",
+      duration: 0,
+      source: "xiaomusic-url",
+      streamUrl,
+      streamHeaders: {}
     };
   }
 
@@ -282,6 +316,33 @@ function normalizeSource(value) {
   const source = String(value || "").trim();
   if (source === "tx") return "qqmusic";
   return source || "xiaomusic";
+}
+
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function urlHost(value) {
+  try {
+    return new URL(String(value || "")).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function urlTitle(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const last = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+    return last || url.hostname.replace(/^www\./, "") || "URL 点歌";
+  } catch {
+    return "URL 点歌";
+  }
 }
 
 async function fetchJson(url, { timeoutMs = 12000, ...options } = {}) {

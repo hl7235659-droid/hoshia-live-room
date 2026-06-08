@@ -125,6 +125,44 @@ test("music service tries QQ/LX first and falls back to MusicFree", async (t) =>
   assert.equal(result.track.source, "musicfree");
 });
 
+test("music service resolves URL requests through xiaomusic real-url proxy", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    calls.push({ href, method: options.method, redirect: options.redirect });
+    assert.equal(href.includes("/api/proxy/real-url"), true);
+    return {
+      ok: false,
+      status: 307,
+      url: href,
+      headers: {
+        get(name) {
+          return name.toLowerCase() === "location" ? "https://cdn.example.test/audio.m4a" : null;
+        }
+      }
+    };
+  };
+
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  const result = await service.requestSong("https://www.bilibili.com/video/BVtest", {
+    user_id: "u-url",
+    username: "friend"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].redirect, "manual");
+  assert.equal(result.track.source, "xiaomusic-url");
+  assert.equal(result.track.artist, "bilibili.com");
+  assert.equal(result.state.current.stream_url.startsWith("/api/music/stream/"), true);
+});
+
 function jsonResponse(value) {
   return {
     ok: true,
