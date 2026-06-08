@@ -105,6 +105,7 @@ export function CharacterStage({
 function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [stageWidth, setStageWidth] = useState(defaultStageDanmakuWidth);
+  const [messageWidths, setMessageWidths] = useState<Record<string, number>>({});
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -127,6 +128,47 @@ function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
     return () => observer.disconnect();
   }, []);
 
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const updateMessageWidths = () => {
+      const nextWidths: Record<string, number> = {};
+      for (const line of stage.querySelectorAll<HTMLElement>(".stage-danmaku-line[data-danmaku-key]")) {
+        const key = line.dataset.danmakuKey;
+        if (!key) continue;
+        const width = Math.round(line.getBoundingClientRect().width);
+        if (width > 0) nextWidths[key] = width;
+      }
+
+      setMessageWidths((current) => {
+        const currentKeys = Object.keys(current);
+        const nextKeys = Object.keys(nextWidths);
+        if (
+          currentKeys.length === nextKeys.length &&
+          nextKeys.every((key) => current[key] === nextWidths[key])
+        ) {
+          return current;
+        }
+        return nextWidths;
+      });
+    };
+
+    updateMessageWidths();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateMessageWidths);
+      return () => window.removeEventListener("resize", updateMessageWidths);
+    }
+
+    const observer = new ResizeObserver(updateMessageWidths);
+    observer.observe(stage);
+    for (const line of stage.querySelectorAll(".stage-danmaku-line[data-danmaku-key]")) {
+      observer.observe(line);
+    }
+    return () => observer.disconnect();
+  }, [messages]);
+
   return (
     <div
       ref={stageRef}
@@ -135,12 +177,15 @@ function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
       style={{ "--stage-width": `${stageWidth}px` } as CSSProperties}
     >
       {messages.map((message, index) => {
+        const messageKey = `${message.id}-${index}`;
         const lane = stableDanmakuLane(message);
         const speed = validDanmakuSpeed(message.danmaku_speed) || defaultDanmakuSpeed;
-        const duration = (stageWidth + danmakuExitPadding) / (speed * danmakuVisualSpeedScale);
+        const messageWidth = messageWidths[messageKey] || 0;
+        const duration = (stageWidth + messageWidth + danmakuExitPadding) / (speed * danmakuVisualSpeedScale);
         return (
           <span
-            key={`stage-${message.id}-${index}`}
+            key={`stage-${messageKey}`}
+            data-danmaku-key={messageKey}
             className={`stage-danmaku-line ${message.role}`}
             style={{
               "--danmaku-color": message.color || colorForMessage(message),
