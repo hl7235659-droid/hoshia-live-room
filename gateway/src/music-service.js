@@ -160,13 +160,31 @@ export class MusicService {
     const baseUrl = normalizedBaseUrl(this.config.musicProviderBaseUrl);
     if (!baseUrl) throw new Error("music_provider_unavailable");
 
+    const attempts = parseXiaomusicSearchChain(this.config.musicXiaomusicSearchChain);
+    const errors = [];
+    for (const attempt of attempts) {
+      try {
+        return await this.resolveXiaomusicSong(baseUrl, query, attempt);
+      } catch (error) {
+        errors.push(`${attempt.label}:${safeMusicError(error)}`);
+      }
+    }
+
+    const hasUnplayable = errors.some((item) => item.includes("music_unplayable"));
+    const hasNotFound = errors.length > 0 && errors.every((item) => item.includes("music_not_found"));
+    throw new Error(hasUnplayable ? "music_unplayable" : hasNotFound ? "music_not_found" : "music_provider_unavailable");
+  }
+
+  async resolveXiaomusicSong(baseUrl, query, attempt) {
     const searchUrl = new URL("/api/search/online", baseUrl);
     searchUrl.searchParams.set("keyword", query);
-    searchUrl.searchParams.set("plugin", "all");
+    searchUrl.searchParams.set("plugin", attempt.plugin);
     searchUrl.searchParams.set("page", "1");
     searchUrl.searchParams.set("limit", "8");
+    searchUrl.searchParams.set("api_type", String(attempt.apiType));
 
     const search = await fetchJson(searchUrl, { timeoutMs: this.config.musicProviderTimeoutMs });
+    if (search && search.success === false) throw new Error(search.error || "music_provider_unavailable");
     const song = findFirstSong(search);
     if (!song) throw new Error("music_not_found");
 
@@ -175,7 +193,8 @@ export class MusicService {
       body: JSON.stringify(song),
       headers: { "content-type": "application/json" },
       timeoutMs: this.config.musicProviderTimeoutMs
-    }).catch(() => null);
+    });
+    if (media && media.success === false) throw new Error(media.error || "music_unplayable");
 
     const streamUrl = extractMediaUrl(media) || song.url;
     if (!streamUrl) throw new Error("music_unplayable");
@@ -186,7 +205,7 @@ export class MusicService {
       album: song.album || song.albumName || "",
       cover: song.cover || song.artwork || song.albumPic || "",
       duration: song.duration || song.interval || 0,
-      source: song.platform || song.source || "xiaomusic",
+      source: normalizeSource(song.platform || song.source || attempt.label),
       streamUrl,
       streamHeaders: media?.headers || media?.data?.headers || {}
     };
@@ -232,6 +251,37 @@ export class MusicService {
     if (count === 1) await this.store.expire(key, windowSeconds);
     return count <= limit;
   }
+}
+
+function parseXiaomusicSearchChain(value) {
+  const raw = String(value || "lx:tx,musicfree:all")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const attempts = raw
+    .map((item) => {
+      const [kindRaw, pluginRaw] = item.split(":");
+      const kind = String(kindRaw || "").trim().toLowerCase();
+      const plugin = String(pluginRaw || "all").trim() || "all";
+      if (kind === "lx" || kind === "lxserver" || kind === "qq" || kind === "qqmusic" || kind === "tx") {
+        return { label: plugin === "tx" ? "qqmusic" : `lx:${plugin}`, apiType: 2, plugin };
+      }
+      if (kind === "musicfree" || kind === "freemusic" || kind === "mf") {
+        return { label: "musicfree", apiType: 1, plugin };
+      }
+      return null;
+    })
+    .filter(Boolean);
+  return attempts.length ? attempts : [
+    { label: "qqmusic", apiType: 2, plugin: "tx" },
+    { label: "musicfree", apiType: 1, plugin: "all" }
+  ];
+}
+
+function normalizeSource(value) {
+  const source = String(value || "").trim();
+  if (source === "tx") return "qqmusic";
+  return source || "xiaomusic";
 }
 
 async function fetchJson(url, { timeoutMs = 12000, ...options } = {}) {

@@ -78,6 +78,53 @@ test("music service resolves xiaomusic result and normalizes playback state", as
   assert.equal(result.state.current.stream_url.startsWith("/api/music/stream/"), true);
 });
 
+test("music service tries QQ/LX first and falls back to MusicFree", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const searchCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("/api/search/online")) {
+      const parsed = new URL(href);
+      searchCalls.push({
+        apiType: parsed.searchParams.get("api_type"),
+        plugin: parsed.searchParams.get("plugin")
+      });
+      if (parsed.searchParams.get("api_type") === "2") {
+        return jsonResponse({ success: false, error: "LX Server接口未配置！" });
+      }
+      return jsonResponse({
+        success: true,
+        data: {
+          list: [{ title: "Fallback Song", artist: "MusicFree", platform: "musicfree", url: "/music/fallback.mp3" }]
+        }
+      });
+    }
+    if (href.includes("/api/play/getMediaSource")) {
+      assert.equal(options.method, "POST");
+      return jsonResponse({ success: true, data: { url: "/music/fallback.mp3" } });
+    }
+    throw new Error(`unexpected fetch ${href}`);
+  };
+
+  const service = new MusicService(
+    { ...baseConfig, musicXiaomusicSearchChain: "lx:tx,musicfree:all" },
+    { store: new TestStore() }
+  );
+  const result = await service.requestSong("Fallback Song", { user_id: "u1", username: "friend" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(searchCalls, [
+    { apiType: "2", plugin: "tx" },
+    { apiType: "1", plugin: "all" }
+  ]);
+  assert.equal(result.track.title, "Fallback Song");
+  assert.equal(result.track.source, "musicfree");
+});
+
 function jsonResponse(value) {
   return {
     ok: true,
