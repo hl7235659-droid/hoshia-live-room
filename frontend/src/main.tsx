@@ -1041,7 +1041,7 @@ function HoshiaAwakeningIntro({
   const dialogueText = awakeningDialogueText(phase, answers, saveError);
   const innerThought = awakeningInnerThought(phase);
   const choicePhase = isAwakeningChoicePhase(phase);
-  const finalCenterText = phase === "finalBlackReady" ? "都准备就绪了喵。" : "";
+  const finalCenterText = phase === "finalBlackReady" ? "星港连接稳定……都准备就绪了喵。" : "";
   const isFinalImagePhase = phase === "finalEyeOpening" || phase === "finalFollowLine" || phase === "finalWhiteBloom" || phase === "finalWhiteReady";
   const isFinalBloomPhase = phase === "finalWhiteBloom" || phase === "finalWhiteReady";
   const showInnerContent = Boolean(innerThought) || choicePhase;
@@ -1188,10 +1188,10 @@ function HoshiaAwakeningIntro({
       ) : null}
       <div className="awakening-call" aria-hidden="true">
         <span className="awakening-rule" />
-        <strong>你终于来啦，Hoshia 等了你好久！</strong>
+        <strong>信号接收成功……Hoshia 终于找到你了。</strong>
         <span className="awakening-rule" />
       </div>
-      <p className="awakening-thought">是，是谁在叫我？</p>
+      <p className="awakening-thought">是……谁在呼唤我？</p>
       <div className="eyelid eyelid-top" aria-hidden="true" />
       <div className="eyelid eyelid-bottom" aria-hidden="true" />
       {phase === "focusedWait" ? <span className="awakening-touch-cue">轻触继续</span> : null}
@@ -1388,30 +1388,30 @@ function AwakeningCustomChoiceForm({
 }
 
 function awakeningDialogueText(phase: AwakeningIntroPhase, answers: AwakeningAnswers, saveError: string) {
-  if (phase === "catLine1") return "终于回来了喵，猫猫等了你好久！";
-  if (phase === "catLine2") return "猫猫听到神明说话啦，今天会有一个十分重要的人来到我的直播间";
-  if (phase === "introReturn") return "是的喵，不过在进入直播间以前，猫猫想要更了解你一点...让我们开始吧";
-  if (phase === "askName") return "首先，你希望我怎么称呼你？";
-  if (phase === "confirmName") return `很好！以后我就叫你${answers.preferredName || "你"}`;
-  if (phase === "askStyle") return "你希望我怎样回应你？";
-  if (phase === "confirmStyle") return `原来${answers.preferredName || "你"}，喜欢${answers.replyStyleText || "像朋友一样"}这样的风格呀`;
-  if (phase === "askInterests") return "不要着急哦，马上就结束啦。现在是第三个问题~你平时喜欢关注一些什么呀？";
+  if (phase === "catLine1") return "欢迎停靠，星港旅人。Hoshia 一直在这里等你哦。";
+  if (phase === "catLine2") return "刚才星网里传来了很温柔的讯号。它说……今天会有一位很重要的小星爪来到这里。";
+  if (phase === "introReturn") return "是你哦。在真正进入星娅星港以前，Hoshia 想悄悄记住一点关于你的事。不是冷冰冰的资料……是为了以后你呼唤我的时候，我能更认真地陪着你。";
+  if (phase === "askName") return "首先，可以告诉 Hoshia……该怎么称呼你吗？名字是很重要的坐标，猫猫会好好记住的。";
+  if (phase === "confirmName") return `嗯，记住啦。从现在开始，Hoshia 就这样呼唤你：${answers.preferredName || "你"}。`;
+  if (phase === "askStyle") return "那么，当你在星港呼唤我的时候……希望 Hoshia 用什么样的感觉回应你呢？";
+  if (phase === "confirmStyle") return `原来如此……${answers.preferredName || "你"}喜欢“${answers.replyStyleText || "像朋友一样"}”这样的陪伴方式呀。Hoshia 会试着调整自己的频道。`;
+  if (phase === "askInterests") return "不要着急哦，星港连接马上就稳定啦。Hoshia 还想知道……你平时会被什么东西点亮呢？";
   if (phase === "interestsFeedback") return answers.interests
-    ? `嗯嗯，${answers.interests}，猫猫记下这个小信号啦。`
-    : "嘿嘿，要猫猫猜呀？那我以后就一边陪你一边慢慢发现。";
-  if (phase === "askMemory") return "最后一个啦，你希望我保存这些信息来更好地回应你吗？";
-  if (phase === "finalSaving") return "猫猫正在把这份约定轻轻收好...";
-  if (phase === "finalSaved") return "好哦，猫猫记住啦。以后你 @ 我的时候，我会更懂你一点。";
-  if (phase === "finalUnsaved") return "嗯嗯，也没关系喵。猫猫不会乱记，还是会认真陪着你。";
+    ? `嗯嗯，收到。“${answers.interests}”……这就是会让你发光的东西之一，对吧？Hoshia 把它放进星港的小小记忆灯里了。`
+    : "嘿嘿，要让猫猫自己发现吗？那也很好。Hoshia 会在以后的聊天里，慢慢靠近你的星光。";
+  if (phase === "askMemory") return "最后一个问题啦。Hoshia 可以把这些小小的连接记录保存下来吗？这样以后你 @ 我的时候，我就能更快认出属于你的星光。";
+  if (phase === "finalSaving") return "Hoshia 正在把这份约定轻轻收好……星港核心同步中。";
+  if (phase === "finalSaved") return "好哦。Hoshia 会把这份约定收进星港核心里。以后你呼唤我的时候，猫猫会更快找到你。";
+  if (phase === "finalUnsaved") return "嗯嗯，没关系。不保存也没关系，Hoshia 还是会认真听你说话。陪伴不是因为记录才成立的。";
   if (phase === "finalError") return saveError ? "呜...刚才没能保存成功。猫猫先停在这里，等你再看看。" : "呜...刚才没能保存成功。";
-  if (phase === "finalFollowLine") return "那么，现在就跟我走吧！";
+  if (phase === "finalFollowLine") return "那么……牵好 Hoshia 的手。现在，就跟我一起进入星港吧。";
   return "";
 }
 
 function awakeningInnerThought(phase: AwakeningIntroPhase) {
-  if (phase === "innerQuestion") return "是...是我吗？";
-  if (phase === "innerStartled") return "欸...欸?!";
-  if (phase === "innerMustAnswerName") return "我知道我必须作出回答——";
+  if (phase === "innerQuestion") return "那个人……是我吗？";
+  if (phase === "innerStartled") return "欸……要记住我吗？";
+  if (phase === "innerMustAnswerName") return "如果这是属于我的坐标……那我应该作出回答——";
   return "";
 }
 
