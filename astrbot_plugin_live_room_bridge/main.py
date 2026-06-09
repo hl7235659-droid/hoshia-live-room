@@ -1,11 +1,18 @@
 import asyncio
+import html
 import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlparse, urlunparse
+from urllib.request import Request, urlopen
+from xml.etree import ElementTree
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.star import Context, Star, register
@@ -42,7 +49,7 @@ def _clamp_score(value: Any) -> float:
     "astrbot_plugin_live_room_bridge",
     "codex",
     "Internal HTTP bridge for live-room-dev gateway.",
-    "0.4.0",
+    "0.5.0",
 )
 class LiveRoomBridgePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -62,11 +69,26 @@ class LiveRoomBridgePlugin(Star):
         self.livingmemory_persona_id = str(config.get("livingmemory_persona_id", "hoshia-live-room")).strip() or "hoshia-live-room"
         self.livingmemory_recall_k = max(1, min(int(config.get("livingmemory_recall_k", 5)), 10))
         self.livingmemory_max_participants = max(1, min(int(config.get("livingmemory_max_participants", 3)), 5))
-        self.livingmemory_news_retention_days = max(1, min(int(config.get("livingmemory_news_retention_days", 7)), 365))
+        self.livingmemory_news_retention_days = max(1, min(int(config.get("news_retention_days", config.get("livingmemory_news_retention_days", 7))), 365))
         self.livingmemory_recent_state_retention_days = max(1, min(int(config.get("livingmemory_recent_state_retention_days", 30)), 365))
+        self.news_capability_enabled = self._config_bool("news_capability_enabled", False)
+        self.news_refresh_enabled = self._config_bool("news_refresh_enabled", False)
+        self.news_refresh_on_startup = self._config_bool("news_refresh_on_startup", False)
+        self.news_room_id = str(config.get("news_room_id", "private-pixel-live")).strip() or "private-pixel-live"
+        self.news_refresh_hour = max(0, min(int(config.get("news_refresh_hour", 9)), 23))
+        self.news_refresh_timezone = str(config.get("news_refresh_timezone", "Asia/Shanghai")).strip() or "Asia/Shanghai"
+        self.news_source_urls = self._config_list("news_source_urls")
+        self.news_refresh_max_items = max(1, min(int(config.get("news_refresh_max_items", 30)), 100))
+        self.news_refresh_timeout_seconds = max(3, min(int(config.get("news_refresh_timeout_seconds", 10)), 60))
+        self.tavily_api_key = str(config.get("tavily_api_key", "")).strip()
+        self.tavily_max_queries_per_refresh = max(0, min(int(config.get("tavily_max_queries_per_refresh", 6)), 20))
+        self._news_refresh_lock = asyncio.Lock()
+        self._news_scheduler_task: asyncio.Task | None = None
         self._room_states: dict[str, dict[str, float]] = {}
         self._server: asyncio.AbstractServer | None = None
         self._server_task = asyncio.create_task(self._start_server())
+        if self.news_capability_enabled and self.news_refresh_enabled:
+            self._news_scheduler_task = asyncio.create_task(self._run_news_scheduler())
 
     async def terminate(self):
         if self._server:
@@ -77,6 +99,12 @@ class LiveRoomBridgePlugin(Star):
             await self._server_task
         except asyncio.CancelledError:
             pass
+        if self._news_scheduler_task:
+            self._news_scheduler_task.cancel()
+            try:
+                await self._news_scheduler_task
+            except asyncio.CancelledError:
+                pass
 
     async def _start_server(self):
         self._server = await asyncio.start_server(self._handle_connection, self.host, self.port)
@@ -116,7 +144,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/capabilities/news/refresh", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -131,6 +159,8 @@ class LiveRoomBridgePlugin(Star):
 
         if request["path"] == "/live-room/news":
             return await self._handle_news_ingest(payload)
+        if request["path"] == "/live-room/capabilities/news/refresh":
+            return await self._handle_news_refresh(payload)
         if request["path"] == "/live-room/context/summarize":
             return await self._handle_context_summarize(payload)
         if request["path"] == "/live-room/memory/debug-recall":
@@ -160,7 +190,7 @@ class LiveRoomBridgePlugin(Star):
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
             prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
-            memory_context = await self._build_livingmemory_context(room_id, messages)
+            memory_context = await self._build_livingmemory_context(room_id, messages, module_memory_events)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
             short_term_context = self._build_short_term_context(context_summary, recent_context)
@@ -214,6 +244,12 @@ class LiveRoomBridgePlugin(Star):
         if value is None:
             return fallback
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _config_list(self, key: str) -> list[str]:
+        value = self.config.get(key, [])
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return [item.strip() for item in str(value or "").split(",") if item.strip()]
 
     def _build_short_term_context(self, context_summary: str, recent_context: Any) -> str:
         sections: list[str] = []
@@ -529,7 +565,12 @@ class LiveRoomBridgePlugin(Star):
             text = str(item.get("text", "")).strip()
             if text:
                 parts.append(text[:160])
-        return " ".join(parts)[:500]
+        query = " ".join(parts)[:500]
+        if not query:
+            return ""
+        if re.search(r"(今天|最近|新闻|热搜|热点|新鲜事|发生什么|AI|人工智能|科技|游戏|B站|b站|娱乐|GitHub|开源|模型|话题)", query, re.IGNORECASE):
+            return query
+        return ""
 
     async def _summarize_and_store_viewer_memories(self, provider_id: str, room_id: str, messages: Any, reply_text: str, module_events: Any | None = None):
         try:
@@ -827,6 +868,518 @@ Rules:
             "reply_hint": "",
             "source": "astrbot_music_intent",
         }
+
+    async def _run_news_scheduler(self):
+        if self.news_refresh_on_startup:
+            await asyncio.sleep(15)
+            await self._scheduled_news_refresh("startup")
+        while True:
+            await asyncio.sleep(self._seconds_until_next_news_refresh())
+            await self._scheduled_news_refresh("scheduled")
+
+    def _seconds_until_next_news_refresh(self) -> float:
+        try:
+            tz = ZoneInfo(self.news_refresh_timezone)
+        except ZoneInfoNotFoundError:
+            tz = ZoneInfo("Asia/Shanghai")
+        now = datetime.now(tz)
+        target = now.replace(hour=self.news_refresh_hour, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target = target + timedelta(days=1)
+        return max(60.0, (target - now).total_seconds())
+
+    async def _scheduled_news_refresh(self, reason: str):
+        try:
+            status, payload = await self._refresh_news_topics({
+                "room_id": self.news_room_id,
+                "trigger": reason,
+            })
+            logger.info(
+                f"[live-room-bridge] news refresh {reason}: status={status} "
+                f"stored={payload.get('stored_count', 0)} topics={payload.get('topic_count', 0)} "
+                f"error={payload.get('error', '')}"
+            )
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] scheduled news refresh skipped: {exc}", exc_info=True)
+
+    async def _handle_news_refresh(self, payload: dict[str, Any]):
+        return await self._refresh_news_topics(payload)
+
+    async def _refresh_news_topics(self, payload: dict[str, Any]):
+        started = time.perf_counter()
+        if not self.news_capability_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "news_capability_disabled"}
+        if not self.livingmemory_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_disabled"}
+        if not self.news_source_urls:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "news_sources_not_configured"}
+        engine = self._livingmemory_engine()
+        if not engine:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_unavailable"}
+
+        if self._news_refresh_lock.locked() and not bool(payload.get("force")):
+            return HTTPStatus.CONFLICT, {"ok": False, "error": "news_refresh_in_progress"}
+
+        async with self._news_refresh_lock:
+            room_id = str(payload.get("room_id", self.news_room_id)).strip() or self.news_room_id
+            date = str(payload.get("date", "")).strip()[:32] or datetime.now(timezone.utc).date().isoformat()
+            await self._cleanup_expired_news_memories(engine, room_id)
+
+            raw_items = await self._fetch_news_source_items(self.news_source_urls)
+            deduped_items = self._dedupe_news_items(raw_items)[:self.news_refresh_max_items]
+            if not deduped_items:
+                return HTTPStatus.BAD_GATEWAY, {
+                    "ok": False,
+                    "error": "news_sources_empty",
+                    "source_count": len(self.news_source_urls),
+                    "latency_ms": int((time.perf_counter() - started) * 1000),
+                }
+
+            enriched_items = await self._enrich_news_items_with_tavily(deduped_items)
+            topics = await self._build_news_topics_with_llm(room_id, date, enriched_items)
+            stored = await self._store_news_topics(engine, room_id, date, topics)
+            return HTTPStatus.OK, {
+                "ok": True,
+                "capability": "news_topics",
+                "source_count": len(self.news_source_urls),
+                "item_count": len(deduped_items),
+                "topic_count": len(topics),
+                "stored_count": stored,
+                "topics": [
+                    {
+                        "title": topic.get("title", ""),
+                        "category": topic.get("category", ""),
+                        "tags": topic.get("tags", []),
+                    }
+                    for topic in topics[:12]
+                ],
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+
+    async def _fetch_news_source_items(self, urls: list[str]) -> list[dict[str, str]]:
+        tasks = [self._fetch_rss_feed(url) for url in urls[:24]]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        items: list[dict[str, str]] = []
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"[live-room-bridge] RSSHub feed skipped: {result}")
+                continue
+            items.extend(result)
+        return items
+
+    async def _fetch_rss_feed(self, url: str) -> list[dict[str, str]]:
+        safe_url = self._safe_feed_url(url)
+        if not safe_url:
+            raise ValueError("invalid_feed_url")
+        body = await asyncio.to_thread(self._http_get_text, safe_url, {}, self.news_refresh_timeout_seconds)
+        return self._parse_feed_items(body, safe_url)
+
+    def _safe_feed_url(self, url: str) -> str:
+        text = str(url or "").strip()
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", parsed.query[:400], ""))
+
+    def _http_get_text(self, url: str, headers: dict[str, str], timeout: int) -> str:
+        request = Request(url, headers={"User-Agent": "hoshia-live-room-bridge/0.5", **headers})
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                content_type = response.headers.get("content-type", "")
+                if "text" not in content_type and "xml" not in content_type and "json" not in content_type:
+                    # RSSHub often serves XML as application/rss+xml; allow unknown text-like bodies below.
+                    pass
+                raw = response.read(1024 * 1024)
+        except URLError as exc:
+            raise RuntimeError(f"fetch_failed:{urlparse(url).netloc}") from exc
+        return raw.decode("utf-8", errors="replace")
+
+    def _http_post_json(self, url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+        data = json.dumps(payload).encode("utf-8")
+        request = Request(
+            url,
+            data=data,
+            method="POST",
+            headers={
+                "User-Agent": "hoshia-live-room-bridge/0.5",
+                "Content-Type": "application/json",
+                **headers,
+            },
+        )
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw = response.read(1024 * 1024)
+        except URLError as exc:
+            raise RuntimeError("post_failed") from exc
+        return json.loads(raw.decode("utf-8", errors="replace"))
+
+    def _parse_feed_items(self, body: str, source_url: str) -> list[dict[str, str]]:
+        text = str(body or "").strip()
+        if not text:
+            return []
+        if text.startswith("{") or text.startswith("["):
+            return self._parse_json_feed_items(text, source_url)
+        return self._parse_xml_feed_items(text, source_url)
+
+    def _parse_json_feed_items(self, body: str, source_url: str) -> list[dict[str, str]]:
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return []
+        candidates = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(candidates, list):
+            return []
+        items: list[dict[str, str]] = []
+        for item in candidates[:80]:
+            if not isinstance(item, dict):
+                continue
+            parsed = self._news_item_from_parts(
+                title=item.get("title") or item.get("name"),
+                summary=item.get("summary") or item.get("description") or item.get("content"),
+                link=item.get("url") or item.get("link"),
+                published_at=item.get("published_at") or item.get("pubDate") or item.get("date"),
+                source_url=source_url,
+            )
+            if parsed:
+                items.append(parsed)
+        return items
+
+    def _parse_xml_feed_items(self, body: str, source_url: str) -> list[dict[str, str]]:
+        try:
+            root = ElementTree.fromstring(body.encode("utf-8"))
+        except ElementTree.ParseError:
+            return []
+        entries = [node for node in root.iter() if self._xml_name(node.tag) in {"item", "entry"}]
+        items: list[dict[str, str]] = []
+        for entry in entries[:80]:
+            parsed = self._news_item_from_xml_entry(entry, source_url)
+            if parsed:
+                items.append(parsed)
+        return items
+
+    def _news_item_from_xml_entry(self, entry: ElementTree.Element, source_url: str) -> dict[str, str] | None:
+        values: dict[str, str] = {}
+        for child in list(entry):
+            name = self._xml_name(child.tag)
+            if name == "link":
+                values.setdefault("link", child.attrib.get("href") or (child.text or ""))
+            elif name in {"title", "description", "summary", "content", "pubDate", "published", "updated"}:
+                values.setdefault(name, child.text or "")
+        return self._news_item_from_parts(
+            title=values.get("title"),
+            summary=values.get("description") or values.get("summary") or values.get("content"),
+            link=values.get("link"),
+            published_at=values.get("pubDate") or values.get("published") or values.get("updated"),
+            source_url=source_url,
+        )
+
+    def _xml_name(self, tag: str) -> str:
+        return str(tag).rsplit("}", 1)[-1]
+
+    def _news_item_from_parts(self, title: Any, summary: Any, link: Any, published_at: Any, source_url: str) -> dict[str, str] | None:
+        safe_title = self._clean_news_text(title, 160)
+        if not safe_title:
+            return None
+        safe_summary = self._clean_news_text(summary, 360)
+        safe_link = self._safe_news_link(link)
+        return {
+            "title": safe_title,
+            "summary": safe_summary,
+            "link_host": urlparse(safe_link).netloc[:80] if safe_link else "",
+            "source": self._source_label(source_url),
+            "source_host": urlparse(source_url).netloc[:80],
+            "published_at": self._normalize_news_timestamp(published_at),
+            "category": self._classify_news_item(safe_title, safe_summary, source_url),
+        }
+
+    def _clean_news_text(self, value: Any, limit: int) -> str:
+        text = html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))
+        text = re.sub(r"[\r\n\t]+", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return ""
+        if re.search(r"(?:\.env|BEGIN [A-Z ]*PRIVATE KEY|ssh-|token=|cookie=|password=|secret=|api[_-]?key)", text, re.IGNORECASE):
+            return ""
+        return text[:limit]
+
+    def _safe_news_link(self, value: Any) -> str:
+        parsed = urlparse(str(value or "").strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return urlunparse((parsed.scheme, parsed.netloc, parsed.path[:160], "", "", ""))
+
+    def _source_label(self, source_url: str) -> str:
+        parsed = urlparse(source_url)
+        path = parsed.path.strip("/").replace("/", ":")
+        label = path or parsed.netloc
+        return re.sub(r"[^a-zA-Z0-9_.:-]", "_", label)[:80]
+
+    def _normalize_news_timestamp(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        try:
+            return parsedate_to_datetime(text).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except Exception:
+            pass
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except Exception:
+            return text[:40]
+
+    def _classify_news_item(self, title: str, summary: str, source_url: str) -> str:
+        haystack = f"{title} {summary} {source_url}".lower()
+        if re.search(r"\b(ai|llm|openai|anthropic|model|github|hacker|developer|programming|代码|模型|人工智能|开源|开发者)\b", haystack):
+            return "tech_ai"
+        if re.search(r"(bilibili|番剧|电影|游戏|明星|音乐|娱乐|anime|game|steam)", haystack):
+            return "entertainment"
+        if re.search(r"(财经|股票|金融|投资|market|finance|crypto)", haystack):
+            return "business"
+        if re.search(r"(生活|天气|健康|城市|旅行|消费|food|travel)", haystack):
+            return "life"
+        return "general"
+
+    def _dedupe_news_items(self, items: list[dict[str, str]]) -> list[dict[str, str]]:
+        groups: list[dict[str, Any]] = []
+        for item in items:
+            key = self._normalize_news_key(item.get("title", ""))
+            if not key:
+                continue
+            matched = None
+            for group in groups:
+                existing = group["key"]
+                if key == existing or key in existing or existing in key or SequenceMatcher(None, key, existing).ratio() >= 0.86:
+                    matched = group
+                    break
+            if matched:
+                matched["count"] += 1
+                if len(item.get("summary", "")) > len(matched["item"].get("summary", "")):
+                    matched["item"]["summary"] = item.get("summary", "")
+                sources = matched["item"].setdefault("sources", [])
+                if item.get("source") and item["source"] not in sources:
+                    sources.append(item["source"])
+                continue
+            clone = dict(item)
+            clone["sources"] = [item.get("source", "")]
+            groups.append({"key": key, "count": 1, "item": clone})
+        groups.sort(key=lambda group: (group["count"], len(group["item"].get("summary", ""))), reverse=True)
+        deduped = []
+        for group in groups:
+            item = group["item"]
+            item["source_count"] = str(group["count"])
+            deduped.append(item)
+        return deduped
+
+    def _normalize_news_key(self, value: str) -> str:
+        return re.sub(r"[\W_]+", "", str(value or "").lower())
+
+    async def _enrich_news_items_with_tavily(self, items: list[dict[str, str]]) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        query_budget = self.tavily_max_queries_per_refresh if self.tavily_api_key else 0
+        for item in items:
+            next_item: dict[str, Any] = dict(item)
+            if query_budget > 0 and self._should_enrich_news_item(item):
+                try:
+                    next_item["background"] = await self._tavily_search_summary(item)
+                    query_budget -= 1
+                except Exception as exc:
+                    logger.warning(f"[live-room-bridge] Tavily enrichment skipped: {exc}")
+            enriched.append(next_item)
+        return enriched
+
+    def _should_enrich_news_item(self, item: dict[str, str]) -> bool:
+        if len(item.get("summary", "")) < 60:
+            return True
+        if int(item.get("source_count", "1") or "1") > 1:
+            return True
+        return item.get("category") in {"tech_ai", "business"}
+
+    async def _tavily_search_summary(self, item: dict[str, str]) -> str:
+        query = f"{item.get('title', '')} {item.get('summary', '')[:80]}".strip()[:300]
+        if not query:
+            return ""
+        payload = {
+            "query": query,
+            "topic": "news",
+            "search_depth": "basic",
+            "max_results": 3,
+            "include_answer": True,
+            "include_raw_content": False,
+        }
+        body = await asyncio.to_thread(
+            self._http_post_json,
+            "https://api.tavily.com/search",
+            {"Authorization": f"Bearer {self.tavily_api_key}"},
+            payload,
+            self.news_refresh_timeout_seconds,
+        )
+        snippets: list[str] = []
+        answer = self._clean_news_text(body.get("answer", ""), 360) if isinstance(body, dict) else ""
+        if answer:
+            snippets.append(answer)
+        for result in (body.get("results", []) if isinstance(body, dict) else [])[:3]:
+            if not isinstance(result, dict):
+                continue
+            title = self._clean_news_text(result.get("title", ""), 120)
+            content = self._clean_news_text(result.get("content", ""), 220)
+            if title or content:
+                snippets.append(f"{title}: {content}".strip(": "))
+        return "\n".join(snippets)[:900]
+
+    async def _build_news_topics_with_llm(self, room_id: str, date: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        session_id = f"{room_id}:news-editor"
+        provider_id = await self.context.get_current_chat_provider_id(session_id)
+        llm_response = await self.context.llm_generate(
+            chat_provider_id=provider_id,
+            prompt=self._build_news_topic_editor_prompt(date, items),
+            system_prompt=(
+                "You are Hoshia's live-room topic editor. Return ONLY valid JSON. "
+                "Do not invent facts, copy full articles, expose URLs, credentials, tokens, or internal service details."
+            ),
+        )
+        data = _extract_json(str(getattr(llm_response, "completion_text", "") or ""))
+        topics = data.get("topics", [])
+        if not isinstance(topics, list):
+            return []
+        return self._normalize_news_topics(topics)
+
+    def _build_news_topic_editor_prompt(self, date: str, items: list[dict[str, Any]]) -> str:
+        lines = []
+        for index, item in enumerate(items[: self.news_refresh_max_items], start=1):
+            background = f"\n  background: {item.get('background', '')[:500]}" if item.get("background") else ""
+            sources = ", ".join([src for src in item.get("sources", []) if src][:4])
+            lines.append(
+                f"{index}. title: {item.get('title', '')}\n"
+                f"  summary: {item.get('summary', '')}\n"
+                f"  category: {item.get('category', 'general')}\n"
+                f"  sources: {sources or item.get('source', '')}\n"
+                f"  published_at: {item.get('published_at', '')}{background}"
+            )
+        return f"""
+请把 RSSHub/Tavily 抓到的热点整理成 Hoshia 私密直播间可用的话题素材。
+
+日期：{date}
+
+要求：
+- 输出 JSON，最多 12 个 topics。
+- 不要复述新闻全文，不要编造事实。
+- Hoshia 可以有鲜明观点，但要区分“大家在聊”和“事实已确认”。
+- 每条都要能自然变成朋友直播间里的开场或接话，不要像新闻播报。
+- 高风险话题可以保留，但 risk_note 要提醒不要给医疗、投资、法律、安全等具体建议。
+- conversation_starter 要是自然口语问题。
+
+输入热点：
+{chr(10).join(lines)}
+
+返回 ONLY JSON：
+{{
+  "topics": [
+    {{
+      "title": "短标题",
+      "category": "general|tech_ai|entertainment|business|life",
+      "what_happened": "发生了什么，1-2 句",
+      "why_it_matters": "为什么适合聊",
+      "hoshia_take": "Hoshia 鲜明但不乱断言的看法",
+      "conversation_starter": "可以抛给观众的问题",
+      "risk_note": "边界提醒",
+      "tags": ["标签"]
+    }}
+  ]
+}}
+""".strip()
+
+    def _normalize_news_topics(self, value: list[Any]) -> list[dict[str, Any]]:
+        topics: list[dict[str, Any]] = []
+        for item in value[:12]:
+            if not isinstance(item, dict):
+                continue
+            title = self._clean_news_text(item.get("title"), 80)
+            what = self._clean_news_text(item.get("what_happened"), 260)
+            take = self._clean_news_text(item.get("hoshia_take"), 260)
+            starter = self._clean_news_text(item.get("conversation_starter"), 180)
+            if not title or not what or not take:
+                continue
+            category = str(item.get("category", "general")).strip().lower()
+            if category not in {"general", "tech_ai", "entertainment", "business", "life"}:
+                category = "general"
+            topics.append({
+                "title": title,
+                "category": category,
+                "what_happened": what,
+                "why_it_matters": self._clean_news_text(item.get("why_it_matters"), 220),
+                "hoshia_take": take,
+                "conversation_starter": starter,
+                "risk_note": self._clean_news_text(item.get("risk_note"), 180),
+                "tags": self._clean_text_list(item.get("tags", []), limit=6),
+            })
+        return topics
+
+    async def _store_news_topics(self, engine: Any, room_id: str, date: str, topics: list[dict[str, Any]]) -> int:
+        stored = 0
+        session_id = self._news_session_id(room_id)
+        for topic in topics:
+            content = self._format_news_topic_memory(date, topic)
+            if await self._is_duplicate_news_memory(engine, content, session_id):
+                continue
+            try:
+                await engine.add_memory(
+                    content=content[:900],
+                    session_id=session_id,
+                    persona_id=self.livingmemory_persona_id,
+                    importance=0.46,
+                    metadata={
+                        "memory_origin": "hoshia_live_room_bridge",
+                        "source": "daily_news",
+                        "date": date,
+                        "category": topic.get("category", "general"),
+                        "topics": topic.get("tags", []),
+                        "retention_days": self.livingmemory_news_retention_days,
+                    },
+                )
+                stored += 1
+            except Exception as exc:
+                logger.warning(f"[live-room-bridge] news topic write skipped: {exc}")
+        return stored
+
+    def _format_news_topic_memory(self, date: str, topic: dict[str, Any]) -> str:
+        lines = [
+            f"每日话题素材（{date}）",
+            f"话题：{topic.get('title', '')}",
+            f"分类：{topic.get('category', 'general')}",
+            f"发生了什么：{topic.get('what_happened', '')}",
+        ]
+        if topic.get("why_it_matters"):
+            lines.append(f"为什么值得聊：{topic.get('why_it_matters')}")
+        lines.append(f"Hoshia 的看法：{topic.get('hoshia_take', '')}")
+        if topic.get("conversation_starter"):
+            lines.append(f"可以抛给观众：{topic.get('conversation_starter')}")
+        if topic.get("risk_note"):
+            lines.append(f"边界：{topic.get('risk_note')}")
+        tags = "、".join(topic.get("tags", []))
+        if tags:
+            lines.append(f"标签：{tags}")
+        return "\n".join(lines)
+
+    async def _is_duplicate_news_memory(self, engine: Any, content: str, session_id: str) -> bool:
+        try:
+            memories = await engine.search_memories(
+                query=content[:500],
+                k=max(6, self.livingmemory_recall_k),
+                session_id=session_id,
+                persona_id=self.livingmemory_persona_id,
+            )
+        except Exception as exc:
+            logger.debug(f"[live-room-bridge] duplicate news lookup failed: {exc}")
+            return False
+        candidate = self._normalize_memory_text(content)
+        for memory in memories or []:
+            metadata = self._memory_metadata(memory)
+            if self._news_memory_expired(metadata):
+                continue
+            existing = self._normalize_memory_text(str(getattr(memory, "content", "") or ""))
+            if existing and (candidate == existing or SequenceMatcher(None, candidate[:400], existing[:400]).ratio() >= 0.88):
+                return True
+        return False
 
     async def _handle_context_summarize(self, payload: dict[str, Any]):
         room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"

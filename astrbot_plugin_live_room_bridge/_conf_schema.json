@@ -79,5 +79,65 @@
     "description": "Default retention days for temporary recent-state viewer memories.",
     "type": "int",
     "default": 30
+  },
+  "news_capability_enabled": {
+    "description": "Enable the RSSHub + Tavily news topic capability inside the bridge.",
+    "type": "bool",
+    "default": false
+  },
+  "news_refresh_enabled": {
+    "description": "Run the news topic refresh scheduler inside AstrBot bridge.",
+    "type": "bool",
+    "default": false
+  },
+  "news_room_id": {
+    "description": "Live-room room_id whose LivingMemory news pool receives scheduled topic memories.",
+    "type": "string",
+    "default": "private-pixel-live"
+  },
+  "news_refresh_hour": {
+    "description": "Local hour of day for scheduled news refresh, 0-23.",
+    "type": "int",
+    "default": 9
+  },
+  "news_refresh_timezone": {
+    "description": "Timezone used by the news refresh scheduler.",
+    "type": "string",
+    "default": "Asia/Shanghai"
+  },
+  "news_refresh_on_startup": {
+    "description": "Run one news refresh shortly after bridge startup.",
+    "type": "bool",
+    "default": false
+  },
+  "news_source_urls": {
+    "description": "Comma-separated RSSHub/RSS/JSON feed URLs. Prefer internal self-hosted RSSHub URLs such as http://rsshub:1200/...",
+    "type": "string",
+    "default": ""
+  },
+  "news_refresh_max_items": {
+    "description": "Maximum deduplicated feed items sent to the topic editor per refresh.",
+    "type": "int",
+    "default": 30
+  },
+  "news_refresh_timeout_seconds": {
+    "description": "HTTP timeout for RSSHub and Tavily requests.",
+    "type": "int",
+    "default": 10
+  },
+  "tavily_api_key": {
+    "description": "Private Tavily API key used only for selective background search. Keep it in server-side AstrBot config.",
+    "type": "string",
+    "default": ""
+  },
+  "tavily_max_queries_per_refresh": {
+    "description": "Maximum Tavily background-search calls per news refresh.",
+    "type": "int",
+    "default": 6
+  },
+  "news_retention_days": {
+    "description": "Retention days for daily news topic memories. Overrides livingmemory_news_retention_days for news topics.",
+    "type": "int",
+    "default": 7
   }
 }

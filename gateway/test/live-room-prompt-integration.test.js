@@ -20,3 +20,18 @@ test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to spea
   assert.match(bridge, /rather than merely fill silence or act available/);
   assert.match(bridge, /Do not fill silence just to prove she is online or available/);
 });
+
+test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {
+  const bridge = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/main.py", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/_conf_schema.json", import.meta.url), "utf8");
+
+  assert.match(bridge, /\/live-room\/capabilities\/news\/refresh/);
+  assert.match(bridge, /_run_news_scheduler/);
+  assert.match(bridge, /_fetch_rss_feed/);
+  assert.match(bridge, /https:\/\/api\.tavily\.com\/search/);
+  assert.match(bridge, /_format_news_topic_memory/);
+  assert.match(bridge, /live-room:\{safe_room\}:news/);
+  assert.match(schema, /news_capability_enabled/);
+  assert.match(schema, /news_source_urls/);
+  assert.match(schema, /tavily_api_key/);
+});

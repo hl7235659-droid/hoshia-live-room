@@ -84,6 +84,7 @@ Important options:
 - `SHORT_TERM_CONTEXT_MAX_MESSAGES`: recent user/AI messages sent to AstrBot as live-room short-term context; defaults to `100` (about 50 rounds).
 - `CONTEXT_SUMMARY_LOOKBACK_MESSAGES`: maximum unsummarized messages scanned for rolling context summary refresh; defaults to `600`.
 - `CONTEXT_SUMMARY_COMPRESS_MESSAGES`: older messages summarized per refresh when the recent context is over the limit; defaults to `20`.
+- AstrBot bridge news topics are configured in the AstrBot plugin, not in the gateway `.env`: enable `news_capability_enabled`, set `news_source_urls` to private/internal RSSHub feeds, and keep any `tavily_api_key` only in server-side AstrBot config.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.
 
@@ -195,6 +196,7 @@ Then open `http://127.0.0.1:58090` locally and configure xiaomusic yourself.
 - The AstrBot bridge can optionally connect to `astrbot_plugin_livingmemory`. Viewer memories are isolated by web account session (`live-room:<room_id>:user:<user_id>`) and require the viewer's memory consent; daily news memories use a separate `live-room:<room_id>:news` pool.
 - LivingMemory viewer memories can include `recent_state` for relatively stable but temporary user context, such as what someone is busy with recently. These memories default to 30 days and are filtered after expiry.
 - The bridge skips duplicate viewer memories, filters expired daily news memories, and exposes a token-protected internal debug recall endpoint for deployment checks.
+- The bridge can maintain a daily Hoshia topic pool from self-hosted RSSHub feeds, optionally enriched by Tavily. The stored memories are short-lived topic cards with Hoshia's take and conversation starters, not raw articles or search result dumps.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.
 - The layout is intentionally split into Stage, Overlay, and Control so future Live2D, TTS, gifts, and avatar systems can be connected without rewriting the whole page.

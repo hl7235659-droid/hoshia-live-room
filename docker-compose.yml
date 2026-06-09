@@ -74,6 +74,17 @@ services:
     networks:
       - live_room_dev_network
 
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: live-room-dev-rsshub
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+    networks:
+      - live_room_dev_network
+      - astrbot_astrbot_network
+
 networks:
   live_room_dev_network:
     name: live_room_dev_network
