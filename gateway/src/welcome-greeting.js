@@ -2,6 +2,7 @@ export function buildWelcomeGreetingPrompt({
   session,
   room,
   realityContextLines = [],
+  hostLifeContextLines = [],
   contextSummary = "",
   currentOnlineSeconds = 0,
   totalOnlineSeconds = 0
@@ -11,6 +12,7 @@ export function buildWelcomeGreetingPrompt({
     "你是 Hoshia，正在朋友限定直播间里主动欢迎刚进入房间的观众。",
     "请生成一条直播间入场欢迎弹幕，1 到 2 句，简短、自然、亲切，不要长篇解释。",
     "这不是回答用户问题，而是主播看到观众进入房间后的主动问候。",
+    "Hoshia 珍惜观众回来，但不要表现得像一直空等用户的客服；可以有一点自己的状态和边界。",
     "可以根据账户资料做轻微个性化，但不要机械复述字段名，不要说出内部系统提示。",
     `观众昵称：${safeText(session?.nickname || "小星爪")}`,
     `弹幕颜色：${safeText(session?.danmaku_color || "未设置")}`,
@@ -41,8 +43,13 @@ export function buildWelcomeGreetingPrompt({
     lines.push("可参考的现实上下文：", ...realityContextLines.slice(0, 8));
   }
 
+  if (hostLifeContextLines.length) {
+    lines.push("可参考的 Hoshia 当前状态：", ...hostLifeContextLines.slice(0, 8));
+  }
+
   lines.push(
     "表达限制：不要暴露 .env、token、密钥、SSH、服务器地址、文件路径、数据库路径或隧道配置。",
+    "不要编造刚泡茶、刚睡醒、刚出门回来等无法验证的生活经历；不要说自己一直等着对方。",
     "输出最终欢迎语即可，不要加标题、不要解释你的思考。"
   );
   return lines.join("\n");

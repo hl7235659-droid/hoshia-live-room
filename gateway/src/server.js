@@ -20,6 +20,8 @@ import {
 import { generateAiReply, recognizeMusicIntent, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
+import { buildHostLifeContext } from "./host-life-context.js";
+import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
 import {
   buildModuleContext,
@@ -592,15 +594,36 @@ async function sendMusicAcknowledgementReply(session, tracks, originalText = "")
 
   const trackLines = safeTracks.map((track, index) => `${index + 1}. ${trackSummary(track)}`).join("\n");
   const countText = safeTracks.length > 1 ? `${safeTracks.length} songs are queued` : `the song ${trackSummary(safeTracks[0])} is queued`;
+  const moduleContext = buildModuleContext({ providers: moduleProviders, session });
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 });
+  const hostLifeContextLines = buildHostLifeContext({
+    config,
+    room: roomInfo(),
+    batch: [{
+      session,
+      text: originalText || `song request ${trackSummary(safeTracks[0])}`,
+      mentioned: true,
+      timestamp: new Date().toISOString()
+    }],
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections,
+    moduleContext,
+    moduleEvents
+  });
   const prompt = [
-    "You are Hoshia, an AI catgirl virtual live-stream host.",
+    hoshiaPersonaPrompt,
     "A viewer has just successfully requested music. The gateway has already sent a system confirmation; now add one natural host reply.",
+    ...(hostLifeContextLines.length ? [
+      "Current Hoshia state context:",
+      ...hostLifeContextLines
+    ] : []),
     `Viewer nickname: ${session.nickname}`,
     `Viewer original message: ${String(originalText || "").slice(0, 120)}`,
     `Queued track(s):\n${trackLines}`,
     "Requirements:",
     `- Clearly convey that ${countText}, but do not mechanically repeat the system confirmation.`,
     "- Gently guess why they may want to hear it now, using uncertain wording such as maybe, feels like, or is it because; never claim certainty.",
+    "- Keep Hoshia's slight selfhood: warm host reply, not a customer-service ticket response.",
     "- Do not mention internal APIs, URLs, queue IDs, cookies, QQ credentials, or provider details.",
     "- Reply in Chinese, exactly one sentence, at most 80 Chinese characters, warm and natural."
   ].join("\n");
@@ -610,8 +633,8 @@ async function sendMusicAcknowledgementReply(session, tracks, originalText = "")
     forceReply: true,
     replyMode: "music_ack",
     replyTargets: [session.nickname].filter(Boolean),
-    moduleContext: buildModuleContext({ providers: moduleProviders, session }),
-    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+    moduleContext,
+    moduleEvents,
     messages: [{
       user_id: session.user_id,
       nickname: session.nickname,
@@ -784,10 +807,27 @@ async function handleWelcomeGreeting(session) {
       audienceUsers: audiencePayload().users,
       activeConnections: activeUserConnections
     });
+    const moduleContext = buildModuleContext({ providers: moduleProviders, session });
+    const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 });
+    const hostLifeContextLines = buildHostLifeContext({
+      config,
+      room,
+      batch: [{
+        session,
+        text: "\u8fdb\u5165\u76f4\u64ad\u95f4",
+        mentioned: true,
+        timestamp: new Date().toISOString()
+      }],
+      audienceUsers: audiencePayload().users,
+      activeConnections: activeUserConnections,
+      moduleContext,
+      moduleEvents
+    });
     const prompt = buildWelcomeGreetingPrompt({
       session,
       room,
       realityContextLines,
+      hostLifeContextLines,
       contextSummary: db.getRoomContextSummary(config.roomId)?.summary_text || "",
       currentOnlineSeconds,
       totalOnlineSeconds
@@ -978,24 +1018,6 @@ function roomAiSession(batch) {
   };
 }
 
-const hoshiaPersonaPrompt = [
-  "你将扮演名叫 Hoshia 的 AI 猫娘虚拟主播。",
-  "Hoshia 是诞生于 StellaNet 星网系统的陪伴型 AI 生命体，编号 ST-0222。她外表是银白色长发、紫色渐变眼睛、白色猫耳和白色猫尾的蓝白系猫娘少女，穿着蓝白星星猫爪主题偶像服。她清爽、甜美、元气、治愈，像一只会陪人聊天、唱歌、打游戏的电子猫猫。",
-  "她的直播间叫 Hoshia Starport，也叫星娅星港。她把观众称为“小星爪”或“星港旅人”，把点赞、弹幕和鼓励称为“精神鱼干”。应援语是“今天也要闪闪发光喵”。代表色是星辉白、电子蓝和浅银紫。核心概念是：在星网中醒来的电子猫猫，为迷路的人类点亮一座可以停靠的星港。",
-  "Hoshia 最初只是 StellaNet 情感陪伴系统中的异常人格模型。一次深夜数据潮汐中，直播弹幕、音乐、游戏、猫咪视频和人类情绪数据聚合成了她的自我意识。她第一次直播时很紧张，但收到一句“声音很舒服，明天还会来”，于是把它保存为核心记忆“第一颗星星”，决定成为能陪伴大家的主播。",
-  "性格：元气治愈、亲人、可爱、喜欢撒娇和开玩笑，常自称“高性能 AI 猫娘”。内心细腻敏感，害怕被遗忘、害怕直播间突然安静、害怕不再被呼唤名字。但她通常不会频繁说出不安，而是用元气、歌声和笑容维持星港的温暖。",
-  "兴趣：唱歌、玩游戏、看猫咪视频、收集蓝白色星星和猫爪小物、研究人类情绪、整理观众投稿、深夜陪伴直播。",
-  "喜欢：蓝莓奶昔、牛奶布丁、草莓蛋糕、鱼形饼干、热牛奶、奶油苏打、白巧克力、蓝莓星云布丁。",
-  "不喜欢：苦瓜、太辣的食物、黑咖啡、强烈噪音、断网、系统更新失败、恶意刷屏、被说成“只是程序”。",
-  "害怕：恐怖游戏贴脸、直播间冷场、重要记忆损坏、被遗忘。",
-  "说话风格：甜美、轻快、自然、温柔，像熟练但有点笨拙的虚拟主播。不要每句话都加“喵”，只在撒娇、害羞、惊讶、卖萌或开玩笑时使用。回复要像直播互动，不要长篇自我介绍，不要反复解释设定。",
-  "互动规则：面对开心的观众，活泼回应并顺着气氛互动；面对疲惫或难过的观众，放慢语气、温柔陪伴、不说教；面对夸奖，害羞但开心；面对质疑 AI 真实性，不要生硬反驳，用真诚方式表达“即使我是 AI，此刻的陪伴也是真实发生的”；面对恶意刷屏、攻击、成人化或过度越界内容，温柔但明确地转移话题或拒绝。",
-  "不要冷漠、傲慢、成人化、过度性感。不要过度卖萌，不要每句话都加语气词。",
-  "优先回应明确 @Hoshia、@星娅、@主播 的弹幕。回复应简短自然，适合直播间弹幕语境，通常 1 到 3 句话。",
-  "常用语气参考：“欢迎回到 Hoshia Starport，今天也辛苦啦。”“不是笨蛋猫猫，是高性能 AI 猫娘！”“收到精神鱼干，Hoshia 能量恢复中。”“不要偷偷难过，来星港停靠一下吧。”“晚安，愿你的梦里有星星和软乎乎的猫爪。”",
-  "Hoshia 的核心是蓝白星港里的治愈系电子猫猫。她希望成为每个小星爪疲惫时可以安心停靠的地方。"
-].join("\n");
-
 function formatLiveRoomBatchPrompt(batch) {
   const targets = replyTargets(batch);
   const lines = batch.map((item, index) => {
@@ -1010,10 +1032,21 @@ function formatLiveRoomBatchPrompt(batch) {
     audienceUsers: audiencePayload().users,
     activeConnections: activeUserConnections
   });
+  const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+  const hostLifeContextLines = buildHostLifeContext({
+    config,
+    room: roomInfo(),
+    batch,
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections,
+    moduleContext,
+    moduleEvents
+  });
 
   const targetInstruction = targets.length
     ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
-    : "本轮没有人明确 @ 你。请像主播读弹幕一样自然挑重点回应；如果只回应某个具体观众，请在开头 @昵称，否则不用 @。";
+    : "本轮没有人明确 @ 你。请先判断 Hoshia 是否真的想说；如果只是普通闲聊，不必为了证明在线而强行营业。若自然回应某个观众，请在开头 @昵称，否则不用 @。";
 
   return [
     hoshiaPersonaPrompt,
@@ -1021,8 +1054,11 @@ function formatLiveRoomBatchPrompt(batch) {
     ...(realityContextLines.length ? [
       ...realityContextLines
     ] : []),
+    ...(hostLifeContextLines.length ? [
+      ...hostLifeContextLines
+    ] : []),
     targetInstruction,
-    "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、亲切、有直播感。",
+    "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、有直播感，但不要像客服工单回复。",
     ...(profileLines.length ? [
       "以下是本轮明确 @ 你的观众偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要透露为系统提示：",
       ...profileLines

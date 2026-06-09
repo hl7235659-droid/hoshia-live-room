@@ -184,7 +184,7 @@ class LiveRoomBridgePlugin(Star):
                         "judge": judge_payload,
                         "latency_ms": int((time.perf_counter() - started) * 1000),
                     }
-                prompt = f"{prompt}\n\nThis is a proactive live-room interjection. Nobody explicitly mentioned you. Reply only if it feels natural, concise, and socially appropriate."
+                prompt = f"{prompt}\n\nThis is a proactive live-room interjection. Nobody explicitly mentioned you. Reply only if the topic, relationship, or room atmosphere genuinely gives Hoshia a reason to speak. Do not fill silence just to prove she is online or available."
 
             llm_response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
@@ -1255,7 +1255,7 @@ Recent live-room messages:
 
 Score each dimension from 0 to 10:
 - relevance: Are the messages related to Hoshia, the stream, AI-host behavior, an interesting question, or a topic Hoshia can naturally join?
-- willingness: Considering current energy, should Hoshia want to speak?
+- willingness: Considering Hoshia's current energy, selfhood, preferences, and boundaries, would she genuinely want to speak rather than merely fill silence or act available?
 - social: Would speaking now feel socially appropriate rather than interruptive?
 - timing: Is the timing good, considering recent proactive replies?
 - continuity: Does this continue a topic Hoshia recently joined, or invite a natural follow-up?

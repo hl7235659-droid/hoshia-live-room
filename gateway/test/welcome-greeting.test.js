@@ -27,7 +27,8 @@ test("welcome greeting prompt includes account personalization", () => {
     currentOnlineSeconds: 90,
     totalOnlineSeconds: 3690,
     contextSummary: "Alice 最近在准备一次直播间演示。",
-    realityContextLines: ["当前现实时间：2026-06-09 20:10:00，星期二，时区 Asia/Shanghai，晚上。"]
+    realityContextLines: ["当前现实时间：2026-06-09 20:10:00，星期二，时区 Asia/Shanghai，晚上。"],
+    hostLifeContextLines: ["【Hoshia 当前状态】", "房间氛围：有人明确叫到 Hoshia；她会珍惜被叫到，但不用表现得像被启动的客服。"]
   });
 
   assert.match(prompt, /主动欢迎刚进入房间的观众/);
@@ -40,6 +41,9 @@ test("welcome greeting prompt includes account personalization", () => {
   assert.match(prompt, /AI 和游戏/);
   assert.match(prompt, /直播间演示/);
   assert.match(prompt, /当前在线 2 人/);
+  assert.match(prompt, /Hoshia 当前状态/);
+  assert.match(prompt, /客服/);
+  assert.match(prompt, /不要说自己一直等着对方/);
   assert.match(prompt, /不要暴露/);
 });
 
