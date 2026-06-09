@@ -426,7 +426,7 @@ async function handleDanmaku(session, payload) {
 
   const musicQuery = parseMusicRequestText(text);
   if (musicQuery) {
-    await handleMusicRequestFromDanmaku(session, musicQuery);
+    await handleMusicRequestFromDanmaku(session, musicQuery, text);
     scheduleCharacterIdleFromListening();
     return;
   }
@@ -440,7 +440,7 @@ async function handleDanmaku(session, payload) {
   enqueueAiReply(session, text);
 }
 
-async function handleMusicRequestFromDanmaku(session, query) {
+async function handleMusicRequestFromDanmaku(session, query, originalText = "") {
   const result = await musicService.requestSong(query, session);
   if (result.ok) {
     moduleEventStore.append(createMusicSongRequestedEvent(result.track, session, {
@@ -449,6 +449,7 @@ async function handleMusicRequestFromDanmaku(session, query) {
       retentionDays: 30
     }));
     await broadcastSystemText(`♪ ${session.nickname} 点歌《${result.track.title}》已加入播放。`);
+    queueMusicAcknowledgementReply(session, [result.track], originalText || `song request ${query}`);
   } else {
     await broadcastSystemText(`♪ 点歌失败：${friendlyMusicError(result.error)}`);
     sendToSession(session.user_id, { type: "music_error", error: result.error });
@@ -467,12 +468,12 @@ async function handleNaturalMusicIntentFromDanmaku(session, text) {
   if (!isActionableMusicIntent(intent)) return false;
 
   if (intent.intent === "request") {
-    await handleMusicRequestFromDanmaku(session, intent.query);
+    await handleMusicRequestFromDanmaku(session, intent.query, text);
     return true;
   }
 
   if (intent.intent === "request_many") {
-    await handleBulkMusicRequestFromDanmaku(session, intent);
+    await handleBulkMusicRequestFromDanmaku(session, intent, text);
     return true;
   }
 
@@ -505,7 +506,7 @@ function isActionableMusicIntent(intent) {
   return ["pause", "resume", "next", "remove", "status"].includes(intent.intent);
 }
 
-async function handleBulkMusicRequestFromDanmaku(session, intent) {
+async function handleBulkMusicRequestFromDanmaku(session, intent, originalText = "") {
   const result = await musicService.requestSongs({
     query: intent.query,
     queries: intent.queries,
@@ -521,6 +522,7 @@ async function handleBulkMusicRequestFromDanmaku(session, intent) {
       }));
     }
     await broadcastSystemText(formatBulkMusicRequestSuccess(intent, result));
+    queueMusicAcknowledgementReply(session, result.tracks || [], originalText || intent.query || "bulk song request");
   } else {
     await broadcastSystemText(`♪ 批量点歌失败：${friendlyMusicError(result.error)}`);
     sendToSession(session.user_id, { type: "music_error", error: result.error });
@@ -572,6 +574,68 @@ function trackSummary(track) {
   const title = String(track.title || "未知歌曲");
   const artist = String(track.artist || "");
   return artist ? `${title} - ${artist}` : title;
+}
+
+function queueMusicAcknowledgementReply(session, tracks, originalText = "") {
+  void sendMusicAcknowledgementReply(session, tracks, originalText).catch((error) => {
+    console.warn("music_ack_reply_failed", {
+      type: error?.name || "Error",
+      message: error?.message || String(error)
+    });
+  });
+}
+
+async function sendMusicAcknowledgementReply(session, tracks, originalText = "") {
+  if (!config.musicEnabled || config.aiMode !== "astrbot") return;
+  const safeTracks = (Array.isArray(tracks) ? tracks : []).filter(Boolean).slice(0, 5);
+  if (!safeTracks.length) return;
+
+  const trackLines = safeTracks.map((track, index) => `${index + 1}. ${trackSummary(track)}`).join("\n");
+  const countText = safeTracks.length > 1 ? `${safeTracks.length} songs are queued` : `the song ${trackSummary(safeTracks[0])} is queued`;
+  const prompt = [
+    "You are Hoshia, an AI catgirl virtual live-stream host.",
+    "A viewer has just successfully requested music. The gateway has already sent a system confirmation; now add one natural host reply.",
+    `Viewer nickname: ${session.nickname}`,
+    `Viewer original message: ${String(originalText || "").slice(0, 120)}`,
+    `Queued track(s):\n${trackLines}`,
+    "Requirements:",
+    `- Clearly convey that ${countText}, but do not mechanically repeat the system confirmation.`,
+    "- Gently guess why they may want to hear it now, using uncertain wording such as maybe, feels like, or is it because; never claim certainty.",
+    "- Do not mention internal APIs, URLs, queue IDs, cookies, QQ credentials, or provider details.",
+    "- Reply in Chinese, exactly one sentence, at most 80 Chinese characters, warm and natural."
+  ].join("\n");
+
+  const reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
+    roomSession: true,
+    forceReply: true,
+    replyMode: "music_ack",
+    replyTargets: [session.nickname].filter(Boolean),
+    moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+    messages: [{
+      user_id: session.user_id,
+      nickname: session.nickname,
+      text: originalText || `song request ${trackSummary(safeTracks[0])}`,
+      mentioned: true,
+      memory_enabled: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
+      timestamp: new Date().toISOString()
+    }]
+  });
+
+  if (reply?.skipped || !reply?.text || reply.source !== "astrbot") return;
+
+  const aiMessage = messageEvent("ai_reply", "ai", String(reply.text).slice(0, 220), {
+    user_id: "ai-host",
+    nickname: "Hoshia"
+  }, {
+    source: reply.source,
+    latency_ms: reply.latency_ms,
+    music_ack: true
+  });
+  await storeMessage(aiMessage);
+  broadcast(aiMessage);
+  await setCharacterState(isValidState(reply.state) ? reply.state : "SPEAKING");
+  setTimeout(() => void setCharacterState("IDLE"), 1400);
 }
 
 function enqueueAiReply(session, text) {
