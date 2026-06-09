@@ -54,6 +54,8 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
     if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
     if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
+    if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
+    if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
 
     const response = await fetchImpl(options.astrbotBridgeUrl, {
       method: "POST",

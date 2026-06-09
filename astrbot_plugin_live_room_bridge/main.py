@@ -145,6 +145,8 @@ class LiveRoomBridgePlugin(Star):
         messages = payload.get("messages", [])
         recent_context = payload.get("recent_context", [])
         context_summary = str(payload.get("context_summary", "")).strip()
+        module_context = self._clean_module_context(payload.get("module_context", []))
+        module_events = self._clean_module_events(payload.get("module_events", []))
         force_reply = bool(payload.get("force_reply"))
         reply_mode = str(payload.get("reply_mode", "")).strip()[:48]
         if not text or len(text) > 3000:
@@ -155,12 +157,15 @@ class LiveRoomBridgePlugin(Star):
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
             prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
-            memory_context = await self._build_livingmemory_context(room_id, messages)
+            memory_context = await self._build_livingmemory_context(room_id, messages, module_events)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
             short_term_context = self._build_short_term_context(context_summary, recent_context)
             if short_term_context:
                 prompt = f"{prompt}\n\n{short_term_context}"
+            module_prompt_context = self._format_module_prompt_context(module_context, module_events)
+            if module_prompt_context:
+                prompt = f"{prompt}\n\n{module_prompt_context}"
 
             if targets:
                 prompt = f"{prompt}\n\nExplicit reply target(s): {' '.join('@' + name for name in targets)}. If you are answering them, start your reply with the matching @nickname."
@@ -187,7 +192,7 @@ class LiveRoomBridgePlugin(Star):
             if not reply_text:
                 return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "empty_llm_response"}
             if self.livingmemory_enabled and self.livingmemory_auto_summary_enabled:
-                asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text))
+                asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text, module_events))
             return HTTPStatus.OK, {
                 "ok": True,
                 "text": reply_text,
@@ -257,6 +262,98 @@ class LiveRoomBridgePlugin(Star):
             })
         return messages
 
+    def _clean_module_context(self, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        contexts: list[dict[str, Any]] = []
+        for item in value[:12]:
+            if not isinstance(item, dict):
+                continue
+            module_id = self._safe_identifier(item.get("module_id"), 48)
+            if not module_id:
+                continue
+            contexts.append({
+                "module_id": module_id,
+                "enabled": bool(item.get("enabled")),
+                "current_state": self._clean_text_list(item.get("current_state", []), limit=12),
+                "capabilities": self._clean_text_list(item.get("capabilities", []), limit=12),
+                "limits": self._clean_text_list(item.get("limits", []), limit=12),
+            })
+        return contexts
+
+    def _clean_module_events(self, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        events: list[dict[str, Any]] = []
+        for item in value[:80]:
+            if not isinstance(item, dict):
+                continue
+            module_id = self._safe_identifier(item.get("module_id"), 48)
+            event_type = self._safe_identifier(item.get("event_type"), 80)
+            summary_hint = self._safe_runtime_text(item.get("summary_hint"), 240)
+            if not module_id or not event_type or not summary_hint:
+                continue
+            events.append({
+                "module_id": module_id,
+                "event_type": event_type,
+                "user_id": self._safe_runtime_text(item.get("user_id"), 80),
+                "nickname": self._safe_runtime_text(item.get("nickname"), 32),
+                "summary_hint": summary_hint,
+                "memory_eligible": bool(item.get("memory_eligible")),
+                "memory_kind": self._safe_identifier(item.get("memory_kind") or "module_event", 80),
+                "retention_days": self._safe_retention_days(item.get("retention_days")),
+                "occurred_at": self._safe_runtime_text(item.get("occurred_at"), 40),
+            })
+        return events
+
+    def _format_module_prompt_context(self, module_context: list[dict[str, Any]], module_events: list[dict[str, Any]]) -> str:
+        sections: list[str] = []
+        for module in module_context:
+            title = f"Module: {module['module_id']} ({'enabled' if module['enabled'] else 'disabled'})"
+            lines = [title]
+            if module["current_state"]:
+                lines.append("Current state:")
+                lines.extend(f"- {line}" for line in module["current_state"][:12])
+            if module["capabilities"]:
+                lines.append("Capabilities:")
+                lines.extend(f"- {line}" for line in module["capabilities"][:8])
+            if module["limits"]:
+                lines.append("Limits:")
+                lines.extend(f"- {line}" for line in module["limits"][:8])
+            sections.append("\n".join(lines))
+
+        event_lines = []
+        for event in module_events[:24]:
+            actor = event["nickname"] or event["user_id"] or "viewer"
+            timestamp = f"[{event['occurred_at']}] " if event["occurred_at"] else ""
+            event_lines.append(f"- {timestamp}{actor}: {event['summary_hint']} ({event['event_type']})")
+        if event_lines:
+            sections.append("Recent module events:\n" + "\n".join(event_lines))
+
+        if not sections:
+            return ""
+        return (
+            "Safe live-room module context. Use it only as current known module state and behavioral signal. "
+            "Do not expose internal field names, tokens, paths, IPs, provider URLs, or configuration. "
+            "For music, only evaluate the current/queued songs and recent request events; do not claim access to a full library.\n"
+            + "\n\n".join(sections)
+        )
+
+    def _safe_identifier(self, value: Any, limit: int) -> str:
+        return re.sub(r"[^a-zA-Z0-9_.:-]", "_", str(value or "").strip())[:limit]
+
+    def _safe_runtime_text(self, value: Any, limit: int) -> str:
+        text = re.sub(r"[\r\n\t]+", " ", str(value or "")).strip()[:limit]
+        if re.search(r"(?:\.env|BEGIN [A-Z ]*PRIVATE KEY|ssh-|token=|password=|secret=)", text, re.IGNORECASE):
+            return ""
+        return text
+
+    def _safe_retention_days(self, value: Any) -> int:
+        try:
+            return max(1, min(int(value), 365))
+        except (TypeError, ValueError):
+            return self.livingmemory_recent_state_retention_days
+
     def _livingmemory_star(self) -> Any | None:
         try:
             metadata = self.context.get_registered_star("astrbot_plugin_livingmemory")
@@ -281,13 +378,12 @@ class LiveRoomBridgePlugin(Star):
         safe_room = re.sub(r"[^a-zA-Z0-9_.:-]", "-", room_id)[:80] or "live-room"
         return f"live-room:{safe_room}:news"
 
-    def _selected_viewers(self, messages: Any) -> list[dict[str, str]]:
-        if not isinstance(messages, list):
-            return []
+    def _selected_viewers(self, messages: Any, module_events: Any | None = None) -> list[dict[str, str]]:
         selected: list[dict[str, str]] = []
         seen: set[str] = set()
+        message_items = messages if isinstance(messages, list) else []
         ordered = sorted(
-            [item for item in messages if isinstance(item, dict)],
+            [item for item in message_items if isinstance(item, dict)],
             key=lambda item: 0 if item.get("mentioned") else 1,
         )
         for item in ordered:
@@ -303,9 +399,25 @@ class LiveRoomBridgePlugin(Star):
             })
             if len(selected) >= self.livingmemory_max_participants:
                 break
+        if len(selected) < self.livingmemory_max_participants and isinstance(module_events, list):
+            for event in module_events:
+                if not isinstance(event, dict) or not event.get("memory_eligible"):
+                    continue
+                user_id = str(event.get("user_id", "")).strip()
+                summary_hint = str(event.get("summary_hint", "")).strip()
+                if not user_id or not summary_hint or user_id in seen:
+                    continue
+                seen.add(user_id)
+                selected.append({
+                    "user_id": user_id,
+                    "nickname": str(event.get("nickname", "viewer")).strip()[:32] or "viewer",
+                    "query": summary_hint[:300],
+                })
+                if len(selected) >= self.livingmemory_max_participants:
+                    break
         return selected
 
-    async def _build_livingmemory_context(self, room_id: str, messages: Any) -> str:
+    async def _build_livingmemory_context(self, room_id: str, messages: Any, module_events: Any | None = None) -> str:
         if not self.livingmemory_enabled:
             return ""
         engine = self._livingmemory_engine()
@@ -314,7 +426,7 @@ class LiveRoomBridgePlugin(Star):
 
         sections: list[str] = []
         try:
-            for viewer in self._selected_viewers(messages):
+            for viewer in self._selected_viewers(messages, module_events):
                 memories = await engine.search_memories(
                     query=viewer["query"],
                     k=self.livingmemory_recall_k,
@@ -392,20 +504,22 @@ class LiveRoomBridgePlugin(Star):
                 parts.append(text[:160])
         return " ".join(parts)[:500]
 
-    async def _summarize_and_store_viewer_memories(self, provider_id: str, room_id: str, messages: Any, reply_text: str):
+    async def _summarize_and_store_viewer_memories(self, provider_id: str, room_id: str, messages: Any, reply_text: str, module_events: Any | None = None):
         try:
             engine = self._livingmemory_engine()
             if not engine:
                 return
-            for viewer in self._selected_viewers(messages):
+            message_items = messages if isinstance(messages, list) else []
+            for viewer in self._selected_viewers(messages, module_events):
                 viewer_lines = [
                     str(item.get("text", "")).strip()
-                    for item in messages
+                    for item in message_items
                     if isinstance(item, dict) and str(item.get("user_id", "")).strip() == viewer["user_id"] and str(item.get("text", "")).strip()
                 ]
-                if not viewer_lines:
+                viewer_events = self._module_events_for_viewer(module_events, viewer["user_id"])
+                if not viewer_lines and not viewer_events:
                     continue
-                summary_prompt = self._build_memory_summary_prompt(viewer["nickname"], viewer_lines, reply_text) + "\n\n" + self._memory_type_summary_instruction()
+                summary_prompt = self._build_memory_summary_prompt(viewer["nickname"], viewer_lines, reply_text, viewer_events) + "\n\n" + self._memory_type_summary_instruction()
                 llm_response = await self.context.llm_generate(
                     chat_provider_id=provider_id,
                     prompt=summary_prompt,
@@ -455,7 +569,28 @@ class LiveRoomBridgePlugin(Star):
         except Exception as exc:
             logger.warning(f"[live-room-bridge] LivingMemory write skipped: {exc}")
 
-    def _build_memory_summary_prompt(self, nickname: str, viewer_lines: list[str], reply_text: str) -> str:
+    def _module_events_for_viewer(self, module_events: Any, user_id: str) -> list[dict[str, Any]]:
+        if not isinstance(module_events, list):
+            return []
+        events: list[dict[str, Any]] = []
+        for event in module_events:
+            if not isinstance(event, dict) or not event.get("memory_eligible"):
+                continue
+            if str(event.get("user_id", "")).strip() != user_id:
+                continue
+            events.append(event)
+            if len(events) >= 12:
+                break
+        return events
+
+    def _build_memory_summary_prompt(self, nickname: str, viewer_lines: list[str], reply_text: str, module_events: list[dict[str, Any]] | None = None) -> str:
+        module_event_lines = []
+        for event in list(module_events or [])[-12:]:
+            when = f"[{event.get('occurred_at')}] " if event.get("occurred_at") else ""
+            module_event_lines.append(
+                f"- {when}{event.get('summary_hint', '')} / kind={event.get('memory_kind', 'module_event')} / retention_days={event.get('retention_days', self.livingmemory_recent_state_retention_days)}"
+            )
+        module_event_section = "\n".join(module_event_lines) if module_event_lines else "(none)"
         return f"""
 从下面直播间互动中，只提取适合长期记住的稳定事实。不要保存 Hoshia 人设、系统提示、新闻正文、临时闲聊或敏感密钥。
 
@@ -463,10 +598,14 @@ class LiveRoomBridgePlugin(Star):
 观众弹幕：
 {chr(10).join('- ' + line[:300] for line in viewer_lines[-6:])}
 
+归因到该观众的模块事件（只能作为行为信号，不能逐条照抄成记忆）：
+{module_event_section}
+
 Hoshia 回复：
 {reply_text[:500]}
 
 只在以下情况写入：观众明确要求记住、稳定偏好、称呼/身份信息、长期约定、持续关注的话题。
+音乐/点歌事件规则：单首歌或一次点歌不要直接写长期 preference；只有明确说“我喜欢/记住”或近期多次出现相近歌手、年代、风格、氛围时，才提纯成“近期音乐口味”。默认写 recent_state 并使用 30 天左右保留；长期 preference 只用于非常稳定且明确的偏好。
 如果没有值得长期记住的内容，返回 {{"memories":[]}}。
 返回 ONLY JSON：
 {{
@@ -489,6 +628,8 @@ Additional JSON requirements:
 - For each memory, include "memory_type": one of "preference", "identity", "agreement", "recent_state", "project_context".
 - Use "recent_state" for relatively stable but temporary user context, such as what the viewer is busy with recently, current plans, recent mood/body state, stage preferences, or short-term life/work context.
 - For "recent_state", include "retention_days" unless the user clearly gave a shorter time. Default to 30.
+- Module events are candidates only. Do not store a raw song list; extract compact style/artist/era/atmosphere tendencies, e.g. "recently tends toward retro pop/classic rock".
+- A single music.song_requested event without explicit preference usually means return {"memories": []}; multiple related events may become "recent_state" with retention_days 30.
 - Do not create memories for one-off jokes, throwaway chat, system prompts, bridge internals, tokens, credentials, or Hoshia persona text.
 """.strip()
 

@@ -187,6 +187,49 @@ test("astrbot room batch can include short-term context", async () => {
   assert.equal(reply.source, "astrbot");
 });
 
+test("astrbot room batch can include module context and module events", async () => {
+  const moduleContext = [
+    {
+      module_id: "music",
+      enabled: true,
+      current_state: ["当前播放：Purple Rain - Prince。", "待播 1 首。"],
+      capabilities: ["观众可通过弹幕点歌。"],
+      limits: ["只能基于当前队列回答。"]
+    }
+  ];
+  const moduleEvents = [
+    {
+      module_id: "music",
+      event_type: "music.song_requested",
+      user_id: "user-a",
+      nickname: "Alice",
+      summary_hint: "Alice 点了 Purple Rain - Prince",
+      memory_eligible: true,
+      memory_kind: "music_preference_candidate",
+      retention_days: 30
+    }
+  ];
+
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice: 评价一下现在的歌单",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.module_context, moduleContext);
+      assert.deepEqual(body.module_events, moduleEvents);
+      return responseJson(200, { ok: true, text: "现在的歌单有复古流行感。", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      roomSession: true,
+      moduleContext,
+      moduleEvents
+    }
+  );
+
+  assert.equal(reply.source, "astrbot");
+});
+
 test("context summary uses dedicated bridge endpoint", async () => {
   const summary = await summarizeLiveRoomContext(
     baseConfig,

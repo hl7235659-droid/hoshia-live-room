@@ -73,6 +73,8 @@ test("music service resolves xiaomusic result and normalizes playback state", as
 
   assert.equal(result.ok, true);
   assert.equal(result.track.title, "星间飞行");
+  assert.equal(result.track.requested_by, "Friend");
+  assert.equal(result.track.requested_by_id, "u1");
   assert.equal(result.state.status, "playing");
   assert.equal(result.state.current.title, "星间飞行");
   assert.equal(result.state.current.stream_url.startsWith("/api/music/stream/"), true);

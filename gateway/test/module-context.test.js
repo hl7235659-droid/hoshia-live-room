@@ -1,0 +1,165 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  buildModuleContext,
+  buildMusicModuleContext,
+  createModuleEventStore,
+  createMusicSongRequestedEvent,
+  sanitizeModuleEvent
+} from "../src/module-context.js";
+import { MusicService } from "../src/music-service.js";
+
+class TestStore {
+  async incr() {
+    return 1;
+  }
+
+  async expire() {}
+}
+
+const baseConfig = {
+  musicEnabled: true,
+  musicProvider: "xiaomusic",
+  musicProviderBaseUrl: "http://xiaomusic.local",
+  musicAdminUsernames: ["owner"],
+  musicQueueMax: 5,
+  musicRequestWindowSeconds: 60,
+  musicRequestLimitCount: 3,
+  musicProviderTimeoutMs: 500
+};
+
+test("music song requested module event keeps requester attribution and memory candidate metadata", () => {
+  const event = createMusicSongRequestedEvent(
+    {
+      title: "Purple Rain",
+      artist: "Prince",
+      source: "musicfree",
+      requested_by: "003",
+      requested_by_id: "user-003",
+      requested_at: "2026-06-09T12:00:00.000Z"
+    },
+    { user_id: "user-003", nickname: "003" },
+    { roomId: "live-room-dev", memoryEligible: true }
+  );
+
+  assert.equal(event.module_id, "music");
+  assert.equal(event.event_type, "music.song_requested");
+  assert.equal(event.user_id, "user-003");
+  assert.equal(event.nickname, "003");
+  assert.equal(event.summary_hint, "003 点了 Purple Rain - Prince");
+  assert.equal(event.memory_eligible, true);
+  assert.equal(event.memory_kind, "music_preference_candidate");
+  assert.equal(event.retention_days, 30);
+  assert.deepEqual(event.data, { title: "Purple Rain", artist: "Prince", source: "musicfree" });
+});
+
+test("music module context describes current playback queue requester and limits", () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = {
+    id: "track-1",
+    title: "Purple Rain",
+    artist: "Prince",
+    source: "musicfree",
+    requested_by: "003",
+    requested_by_id: "user-003",
+    requested_at: "2026-06-09T12:00:00.000Z"
+  };
+  service.queue = [
+    {
+      id: "track-2",
+      title: "Baba O'Riley",
+      artist: "The Who",
+      source: "musicfree",
+      requested_by: "Alice",
+      requested_by_id: "user-a",
+      requested_at: "2026-06-09T12:05:00.000Z"
+    }
+  ];
+  service.status = "playing";
+
+  const context = buildMusicModuleContext(service, { username: "viewer" });
+
+  assert.equal(context.module_id, "music");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("Purple Rain - Prince") && line.includes("003")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Baba O'Riley - The Who") && line.includes("Alice")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("评价歌单风格")), true);
+  assert.equal(context.limits.some((line) => line.includes("完整曲库")), true);
+});
+
+test("disabled music module returns safe disabled context", () => {
+  const service = new MusicService({ ...baseConfig, musicEnabled: false }, { store: new TestStore() });
+  const context = buildMusicModuleContext(service, {});
+
+  assert.equal(context.module_id, "music");
+  assert.equal(context.enabled, false);
+  assert.equal(context.current_state.includes("音乐模块未启用。"), true);
+  assert.deepEqual(context.capabilities, []);
+});
+
+test("generic module providers can contribute future capability contexts", () => {
+  const contexts = buildModuleContext({
+    providers: [
+      {
+        getCapabilityContext() {
+          return {
+            module_id: "gift",
+            enabled: true,
+            current_state: ["最近有人送出星星。"],
+            capabilities: ["可基于公开礼物事件互动。"],
+            limits: ["不读取支付凭据。"]
+          };
+        }
+      }
+    ]
+  });
+
+  assert.deepEqual(contexts, [
+    {
+      module_id: "gift",
+      enabled: true,
+      current_state: ["最近有人送出星星。"],
+      capabilities: ["可基于公开礼物事件互动。"],
+      limits: ["不读取支付凭据。"]
+    }
+  ]);
+});
+
+test("module event store keeps recent events and sanitizes sensitive text", () => {
+  const store = createModuleEventStore({ maxEvents: 2 });
+  store.append({
+    room_id: "room-a",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u1",
+    nickname: "A",
+    summary_hint: "A 点了 Song 1",
+    memory_eligible: true
+  });
+  store.append({
+    room_id: "room-a",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u2",
+    nickname: "B",
+    summary_hint: "B 点了 Song 2",
+    memory_eligible: true
+  });
+  store.append({
+    room_id: "room-b",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u3",
+    nickname: "C",
+    summary_hint: "C 点了 Song 3",
+    memory_eligible: true
+  });
+
+  assert.equal(store.size(), 2);
+  assert.deepEqual(store.listRecent({ roomId: "room-a" }).map((event) => event.user_id), ["u2"]);
+  assert.equal(sanitizeModuleEvent({
+    module_id: "music",
+    event_type: "music.song_requested",
+    summary_hint: "token=secret should be hidden"
+  }), null);
+});

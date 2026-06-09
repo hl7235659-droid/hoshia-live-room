@@ -22,6 +22,11 @@ import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
 import {
+  buildModuleContext,
+  createModuleEventStore,
+  createMusicSongRequestedEvent
+} from "./module-context.js";
+import {
   buildWelcomeGreetingPrompt,
   fallbackWelcomeGreeting,
   shouldScheduleWelcomeGreeting,
@@ -96,6 +101,7 @@ const server = http.createServer(app);
 const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
 const musicService = new MusicService(config, { store });
+const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const sockets = new Map();
 const activeUserConnections = new Map();
 let characterState = "IDLE";
@@ -425,6 +431,11 @@ async function handleDanmaku(session, payload) {
 async function handleMusicRequestFromDanmaku(session, query) {
   const result = await musicService.requestSong(query, session);
   if (result.ok) {
+    moduleEventStore.append(createMusicSongRequestedEvent(result.track, session, {
+      roomId: config.roomId,
+      memoryEligible: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
+      retentionDays: 30
+    }));
     await broadcastSystemText(`♪ ${session.nickname} 点歌《${result.track.title}》已加入播放。`);
   } else {
     await broadcastSystemText(`♪ 点歌失败：${friendlyMusicError(result.error)}`);
@@ -493,6 +504,8 @@ async function handleAiReplyBatch(batch) {
   await sleep(450);
   const prompt = formatLiveRoomBatchPrompt(batch);
   const shortTermContext = await buildShortTermAiContext(batch);
+  const moduleContext = buildModuleContext({ musicService, session: batch[0]?.session });
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
@@ -500,6 +513,8 @@ async function handleAiReplyBatch(batch) {
     replyMode: batch.some((item) => item.forceReply) ? "single_user_direct" : "",
     recentContext: shortTermContext.recentContext,
     contextSummary: shortTermContext.contextSummary,
+    moduleContext,
+    moduleEvents,
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
       nickname: item.session.nickname,
