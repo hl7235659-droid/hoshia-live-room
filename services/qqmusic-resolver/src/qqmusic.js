@@ -41,7 +41,12 @@ export function validateCookie(cookie) {
 }
 
 export function normalizeSearchResponse(payload) {
-  const list = payload?.data?.song?.list || payload?.data?.list || payload?.list || [];
+  const list =
+    payload?.req_1?.data?.body?.song?.list ||
+    payload?.data?.song?.list ||
+    payload?.data?.list ||
+    payload?.list ||
+    [];
   return list
     .filter((song) => song && typeof song === "object")
     .map((song) => {
@@ -70,31 +75,25 @@ export async function searchQqMusic({ query, page = 1, limit = 20, cookie = "", 
   const cleanQuery = String(query || "").trim();
   if (!cleanQuery) return { success: false, error: "query_required", data: [] };
 
-  const url = new URL(SEARCH_ENDPOINT);
-  url.searchParams.set("ct", "24");
-  url.searchParams.set("qqmusic_ver", "1298");
-  url.searchParams.set("new_json", "1");
-  url.searchParams.set("remoteplace", "txt.yqq.song");
-  url.searchParams.set("searchid", String(Date.now()).slice(-10));
-  url.searchParams.set("t", "0");
-  url.searchParams.set("aggr", "1");
-  url.searchParams.set("cr", "1");
-  url.searchParams.set("catZhida", "1");
-  url.searchParams.set("lossless", "0");
-  url.searchParams.set("p", String(Math.max(1, Number(page) || 1)));
-  url.searchParams.set("n", String(Math.max(1, Math.min(Number(limit) || 20, 50))));
-  url.searchParams.set("w", cleanQuery);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("g_tk", "5381");
-
-  const payload = await fetchJson(url, {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 50));
+  const payload = await fetchJson(musicuSearchUrl(cleanQuery, safePage, safeLimit), {
     fetchImpl,
     timeoutMs,
     headers: qqHeaders(cookie)
-  });
-  if (payload?.code && payload.code !== 0) return { success: false, error: `qq_search_${payload.code}`, data: [] };
+  }).catch(async () => fetchJson(legacySearchUrl(cleanQuery, safePage, safeLimit), {
+    fetchImpl,
+    timeoutMs,
+    headers: qqHeaders(cookie)
+  }));
+  const code = payload?.req_1?.code ?? payload?.code;
+  if (code && code !== 0) return { success: false, error: `qq_search_${code}`, data: [] };
   const data = normalizeSearchResponse(payload);
-  return { success: true, data, total: Number(payload?.data?.song?.totalnum || data.length) || data.length };
+  return {
+    success: true,
+    data,
+    total: Number(payload?.req_1?.data?.meta?.sum || payload?.data?.song?.totalnum || data.length) || data.length
+  };
 }
 
 export async function resolveQqMusic({ item, cookie = "", quality = "vip", fetchImpl = fetch, timeoutMs = 12000 }) {
@@ -166,6 +165,38 @@ function musicuUrl(songmid, filename, uin) {
     comm: { uin, format: "json", ct: 24, cv: 0 }
   };
   return `${MUSICU_ENDPOINT}?data=${encodeURIComponent(JSON.stringify(data))}`;
+}
+
+function musicuSearchUrl(query, page, limit) {
+  const data = {
+    comm: { ct: 19, cv: 1859, uin: "0" },
+    req_1: {
+      module: "music.search.SearchCgiService",
+      method: "DoSearchForQQMusicDesktop",
+      param: { query, page_num: page, num_per_page: limit, search_type: 0 }
+    }
+  };
+  return `${MUSICU_ENDPOINT}?data=${encodeURIComponent(JSON.stringify(data))}`;
+}
+
+function legacySearchUrl(query, page, limit) {
+  const url = new URL(SEARCH_ENDPOINT);
+  url.searchParams.set("ct", "24");
+  url.searchParams.set("qqmusic_ver", "1298");
+  url.searchParams.set("new_json", "1");
+  url.searchParams.set("remoteplace", "txt.yqq.song");
+  url.searchParams.set("searchid", String(Date.now()).slice(-10));
+  url.searchParams.set("t", "0");
+  url.searchParams.set("aggr", "1");
+  url.searchParams.set("cr", "1");
+  url.searchParams.set("catZhida", "1");
+  url.searchParams.set("lossless", "0");
+  url.searchParams.set("p", String(page));
+  url.searchParams.set("n", String(limit));
+  url.searchParams.set("w", query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("g_tk", "5381");
+  return url;
 }
 
 function buildFilenameCandidates(music, quality) {

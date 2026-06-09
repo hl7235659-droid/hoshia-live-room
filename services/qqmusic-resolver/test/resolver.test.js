@@ -41,6 +41,30 @@ test("normalizes QQ search response", () => {
   assert.equal(items[0].artwork.includes("albummid"), true);
 });
 
+test("normalizes modern musicu search response", () => {
+  const items = normalizeSearchResponse({
+    req_1: {
+      data: {
+        body: {
+          song: {
+            list: [{
+              mid: "modern-songmid",
+              name: "一路向北",
+              singer: [{ name: "周杰伦" }],
+              album: { mid: "modern-album", name: "十一月的萧邦" },
+              file: { media_mid: "modern-media", size_128mp3: 1 }
+            }]
+          }
+        }
+      }
+    }
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].songmid, "modern-songmid");
+  assert.equal(items[0].mediaMid, "modern-media");
+  assert.equal(items[0].title, "一路向北");
+});
+
 test("resolve returns safe error when QQ does not provide purl", async () => {
   const result = await resolveQqMusic({
     cookie: "uin=o123456789; qm_keyst=DUMMY_QM_KEY;",
