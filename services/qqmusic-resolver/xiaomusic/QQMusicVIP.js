@@ -10,13 +10,13 @@ function toMusicItem(item) {
     id: item.id || item.songmid,
     songmid: item.songmid,
     mediaMid: item.mediaMid,
+    file: item._raw && item._raw.file ? item._raw.file : item.file || {},
     title: item.title,
     artist: item.artist,
     album: item.album,
     artwork: item.artwork,
     duration: item.duration,
-    platform: "QQMusicVIP",
-    _raw: item._raw || item
+    platform: "QQMusicVIP"
   };
 }
 
