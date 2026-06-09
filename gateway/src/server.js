@@ -114,6 +114,7 @@ const mentionReplyWindowMs = 1200;
 const maxReplyBatchSize = 8;
 const maxReplyTargets = 3;
 const singleUserReplyDelayMs = Math.max(0, Math.min(Number(config.singleUserReplyDelayMs || 600), 3000));
+const musicIntentIdleDelayMs = 1000;
 let pendingReplyBatch = [];
 let replyBatchTimer = null;
 let replyBatchRunning = false;
@@ -426,11 +427,15 @@ async function handleDanmaku(session, payload) {
   const musicQuery = parseMusicRequestText(text);
   if (musicQuery) {
     await handleMusicRequestFromDanmaku(session, musicQuery);
+    scheduleCharacterIdleFromListening();
     return;
   }
 
   const musicIntentHandled = await handleNaturalMusicIntentFromDanmaku(session, text);
-  if (musicIntentHandled) return;
+  if (musicIntentHandled) {
+    scheduleCharacterIdleFromListening();
+    return;
+  }
 
   enqueueAiReply(session, text);
 }
@@ -1063,6 +1068,12 @@ async function broadcastSystemText(text) {
 async function setCharacterState(state) {
   characterState = state;
   broadcast({ type: "character_state", room_id: config.roomId, state, timestamp: new Date().toISOString() });
+}
+
+function scheduleCharacterIdleFromListening() {
+  setTimeout(() => {
+    if (characterState === "LISTENING") void setCharacterState("IDLE");
+  }, musicIntentIdleDelayMs);
 }
 
 function broadcast(payload) {
