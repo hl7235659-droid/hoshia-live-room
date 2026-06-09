@@ -26,6 +26,13 @@ test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {
   const schema = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/_conf_schema.json", import.meta.url), "utf8");
 
   assert.match(bridge, /\/live-room\/capabilities\/news\/refresh/);
+  assert.match(bridge, /\/live-room\/capabilities\/news\/status/);
+  assert.match(bridge, /_start_news_refresh_job/);
+  assert.match(bridge, /asyncio\.create_task\(self\._run_news_refresh_job/);
+  assert.match(bridge, /rss_fetching/);
+  assert.match(bridge, /tavily_enriching/);
+  assert.match(bridge, /llm_editing/);
+  assert.match(bridge, /memory_writing/);
   assert.match(bridge, /_run_news_scheduler/);
   assert.match(bridge, /_fetch_rss_feed/);
   assert.match(bridge, /https:\/\/api\.tavily\.com\/search/);

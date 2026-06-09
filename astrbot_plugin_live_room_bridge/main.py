@@ -83,6 +83,9 @@ class LiveRoomBridgePlugin(Star):
         self.tavily_api_key = str(config.get("tavily_api_key", "")).strip()
         self.tavily_max_queries_per_refresh = max(0, min(int(config.get("tavily_max_queries_per_refresh", 6)), 20))
         self._news_refresh_lock = asyncio.Lock()
+        self._news_refresh_task: asyncio.Task | None = None
+        self._news_refresh_job_seq = 0
+        self._news_refresh_status = self._new_news_refresh_status("idle", "")
         self._news_scheduler_task: asyncio.Task | None = None
         self._room_states: dict[str, dict[str, float]] = {}
         self._server: asyncio.AbstractServer | None = None
@@ -144,7 +147,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/capabilities/news/refresh", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/capabilities/news/refresh", "/live-room/capabilities/news/status", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -161,6 +164,8 @@ class LiveRoomBridgePlugin(Star):
             return await self._handle_news_ingest(payload)
         if request["path"] == "/live-room/capabilities/news/refresh":
             return await self._handle_news_refresh(payload)
+        if request["path"] == "/live-room/capabilities/news/status":
+            return HTTPStatus.OK, self._news_refresh_status_payload()
         if request["path"] == "/live-room/context/summarize":
             return await self._handle_context_summarize(payload)
         if request["path"] == "/live-room/memory/debug-recall":
@@ -890,20 +895,152 @@ Rules:
 
     async def _scheduled_news_refresh(self, reason: str):
         try:
-            status, payload = await self._refresh_news_topics({
+            status, payload = await self._start_news_refresh_job({
                 "room_id": self.news_room_id,
                 "trigger": reason,
             })
             logger.info(
-                f"[live-room-bridge] news refresh {reason}: status={status} "
-                f"stored={payload.get('stored_count', 0)} topics={payload.get('topic_count', 0)} "
-                f"error={payload.get('error', '')}"
+                f"[live-room-bridge] news refresh {reason} queued: status={status} "
+                f"job_id={payload.get('job_id', '')} running={payload.get('running', False)}"
             )
         except Exception as exc:
             logger.warning(f"[live-room-bridge] scheduled news refresh skipped: {exc}", exc_info=True)
 
     async def _handle_news_refresh(self, payload: dict[str, Any]):
-        return await self._refresh_news_topics(payload)
+        return await self._start_news_refresh_job(payload)
+
+    async def _start_news_refresh_job(self, payload: dict[str, Any]):
+        if not self.news_capability_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "news_capability_disabled"}
+        if not self.livingmemory_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_disabled"}
+        if not self.news_source_urls:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "news_sources_not_configured"}
+        if self._livingmemory_engine() is None:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_unavailable"}
+
+        running = self._news_refresh_task and not self._news_refresh_task.done()
+        if running:
+            status = self._news_refresh_status_payload()
+            status["accepted"] = False
+            status["already_running"] = True
+            return HTTPStatus.ACCEPTED, status
+
+        self._news_refresh_job_seq += 1
+        job_id = f"news-{int(time.time())}-{self._news_refresh_job_seq}"
+        room_id = str(payload.get("room_id", self.news_room_id)).strip() or self.news_room_id
+        date = str(payload.get("date", "")).strip()[:32] or datetime.now(timezone.utc).date().isoformat()
+        self._news_refresh_status = self._new_news_refresh_status(job_id, room_id)
+        self._news_refresh_status.update({
+            "date": date,
+            "trigger": str(payload.get("trigger", "manual"))[:60],
+            "running": True,
+            "stage": "queued",
+        })
+        self._news_refresh_task = asyncio.create_task(self._run_news_refresh_job(dict(payload), job_id))
+        status = self._news_refresh_status_payload()
+        status["accepted"] = True
+        return HTTPStatus.ACCEPTED, status
+
+    async def _run_news_refresh_job(self, payload: dict[str, Any], job_id: str):
+        try:
+            status, result = await self._refresh_news_topics(payload)
+            if status == HTTPStatus.OK and result.get("ok"):
+                self._news_set_stage("done")
+                self._news_refresh_status.update({
+                    "ok": True,
+                    "last_error": "",
+                    "source_count": result.get("source_count", 0),
+                    "item_count": result.get("item_count", 0),
+                    "topic_count": result.get("topic_count", 0),
+                    "stored_count": result.get("stored_count", 0),
+                    "write_errors": result.get("write_errors", 0),
+                    "tavily_query_count": result.get("tavily_query_count", self._news_refresh_status.get("tavily_query_count", 0)),
+                    "failed_source_count": result.get("failed_source_count", self._news_refresh_status.get("failed_source_count", 0)),
+                    "recent_titles": [item.get("title", "") for item in result.get("topics", [])[:12]],
+                })
+            else:
+                self._news_set_stage("failed")
+                self._news_refresh_status.update({
+                    "ok": False,
+                    "last_error": str(result.get("error", "news_refresh_failed"))[:160],
+                })
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] background news refresh failed: {exc}", exc_info=True)
+            self._news_set_stage("failed")
+            self._news_refresh_status.update({"ok": False, "last_error": str(exc)[:160]})
+        finally:
+            now = time.time()
+            self._news_refresh_status["running"] = False
+            self._news_refresh_status["finished_at"] = self._iso_now()
+            self._news_refresh_status["latency_ms"] = int((now - float(self._news_refresh_status.get("_started_monotonic", now))) * 1000)
+            logger.info(
+                f"[live-room-bridge] news refresh finished: job_id={job_id} "
+                f"ok={self._news_refresh_status.get('ok')} stage={self._news_refresh_status.get('stage')} "
+                f"topics={self._news_refresh_status.get('topic_count', 0)} "
+                f"stored={self._news_refresh_status.get('stored_count', 0)} "
+                f"failed_sources={self._news_refresh_status.get('failed_source_count', 0)} "
+                f"latency_ms={self._news_refresh_status.get('latency_ms', 0)}"
+            )
+
+    def _new_news_refresh_status(self, job_id: str, room_id: str) -> dict[str, Any]:
+        now = time.time()
+        return {
+            "ok": False,
+            "job_id": job_id,
+            "room_id": room_id,
+            "running": False,
+            "stage": "idle",
+            "started_at": self._iso_now(now),
+            "finished_at": "",
+            "latency_ms": 0,
+            "source_count": 0,
+            "failed_source_count": 0,
+            "failed_sources": [],
+            "item_count": 0,
+            "topic_count": 0,
+            "stored_count": 0,
+            "write_errors": 0,
+            "tavily_query_count": 0,
+                "recent_titles": [],
+            "last_error": "",
+            "stage_timings_ms": {},
+            "_started_monotonic": now,
+            "_stage_started_monotonic": now,
+        }
+
+    def _news_refresh_status_payload(self) -> dict[str, Any]:
+        payload = {
+            key: value
+            for key, value in self._news_refresh_status.items()
+            if not key.startswith("_")
+        }
+        payload["capability"] = "news_topics"
+        return payload
+
+    def _news_set_stage(self, stage: str):
+        now = time.time()
+        previous = str(self._news_refresh_status.get("stage", "idle"))
+        previous_started = float(self._news_refresh_status.get("_stage_started_monotonic", now))
+        timings = self._news_refresh_status.setdefault("stage_timings_ms", {})
+        if previous and previous not in {"idle", stage}:
+            timings[previous] = timings.get(previous, 0) + int((now - previous_started) * 1000)
+        self._news_refresh_status["stage"] = stage
+        self._news_refresh_status["_stage_started_monotonic"] = now
+        logger.info(f"[live-room-bridge] news refresh stage={stage} job_id={self._news_refresh_status.get('job_id', '')}")
+
+    def _news_add_failed_source(self, reason: str):
+        failed = self._news_refresh_status.setdefault("failed_sources", [])
+        label = str(reason or "source_failed")[:140]
+        if len(failed) < 20:
+            failed.append(label)
+        self._news_refresh_status["failed_source_count"] = int(self._news_refresh_status.get("failed_source_count", 0)) + 1
+
+    def _news_increment(self, key: str, amount: int = 1):
+        self._news_refresh_status[key] = int(self._news_refresh_status.get(key, 0)) + amount
+
+    def _iso_now(self, value: float | None = None) -> str:
+        return datetime.fromtimestamp(value or time.time(), timezone.utc).isoformat().replace("+00:00", "Z")
 
     async def _refresh_news_topics(self, payload: dict[str, Any]):
         started = time.perf_counter()
@@ -925,8 +1062,11 @@ Rules:
             date = str(payload.get("date", "")).strip()[:32] or datetime.now(timezone.utc).date().isoformat()
             await self._cleanup_expired_news_memories(engine, room_id)
 
+            self._news_set_stage("rss_fetching")
+            self._news_refresh_status["source_count"] = len(self.news_source_urls)
             raw_items = await self._fetch_news_source_items(self.news_source_urls)
             deduped_items = self._dedupe_news_items(raw_items)[:self.news_refresh_max_items]
+            self._news_refresh_status["item_count"] = len(deduped_items)
             if not deduped_items:
                 return HTTPStatus.BAD_GATEWAY, {
                     "ok": False,
@@ -935,23 +1075,32 @@ Rules:
                     "latency_ms": int((time.perf_counter() - started) * 1000),
                 }
 
+            self._news_set_stage("tavily_enriching")
             enriched_items = await self._enrich_news_items_with_tavily(deduped_items)
+            self._news_set_stage("llm_editing")
             topics = await self._build_news_topics_with_llm(room_id, date, enriched_items)
-            stored = await self._store_news_topics(engine, room_id, date, topics)
+            self._news_refresh_status["topic_count"] = len(topics)
+            self._news_set_stage("memory_writing")
+            store_result = await self._store_news_topics(engine, room_id, date, topics)
+            stored = store_result["stored_count"]
+            write_errors = store_result["write_errors"]
             return HTTPStatus.OK, {
                 "ok": True,
                 "capability": "news_topics",
                 "source_count": len(self.news_source_urls),
+                "failed_source_count": self._news_refresh_status.get("failed_source_count", 0),
                 "item_count": len(deduped_items),
                 "topic_count": len(topics),
                 "stored_count": stored,
+                "write_errors": write_errors,
+                "tavily_query_count": self._news_refresh_status.get("tavily_query_count", 0),
                 "topics": [
                     {
                         "title": topic.get("title", ""),
                         "category": topic.get("category", ""),
                         "tags": topic.get("tags", []),
                     }
-                    for topic in topics[:12]
+                    for topic in topics[:8]
                 ],
                 "latency_ms": int((time.perf_counter() - started) * 1000),
             }
@@ -962,9 +1111,15 @@ Rules:
         items: list[dict[str, str]] = []
         for result in results:
             if isinstance(result, Exception):
-                logger.warning(f"[live-room-bridge] RSSHub feed skipped: {result}")
+                self._news_add_failed_source(str(result))
                 continue
             items.extend(result)
+        failed_count = self._news_refresh_status.get("failed_source_count", 0)
+        if failed_count:
+            logger.info(
+                f"[live-room-bridge] RSSHub fetch summary: ok_items={len(items)} "
+                f"failed_sources={failed_count}"
+            )
         return items
 
     async def _fetch_rss_feed(self, url: str) -> list[dict[str, str]]:
@@ -991,7 +1146,9 @@ Rules:
                     pass
                 raw = response.read(1024 * 1024)
         except URLError as exc:
-            raise RuntimeError(f"fetch_failed:{urlparse(url).netloc}") from exc
+            parsed = urlparse(url)
+            label = f"{parsed.netloc}{parsed.path[:80]}"
+            raise RuntimeError(f"fetch_failed:{label}") from exc
         return raw.decode("utf-8", errors="replace")
 
     def _http_post_json(self, url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -1215,10 +1372,11 @@ Rules:
             next_item: dict[str, Any] = dict(item)
             if query_budget > 0 and self._should_enrich_news_item(item):
                 try:
+                    self._news_increment("tavily_query_count")
                     next_item["background"] = await self._tavily_search_summary(item)
                     query_budget -= 1
                 except Exception as exc:
-                    logger.warning(f"[live-room-bridge] Tavily enrichment skipped: {exc}")
+                    logger.info(f"[live-room-bridge] Tavily enrichment skipped: {str(exc)[:120]}")
             enriched.append(next_item)
         return enriched
 
@@ -1297,7 +1455,7 @@ Rules:
 直播间受众：朋友限定的小圈子，观众以大学生/年轻人为主；他们更熟悉全民热搜、校园生活、电竞游戏、B站/动漫/娱乐、消费和AI工具话题。
 
 要求：
-- 输出 JSON，最多 12 个 topics。
+- 输出 JSON，最多 8 个 topics。
 - 选题优先级：全民热议 > 电竞/游戏/二次元 > 大学生生活/消费/就业 > 娱乐综艺影视 > AI工具/科技。专业财经、企业稿、开发者小圈子话题只有特别有梗或强相关时才保留。
 - 目标配比：全民热议 4-6 条，电竞/游戏/二次元 2-3 条，大学生日常/消费/就业 2-3 条，科技/AI 1-2 条；不要让财经或商业稿占多数。
 - 不要复述新闻全文，不要编造事实。
@@ -1329,7 +1487,7 @@ Rules:
 
     def _normalize_news_topics(self, value: list[Any]) -> list[dict[str, Any]]:
         topics: list[dict[str, Any]] = []
-        for item in value[:12]:
+        for item in value[:8]:
             if not isinstance(item, dict):
                 continue
             title = self._clean_news_text(item.get("title"), 80)
@@ -1353,8 +1511,9 @@ Rules:
             })
         return topics
 
-    async def _store_news_topics(self, engine: Any, room_id: str, date: str, topics: list[dict[str, Any]]) -> int:
+    async def _store_news_topics(self, engine: Any, room_id: str, date: str, topics: list[dict[str, Any]]) -> dict[str, int]:
         stored = 0
+        write_errors = 0
         session_id = self._news_session_id(room_id)
         for topic in topics:
             content = self._format_news_topic_memory(date, topic)
@@ -1376,9 +1535,12 @@ Rules:
                     },
                 )
                 stored += 1
+                self._news_refresh_status["stored_count"] = stored
             except Exception as exc:
-                logger.warning(f"[live-room-bridge] news topic write skipped: {exc}")
-        return stored
+                write_errors += 1
+                self._news_refresh_status["write_errors"] = write_errors
+                logger.info(f"[live-room-bridge] news topic write skipped: {str(exc)[:120]}")
+        return {"stored_count": stored, "write_errors": write_errors}
 
     def _format_news_topic_memory(self, date: str, topic: dict[str, Any]) -> str:
         lines = [
