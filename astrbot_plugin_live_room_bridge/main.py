@@ -957,7 +957,7 @@ Rules:
             }
 
     async def _fetch_news_source_items(self, urls: list[str]) -> list[dict[str, str]]:
-        tasks = [self._fetch_rss_feed(url) for url in urls[:24]]
+        tasks = [self._fetch_rss_feed(url) for url in urls[:80]]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         items: list[dict[str, str]] = []
         for result in results:
@@ -1131,7 +1131,7 @@ Rules:
         haystack = f"{title} {summary} {source_url}".lower()
         if re.search(r"\b(ai|llm|openai|anthropic|model|github|hacker|developer|programming|代码|模型|人工智能|开源|开发者)\b", haystack):
             return "tech_ai"
-        if re.search(r"(bilibili|番剧|电影|游戏|明星|音乐|娱乐|anime|game|steam)", haystack):
+        if re.search(r"(bilibili|番剧|电影|游戏|电竞|赛事|战队|主播|直播|王者荣耀|英雄联盟|无畏契约|瓦罗兰特|原神|崩坏|明星|音乐|娱乐|anime|game|steam|nintendo|taptap)", haystack):
             return "entertainment"
         if re.search(r"(财经|股票|金融|投资|market|finance|crypto)", haystack):
             return "business"
@@ -1162,13 +1162,48 @@ Rules:
             clone = dict(item)
             clone["sources"] = [item.get("source", "")]
             groups.append({"key": key, "count": 1, "item": clone})
-        groups.sort(key=lambda group: (group["count"], len(group["item"].get("summary", ""))), reverse=True)
+        groups.sort(
+            key=lambda group: (
+                self._news_priority_score(group["item"], group["count"]),
+                group["count"],
+                len(group["item"].get("summary", "")),
+            ),
+            reverse=True,
+        )
         deduped = []
         for group in groups:
             item = group["item"]
             item["source_count"] = str(group["count"])
             deduped.append(item)
         return deduped
+
+    def _news_priority_score(self, item: dict[str, str], duplicate_count: int = 1) -> int:
+        source = f"{item.get('source', '')} {item.get('source_host', '')}".lower()
+        title = item.get("title", "")
+        summary = item.get("summary", "")
+        category = item.get("category", "general")
+        score = duplicate_count * 3
+        if any(key in source for key in ["weibo", "baidu", "zhihu", "bilibili", "douban"]):
+            score += 35
+        if any(key in source for key in ["taptap", "steam", "nintendo", "epicgames"]):
+            score += 32
+        if any(key in source for key in ["netease", "readhub"]):
+            score += 18
+        if any(key in source for key in ["github", "hackernews", "producthunt", "juejin", "ithome", "36kr", "sspai", "solidot"]):
+            score += 6
+        if category == "entertainment":
+            score += 15
+        if category == "life":
+            score += 10
+        if category == "tech_ai":
+            score += 8
+        if category == "business":
+            score -= 8
+        if re.search(r"(电竞|游戏|手游|端游|王者荣耀|英雄联盟|LOL|LPL|KPL|无畏契约|瓦罗兰特|Valorant|原神|崩坏|Steam|任天堂|主机|赛事|战队|主播|直播|B站|番剧|动漫)", f"{title} {summary}", re.IGNORECASE):
+            score += 28
+        if re.search(r"(大学|校园|毕业|考研|四六级|实习|社团|宿舍|课程|考试|就业|offer|学生|年轻人|奶茶|外卖|通勤|租房)", f"{title} {summary}", re.IGNORECASE):
+            score += 22
+        return score
 
     def _normalize_news_key(self, value: str) -> str:
         return re.sub(r"[\W_]+", "", str(value or "").lower())
@@ -1259,12 +1294,16 @@ Rules:
 请把 RSSHub/Tavily 抓到的热点整理成 Hoshia 私密直播间可用的话题素材。
 
 日期：{date}
+直播间受众：朋友限定的小圈子，观众以大学生/年轻人为主；他们更熟悉全民热搜、校园生活、电竞游戏、B站/动漫/娱乐、消费和AI工具话题。
 
 要求：
 - 输出 JSON，最多 12 个 topics。
+- 选题优先级：全民热议 > 电竞/游戏/二次元 > 大学生生活/消费/就业 > 娱乐综艺影视 > AI工具/科技。专业财经、企业稿、开发者小圈子话题只有特别有梗或强相关时才保留。
+- 目标配比：全民热议 4-6 条，电竞/游戏/二次元 2-3 条，大学生日常/消费/就业 2-3 条，科技/AI 1-2 条；不要让财经或商业稿占多数。
 - 不要复述新闻全文，不要编造事实。
 - Hoshia 可以有鲜明观点，但要区分“大家在聊”和“事实已确认”。
 - 每条都要能自然变成朋友直播间里的开场或接话，不要像新闻播报。
+- Hoshia 的看法要像朋友吐槽/主播锐评，不要像媒体评论员；适合大学生听，不端着。
 - 高风险话题可以保留，但 risk_note 要提醒不要给医疗、投资、法律、安全等具体建议。
 - conversation_starter 要是自然口语问题。
 
