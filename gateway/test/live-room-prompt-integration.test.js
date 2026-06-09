@@ -42,3 +42,13 @@ test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {
   assert.match(schema, /news_source_urls/);
   assert.match(schema, /tavily_api_key/);
 });
+
+test("AstrBot bridge has proactive idle topic strategy", () => {
+  const bridge = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/main.py", import.meta.url), "utf8");
+
+  assert.match(bridge, /reply_mode == "proactive_idle"/);
+  assert.match(bridge, /_build_proactive_idle_instruction/);
+  assert.match(bridge, /one concrete, easy-to-answer topic point/);
+  assert.match(bridge, /daily news topic memories/);
+  assert.match(bridge, /today light live-room chat topic/);
+});

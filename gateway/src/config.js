@@ -1,3 +1,5 @@
+import { normalizeProactiveReplyConfig } from "./proactive-reply.js";
+
 export const config = {
   port: Number(process.env.PORT || 3000),
   sessionSecret: required("SESSION_SECRET"),
@@ -29,6 +31,7 @@ export const config = {
   welcomeGreetingEnabled: parseBool(process.env.WELCOME_GREETING_ENABLED, true),
   welcomeGreetingCooldownSeconds: Number(process.env.WELCOME_GREETING_COOLDOWN_SECONDS || 1800),
   welcomeGreetingDelayMs: Number(process.env.WELCOME_GREETING_DELAY_MS || 900),
+  proactiveReply: normalizeProactiveReplyConfig(process.env),
   musicEnabled: parseBool(process.env.MUSIC_ENABLED, false),
   musicProvider: enumValue(process.env.MUSIC_PROVIDER || "xiaomusic", ["xiaomusic"], "xiaomusic"),
   musicProviderBaseUrl: process.env.MUSIC_PROVIDER_BASE_URL || "",

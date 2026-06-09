@@ -84,6 +84,10 @@ Important options:
 - `SHORT_TERM_CONTEXT_MAX_MESSAGES`: recent user/AI messages sent to AstrBot as live-room short-term context; defaults to `100` (about 50 rounds).
 - `CONTEXT_SUMMARY_LOOKBACK_MESSAGES`: maximum unsummarized messages scanned for rolling context summary refresh; defaults to `600`.
 - `CONTEXT_SUMMARY_COMPRESS_MESSAGES`: older messages summarized per refresh when the recent context is over the limit; defaults to `20`.
+- `PROACTIVE_REPLY_ENABLED`: enables idle proactive Hoshia replies when at least one viewer is online; defaults to `false`.
+- `PROACTIVE_REPLY_MIN_IDLE_SECONDS` / `PROACTIVE_REPLY_MAX_IDLE_SECONDS`: random idle window before Hoshia speaks; defaults to `300`-`900`.
+- `PROACTIVE_REPLY_MAX_UNANSWERED`: pauses idle proactive replies after this many unanswered proactive messages; defaults to `3`.
+- `PROACTIVE_REPLY_CONTEXT_MESSAGES`: recent room messages sent as proactive reply context; defaults to `24`.
 - AstrBot bridge news topics are configured in the AstrBot plugin, not in the gateway `.env`: enable `news_capability_enabled`, set `news_source_urls` to private/internal RSSHub feeds, and keep any `tavily_api_key` only in server-side AstrBot config.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.

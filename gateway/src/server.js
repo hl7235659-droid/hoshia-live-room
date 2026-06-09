@@ -22,6 +22,13 @@ import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
 import { buildHostLifeContext } from "./host-life-context.js";
 import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
+import {
+  createProactiveReplyState,
+  markUserActivityForProactive,
+  nextProactiveDelayMs,
+  rememberProactiveReply,
+  shouldRunProactiveReply
+} from "./proactive-reply.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
 import {
   buildModuleContext,
@@ -120,6 +127,7 @@ const musicIntentIdleDelayMs = 1000;
 let pendingReplyBatch = [];
 let replyBatchTimer = null;
 let replyBatchRunning = false;
+const proactiveReplyState = createProactiveReplyState();
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -372,6 +380,7 @@ wss.on("connection", (ws, _req, session) => {
   ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
   ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
   if (shouldScheduleWelcomeGreeting(session, alreadyOnline)) scheduleWelcomeGreeting(session);
+  scheduleProactiveReplyCheck();
 
   ws.on("pong", () => {
     ws.isAlive = true;
@@ -392,6 +401,7 @@ wss.on("connection", (ws, _req, session) => {
     markUserOffline(session);
     broadcast(systemEvent("presence", `${session.nickname} left`, { online: uniqueOnlineCount() }));
     broadcastAudienceChanged();
+    scheduleProactiveReplyCheck();
   });
 });
 
@@ -424,6 +434,8 @@ async function handleDanmaku(session, payload) {
   const userMessage = messageEvent("danmaku", "user", text, session);
   await storeMessage(userMessage);
   broadcast(userMessage);
+  markUserActivityForProactive(proactiveReplyState);
+  scheduleProactiveReplyCheck();
   await setCharacterState(nextCharacterState("user_message", text));
 
   const musicQuery = parseMusicRequestText(text);
@@ -746,6 +758,7 @@ async function handleAiReplyBatch(batch) {
   if (reply.skipped) {
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
     await setCharacterState("IDLE");
+    scheduleProactiveReplyCheck();
     return;
   }
   if (moduleMemoryEvents.length && reply.source !== "astrbot") {
@@ -763,6 +776,208 @@ async function handleAiReplyBatch(batch) {
   broadcast(aiMessage);
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
+  scheduleProactiveReplyCheck();
+}
+
+function scheduleProactiveReplyCheck(delayMs = null) {
+  if (proactiveReplyState.timer) {
+    clearTimeout(proactiveReplyState.timer);
+    proactiveReplyState.timer = null;
+  }
+  if (!config.proactiveReply.enabled) return;
+  if (!uniqueOnlineCount()) {
+    proactiveReplyState.nextDueAtMs = 0;
+    proactiveReplyState.nextDelayMs = 0;
+    return;
+  }
+  if (proactiveReplyState.unansweredCount >= config.proactiveReply.maxUnanswered) {
+    proactiveReplyState.nextDueAtMs = 0;
+    proactiveReplyState.nextDelayMs = 0;
+    return;
+  }
+
+  const delay = delayMs ?? nextProactiveDelayMs(config.proactiveReply);
+  proactiveReplyState.nextDelayMs = delay;
+  proactiveReplyState.nextDueAtMs = Date.now() + delay;
+  proactiveReplyState.timer = setTimeout(() => {
+    proactiveReplyState.timer = null;
+    void handleProactiveReplyCheck();
+  }, delay);
+}
+
+async function handleProactiveReplyCheck() {
+  const decision = shouldRunProactiveReply({
+    settings: config.proactiveReply,
+    state: proactiveReplyState,
+    onlineCount: uniqueOnlineCount(),
+    pendingReplyCount: pendingReplyBatch.length,
+    replyBatchRunning
+  });
+
+  if (!decision.ok) {
+    if (["reply_batch_running", "pending_user_messages", "already_generating"].includes(decision.reason)) {
+      scheduleProactiveReplyCheck(15000);
+    } else if (decision.reason === "not_due") {
+      scheduleProactiveReplyCheck(Math.max(1000, proactiveReplyState.nextDueAtMs - Date.now()));
+    }
+    return;
+  }
+
+  await sendProactiveIdleReply(decision.idleMs || 0);
+}
+
+async function sendProactiveIdleReply(idleMs) {
+  if (config.aiMode !== "astrbot") {
+    scheduleProactiveReplyCheck();
+    return;
+  }
+
+  const session = firstActiveSession();
+  if (!session) {
+    scheduleProactiveReplyCheck();
+    return;
+  }
+
+  const startedAfterUserMessageAt = proactiveReplyState.lastUserMessageAtMs;
+  proactiveReplyState.generating = true;
+  try {
+    await setCharacterState("THINKING");
+    const shortTermContext = await buildProactiveShortTermContext();
+    const moduleContext = buildModuleContext({ providers: moduleProviders, session });
+    const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+    const recentMessages = db
+      .listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages)
+      .map(contextPayloadMessage);
+    const prompt = formatProactiveIdlePrompt({
+      session,
+      idleMs,
+      recentMessages,
+      moduleContext,
+      moduleEvents
+    });
+
+    const reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
+      roomSession: true,
+      forceReply: true,
+      replyMode: "proactive_idle",
+      recentContext: shortTermContext.recentContext,
+      contextSummary: shortTermContext.contextSummary,
+      moduleContext,
+      moduleEvents,
+      messages: recentMessages
+    });
+
+    if (proactiveReplyState.lastUserMessageAtMs !== startedAfterUserMessageAt) {
+      await setCharacterState("IDLE");
+      return;
+    }
+    if (reply?.skipped || !reply?.text || reply.source !== "astrbot") {
+      await setCharacterState("IDLE");
+      return;
+    }
+
+    const aiMessage = messageEvent("ai_reply", "ai", String(reply.text).slice(0, 220), {
+      user_id: "ai-host",
+      nickname: "Hoshia"
+    }, {
+      source: reply.source,
+      latency_ms: reply.latency_ms,
+      proactive_idle: true
+    });
+    await storeMessage(aiMessage);
+    broadcast(aiMessage);
+    rememberProactiveReply(proactiveReplyState, aiMessage.text);
+    await setCharacterState(isValidState(reply.state) ? reply.state : "SPEAKING");
+    setTimeout(() => void setCharacterState("IDLE"), 1400);
+  } catch (error) {
+    console.warn("proactive_reply_failed", {
+      type: error.name || "Error",
+      message: error.message
+    });
+    await setCharacterState("IDLE");
+  } finally {
+    proactiveReplyState.generating = false;
+    scheduleProactiveReplyCheck();
+  }
+}
+
+async function buildProactiveShortTermContext() {
+  await refreshRoomContextSummary(config.roomId);
+  const messages = db.listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages);
+  const summary = db.getRoomContextSummary(config.roomId);
+  return {
+    recentContext: messages.map(contextPayloadMessage),
+    contextSummary: summary?.summary_text || ""
+  };
+}
+
+function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleContext, moduleEvents }) {
+  const idleMinutes = Math.max(1, Math.round(Number(idleMs || 0) / 60000));
+  const room = roomInfo();
+  const realityContextLines = buildRealityContext({
+    config,
+    room,
+    batch: [{
+      session,
+      text: "房间安静了一会儿",
+      mentioned: false,
+      timestamp: new Date().toISOString()
+    }],
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections
+  });
+  const hostLifeContextLines = buildHostLifeContext({
+    config,
+    room,
+    batch: [{
+      session,
+      text: "房间安静了一会儿",
+      mentioned: false,
+      timestamp: new Date().toISOString()
+    }],
+    audienceUsers: audiencePayload().users,
+    activeConnections: activeUserConnections,
+    moduleContext,
+    moduleEvents
+  });
+  const recentLines = recentMessages.slice(-config.proactiveReply.contextMessages).map((item, index) => {
+    const speaker = item.role === "ai" ? "Hoshia" : (item.nickname || "viewer");
+    return `[${index + 1}] ${speaker}: ${item.text}`;
+  });
+  const previousLines = proactiveReplyState.recentTexts.map((text, index) => `${index + 1}. ${text}`);
+
+  return [
+    hoshiaPersonaPrompt,
+    "You are about to speak proactively in Hoshia Live Room because at least one viewer is online and the room has been quiet.",
+    `The room has been quiet for about ${idleMinutes} minute(s).`,
+    `Online viewers: ${room.online}.`,
+    `Consecutive proactive messages without viewer response: ${proactiveReplyState.unansweredCount}.`,
+    ...(realityContextLines.length ? realityContextLines : []),
+    ...(hostLifeContextLines.length ? hostLifeContextLines : []),
+    ...(previousLines.length ? [
+      "Recent proactive messages from Hoshia; do not repeat their topic or structure:",
+      ...previousLines
+    ] : []),
+    ...(recentLines.length ? [
+      "Recent real room messages:",
+      ...recentLines
+    ] : ["Recent real room messages: none"]),
+    "Task:",
+    "- Write one natural proactive Hoshia line for the live room.",
+    "- It must include one clear, easy-to-answer topic point.",
+    "- You may softly ask what the viewer is doing, but never only ask that; attach a concrete topic hook.",
+    "- Treat recent chat, music state, daily news topics, viewer memory, and current time atmosphere as equal candidate materials; choose the one most likely to invite a reply now.",
+    "- If using news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy or high-risk topics.",
+    "- Do not say you detected silence, do not scold viewers, do not ask customer-service style questions.",
+    "- Reply in Chinese, 1-2 short sentences, at most 90 Chinese characters. Output only Hoshia's line."
+  ].join("\n");
+}
+
+function firstActiveSession() {
+  for (const [ws, session] of sockets.entries()) {
+    if (ws.readyState === WebSocket.OPEN && activeUserConnections.has(session.user_id)) return session;
+  }
+  return null;
 }
 
 function scheduleWelcomeGreeting(session) {

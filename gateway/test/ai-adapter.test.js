@@ -230,6 +230,36 @@ test("astrbot room batch can include module context and module events", async ()
   assert.equal(reply.source, "astrbot");
 });
 
+test("proactive idle reply mode is forwarded to astrbot bridge", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Proactive idle prompt",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.reply_mode, "proactive_idle");
+      assert.equal(body.force_reply, true);
+      return responseJson(200, { ok: true, text: "今天可以聊聊游戏和 AI 结合的趣事。", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      roomSession: true,
+      forceReply: true,
+      replyMode: "proactive_idle",
+      messages: [
+        {
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "现在有点安静",
+          mentioned: false,
+          timestamp: "2026-06-09T12:00:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.source, "astrbot");
+});
+
 test("context summary uses dedicated bridge endpoint", async () => {
   const summary = await summarizeLiveRoomContext(
     baseConfig,

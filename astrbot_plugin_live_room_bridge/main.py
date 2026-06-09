@@ -195,7 +195,7 @@ class LiveRoomBridgePlugin(Star):
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
             prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
-            memory_context = await self._build_livingmemory_context(room_id, messages, module_memory_events)
+            memory_context = await self._build_livingmemory_context(room_id, messages, module_memory_events, reply_mode)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
             short_term_context = self._build_short_term_context(context_summary, recent_context)
@@ -205,7 +205,9 @@ class LiveRoomBridgePlugin(Star):
             if module_prompt_context:
                 prompt = f"{prompt}\n\n{module_prompt_context}"
 
-            if targets:
+            if reply_mode == "proactive_idle":
+                prompt = f"{prompt}\n\n{self._build_proactive_idle_instruction()}"
+            elif targets:
                 prompt = f"{prompt}\n\nExplicit reply target(s): {' '.join('@' + name for name in targets)}. If you are answering them, start your reply with the matching @nickname."
             elif force_reply:
                 prompt = f"{prompt}\n\nSingle-viewer direct reply mode ({reply_mode or 'single_user_direct'}). The live room currently has one online viewer, so reply naturally to their latest message even without an @ mention. Do not run proactive silence logic; keep the answer warm, concise, and conversational."
@@ -485,7 +487,7 @@ class LiveRoomBridgePlugin(Star):
                     break
         return selected
 
-    async def _build_livingmemory_context(self, room_id: str, messages: Any, module_events: Any | None = None) -> str:
+    async def _build_livingmemory_context(self, room_id: str, messages: Any, module_events: Any | None = None, reply_mode: str = "") -> str:
         if not self.livingmemory_enabled:
             return ""
         engine = self._livingmemory_engine()
@@ -508,7 +510,7 @@ class LiveRoomBridgePlugin(Star):
                         + "\n".join(lines)
                     )
 
-            news_query = self._news_query(messages)
+            news_query = self._news_query(messages, reply_mode)
             if news_query:
                 await self._cleanup_expired_news_memories(engine, room_id)
                 news_memories = await engine.search_memories(
@@ -560,7 +562,7 @@ class LiveRoomBridgePlugin(Star):
                 break
         return lines
 
-    def _news_query(self, messages: Any) -> str:
+    def _news_query(self, messages: Any, reply_mode: str = "") -> str:
         if not isinstance(messages, list):
             return ""
         parts = []
@@ -571,11 +573,27 @@ class LiveRoomBridgePlugin(Star):
             if text:
                 parts.append(text[:160])
         query = " ".join(parts)[:500]
+        if reply_mode == "proactive_idle":
+            proactive_seed = "today light live-room chat topic campus life entertainment games AI tools Bilibili trending low-pressure social"
+            return f"{query} {proactive_seed}".strip()[:500] if query else proactive_seed
         if not query:
             return ""
         if re.search(r"(今天|最近|新闻|热搜|热点|新鲜事|发生什么|AI|人工智能|科技|游戏|B站|b站|娱乐|GitHub|开源|模型|话题)", query, re.IGNORECASE):
             return query
         return ""
+
+    def _build_proactive_idle_instruction(self) -> str:
+        return """
+Proactive idle reply mode:
+- Hoshia is speaking first because at least one viewer is online and the room has been quiet.
+- Output only Hoshia's message, in Chinese, 1-2 short sentences, at most 90 Chinese characters.
+- The message must include one concrete, easy-to-answer topic point.
+- It may softly ask what the viewer is doing, but it must not only ask that; attach a specific topic hook.
+- Treat recent room chat, music state, daily news topic memories, viewer memories, and time atmosphere as equal candidate materials. Choose the one most likely to invite a reply now.
+- If using daily news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy, risky, medical, legal, investment, or highly divisive topics.
+- Do not say you detected silence. Do not scold viewers. Do not ask customer-service questions such as whether anyone needs help.
+- Do not repeat the topic or structure of recent proactive messages.
+""".strip()
 
     async def _summarize_and_store_viewer_memories(self, provider_id: str, room_id: str, messages: Any, reply_text: str, module_events: Any | None = None):
         try:
