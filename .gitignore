@@ -26,3 +26,6 @@ frontend/src/assets/*-chroma.png
 frontend/src/assets/*-green.png
 frontend/src/assets/*-placeholder.png
 frontend/public/live2d/runtime/live2dcubismcore.min.js
+
+services/qqmusic-resolver/private/
+qqmusic-resolver/private/

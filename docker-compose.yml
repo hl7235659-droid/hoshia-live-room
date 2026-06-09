@@ -29,6 +29,7 @@ services:
     depends_on:
       - live-room-redis
       - xiaomusic
+      - qqmusic-resolver
     networks:
       - live_room_dev_network
       - astrbot_astrbot_network
@@ -45,11 +46,31 @@ services:
     image: hanxi/xiaomusic:latest
     container_name: live-room-dev-xiaomusic
     restart: unless-stopped
+    environment:
+      QQMUSIC_RESOLVER_URL: http://qqmusic-resolver:8190
     ports:
       - "127.0.0.1:58090:8090"
     volumes:
       - ../xiaomusic/music:/app/music
       - ../xiaomusic/conf:/app/conf
+      - ./services/qqmusic-resolver/xiaomusic/QQMusicVIP.js:/app/conf/js_plugins/QQMusicVIP.js:ro
+    depends_on:
+      - qqmusic-resolver
+    networks:
+      - live_room_dev_network
+
+  qqmusic-resolver:
+    build:
+      context: ./services/qqmusic-resolver
+    container_name: live-room-dev-qqmusic-resolver
+    restart: unless-stopped
+    environment:
+      PORT: 8190
+      QQMUSIC_COOKIE_FILE: /app/private/cookies.txt
+    ports:
+      - "127.0.0.1:${QQMUSIC_RESOLVER_PORT:-58190}:8190"
+    volumes:
+      - ../qqmusic-resolver/private:/app/private
     networks:
       - live_room_dev_network
 

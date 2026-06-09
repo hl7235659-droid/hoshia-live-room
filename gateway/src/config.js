@@ -37,7 +37,7 @@ export const config = {
   musicRequestWindowSeconds: Number(process.env.MUSIC_REQUEST_RATE_LIMIT_WINDOW_SECONDS || 60),
   musicRequestLimitCount: Number(process.env.MUSIC_REQUEST_RATE_LIMIT_COUNT || 3),
   musicProviderTimeoutMs: Number(process.env.MUSIC_PROVIDER_TIMEOUT_MS || 12000),
-  musicXiaomusicSearchChain: process.env.MUSIC_XIAOMUSIC_SEARCH_CHAIN || "lx:tx,musicfree:all"
+  musicXiaomusicSearchChain: process.env.MUSIC_XIAOMUSIC_SEARCH_CHAIN || "musicfree:QQMusicVIP,lx:tx,musicfree:all"
 };
 
 function required(name) {
