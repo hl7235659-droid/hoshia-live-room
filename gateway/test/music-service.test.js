@@ -249,6 +249,111 @@ test("music service skips unplayable search candidates", async (t) => {
   assert.equal(result.track.title, "Playable Candidate");
 });
 
+test("music service bulk requests clamp to five and skip duplicates or unplayable candidates", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const searchCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("/api/search/online")) {
+      const parsed = new URL(href);
+      searchCalls.push({
+        plugin: parsed.searchParams.get("plugin"),
+        limit: parsed.searchParams.get("limit")
+      });
+      return jsonResponse({
+        success: true,
+        data: [
+          { title: "Existing Song", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Song 1", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Broken Song", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Song 2", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Song 3", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Song 4", artist: "Jay", platform: "QQMusicVIP" },
+          { title: "Song 5", artist: "Jay", platform: "QQMusicVIP" }
+        ]
+      });
+    }
+    if (href.includes("/api/play/getMediaSource")) {
+      const song = JSON.parse(options.body);
+      if (song.title === "Broken Song") {
+        return jsonResponse({ success: false, error: "unplayable" });
+      }
+      return jsonResponse({ success: true, data: { url: `/music/${encodeURIComponent(song.title)}.mp3` } });
+    }
+    throw new Error(`unexpected fetch ${href}`);
+  };
+
+  const service = new MusicService(
+    { ...baseConfig, musicQueueMax: 10, musicXiaomusicSearchChain: "musicfree:QQMusicVIP,musicfree:all" },
+    { store: new TestStore() }
+  );
+  service.current = { id: "existing", title: "Existing Song", artist: "Jay", requested_by_id: "u-old" };
+  const result = await service.requestSongs({ query: "Jay hot", count: 10 }, {
+    user_id: "u-bulk",
+    username: "friend",
+    nickname: "Friend"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.added_count, 5);
+  assert.deepEqual(result.tracks.map((track) => track.title), ["Song 1", "Song 2", "Song 3", "Song 4", "Song 5"]);
+  assert.deepEqual(searchCalls[0], { plugin: "QQMusicVIP", limit: "12" });
+  assert.equal(service.queue.length, 5);
+});
+
+test("music service bulk requests use style queries and respect remaining queue space", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const keywords = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("/api/search/online")) {
+      const parsed = new URL(href);
+      const keyword = parsed.searchParams.get("keyword");
+      keywords.push(keyword);
+      return jsonResponse({
+        success: true,
+        data: [{ title: `${keyword} Track`, artist: "Style", platform: "QQMusicVIP" }]
+      });
+    }
+    if (href.includes("/api/play/getMediaSource")) {
+      const song = JSON.parse(options.body);
+      return jsonResponse({ success: true, data: { url: `/music/${encodeURIComponent(song.title)}.mp3` } });
+    }
+    throw new Error(`unexpected fetch ${href}`);
+  };
+
+  const service = new MusicService(
+    { ...baseConfig, musicQueueMax: 5, musicXiaomusicSearchChain: "musicfree:QQMusicVIP" },
+    { store: new TestStore() }
+  );
+  service.current = { id: "current", title: "Current", artist: "Host" };
+  service.queue = [
+    { id: "q1", title: "Queued 1" },
+    { id: "q2", title: "Queued 2" },
+    { id: "q3", title: "Queued 3" },
+    { id: "q4", title: "Queued 4" }
+  ];
+
+  const result = await service.requestSongs({
+    query: "deep night R&B",
+    queries: ["Chinese R&B", "slow R&B"],
+    count: 5
+  }, { user_id: "u-style", username: "friend" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.added_count, 1);
+  assert.deepEqual(keywords, ["deep night R&B"]);
+  assert.equal(service.queue.length, 5);
+});
+
 function jsonResponse(value) {
   return {
     ok: true,

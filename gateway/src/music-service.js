@@ -62,34 +62,82 @@ export class MusicService {
     this.status = this.current ? this.status : "loading";
     try {
       const song = await this.resolveSong(cleanQuery);
-      const track = {
-        id: nanoid(12),
-        title: song.title || cleanQuery,
-        artist: song.artist || "",
-        album: song.album || "",
-        cover: song.cover || "",
-        duration: Number(song.duration || 0) || 0,
-        source: song.source || this.config.musicProvider,
-        streamUrl: song.streamUrl,
-        streamHeaders: song.streamHeaders || {},
-        requested_by: session?.nickname || "",
-        requested_by_id: session?.user_id || "",
-        requested_at: new Date().toISOString()
-      };
-      this.tracks.set(track.id, track);
-      if (!this.current) {
-        this.current = track;
-        this.status = "playing";
-      } else {
-        this.queue.push(track);
-        if (this.status === "loading") this.status = "playing";
-      }
+      const track = this.createTrack(song, cleanQuery, session);
+      this.addTrack(track);
       this.lastError = "";
       return { ok: true, track: this.publicTrack(track), state: this.publicState(session) };
     } catch (error) {
       this.status = this.current ? "error" : "idle";
       return this.fail(safeMusicError(error));
     }
+  }
+
+  async requestSongs(payload, session) {
+    const cleanQueries = normalizeBulkQueries(payload);
+    const count = clampBulkCount(payload?.count);
+    if (!this.config.musicEnabled) return this.fail("music_disabled");
+    if (!cleanQueries.length) return this.fail("music_query_required");
+    if (this.queue.length >= this.queueMax()) return this.fail("music_queue_full");
+    if (!(await this.consumeRequestLimit(session?.user_id || "anonymous"))) {
+      return this.fail("music_rate_limited");
+    }
+
+    const available = Math.max(0, this.queueMax() - this.queue.length);
+    const targetCount = Math.min(count, available);
+    if (targetCount <= 0) return this.fail("music_queue_full");
+
+    this.status = this.current ? this.status : "loading";
+    try {
+      const songs = await this.resolveSongs(cleanQueries, targetCount);
+      const tracks = [];
+      for (const song of songs.slice(0, targetCount)) {
+        if (this.current && this.queue.length >= this.queueMax()) break;
+        const track = this.createTrack(song, song.query || cleanQueries[0], session);
+        this.addTrack(track);
+        tracks.push(track);
+      }
+      if (!tracks.length) throw new Error("music_unplayable");
+
+      this.lastError = "";
+      return {
+        ok: true,
+        tracks: tracks.map((track) => this.publicTrack(track)),
+        requested_count: count,
+        added_count: tracks.length,
+        state: this.publicState(session)
+      };
+    } catch (error) {
+      this.status = this.current ? "error" : "idle";
+      return this.fail(safeMusicError(error));
+    }
+  }
+
+  createTrack(song, fallbackTitle, session) {
+    return {
+      id: nanoid(12),
+      title: song.title || fallbackTitle,
+      artist: song.artist || "",
+      album: song.album || "",
+      cover: song.cover || "",
+      duration: Number(song.duration || 0) || 0,
+      source: song.source || this.config.musicProvider,
+      streamUrl: song.streamUrl,
+      streamHeaders: song.streamHeaders || {},
+      requested_by: session?.nickname || "",
+      requested_by_id: session?.user_id || "",
+      requested_at: new Date().toISOString()
+    };
+  }
+
+  addTrack(track) {
+    this.tracks.set(track.id, track);
+    if (!this.current) {
+      this.current = track;
+      this.status = "playing";
+      return;
+    }
+    this.queue.push(track);
+    if (this.status === "loading") this.status = "playing";
   }
 
   control(action, session, payload = {}, options = {}) {
@@ -211,44 +259,107 @@ export class MusicService {
     throw new Error(hasUnplayable ? "music_unplayable" : hasNotFound ? "music_not_found" : "music_provider_unavailable");
   }
 
+  async resolveSongs(queries, count) {
+    if (this.config.musicProvider !== "xiaomusic") throw new Error("music_provider_unsupported");
+    const baseUrl = normalizedBaseUrl(this.config.musicProviderBaseUrl);
+    if (!baseUrl) throw new Error("music_provider_unavailable");
+
+    const attempts = parseXiaomusicSearchChain(this.config.musicXiaomusicSearchChain);
+    const results = [];
+    const seen = new Set([
+      ...[this.current].filter(Boolean).map(trackSignature),
+      ...this.queue.map(trackSignature)
+    ].filter(Boolean));
+    const errors = [];
+
+    for (const query of queries) {
+      if (results.length >= count) break;
+      if (isHttpUrl(query)) {
+        try {
+          const song = await this.resolveXiaomusicUrlSong(baseUrl, query);
+          addResolvedSong(results, seen, { ...song, query }, count);
+        } catch (error) {
+          errors.push(`url:${safeMusicError(error)}`);
+        }
+        continue;
+      }
+
+      for (const attempt of attempts) {
+        if (results.length >= count) break;
+        let candidates = [];
+        try {
+          candidates = await this.searchXiaomusicCandidates(baseUrl, query, attempt, 12);
+        } catch (error) {
+          errors.push(`${attempt.label}:${safeMusicError(error)}`);
+          continue;
+        }
+
+        for (const candidate of candidates.slice(0, 12)) {
+          if (results.length >= count) break;
+          if (seen.has(songSignature(candidate))) continue;
+          const song = await this.resolveXiaomusicCandidate(baseUrl, query, attempt, candidate).catch((error) => {
+            errors.push(`${attempt.label}:${safeMusicError(error)}`);
+            return null;
+          });
+          if (!song) continue;
+          addResolvedSong(results, seen, { ...song, query }, count);
+        }
+      }
+    }
+
+    if (results.length) return results;
+    const hasUnplayable = errors.some((item) => item.includes("music_unplayable"));
+    const hasNotFound = errors.length > 0 && errors.every((item) => item.includes("music_not_found"));
+    throw new Error(hasUnplayable ? "music_unplayable" : hasNotFound ? "music_not_found" : "music_provider_unavailable");
+  }
+
   async resolveXiaomusicSong(baseUrl, query, attempt) {
+    const candidates = await this.searchXiaomusicCandidates(baseUrl, query, attempt, 8);
+    for (const song of candidates.slice(0, 8)) {
+      const resolved = await this.resolveXiaomusicCandidate(baseUrl, query, attempt, song).catch(() => null);
+      if (resolved) return resolved;
+    }
+
+    throw new Error("music_unplayable");
+  }
+
+  async searchXiaomusicCandidates(baseUrl, query, attempt, limit = 8) {
     const searchUrl = new URL("/api/search/online", baseUrl);
     searchUrl.searchParams.set("keyword", query);
     searchUrl.searchParams.set("plugin", attempt.plugin);
     searchUrl.searchParams.set("page", "1");
-    searchUrl.searchParams.set("limit", "8");
+    searchUrl.searchParams.set("limit", String(limit));
     searchUrl.searchParams.set("api_type", String(attempt.apiType));
 
     const search = await fetchJson(searchUrl, { timeoutMs: this.config.musicProviderTimeoutMs });
     if (search && search.success === false) throw new Error(search.error || "music_provider_unavailable");
     const candidates = findSongCandidates(search);
     if (!candidates.length) throw new Error("music_not_found");
+    return candidates;
+  }
 
-    for (const song of candidates.slice(0, 8)) {
-      const media = await fetchJson(new URL("/api/play/getMediaSource", baseUrl), {
-        method: "POST",
-        body: JSON.stringify(song),
-        headers: { "content-type": "application/json" },
-        timeoutMs: this.config.musicProviderTimeoutMs
-      }).catch(() => null);
-      if (media && media.success === false) continue;
+  async resolveXiaomusicCandidate(baseUrl, query, attempt, song) {
+    const media = await fetchJson(new URL("/api/play/getMediaSource", baseUrl), {
+      method: "POST",
+      body: JSON.stringify(song),
+      headers: { "content-type": "application/json" },
+      timeoutMs: this.config.musicProviderTimeoutMs
+    });
+    if (media && media.success === false) throw new Error("music_unplayable");
 
-      const streamUrl = extractMediaUrl(media) || song.url;
-      if (!streamUrl) continue;
+    const streamUrl = extractMediaUrl(media) || song.url;
+    if (!streamUrl) throw new Error("music_unplayable");
 
-      return {
-        title: song.title || song.name || query,
-        artist: artistText(song),
-        album: song.album || song.albumName || "",
-        cover: song.cover || song.artwork || song.albumPic || "",
-        duration: song.duration || song.interval || 0,
-        source: normalizeSource(song.platform || song.source || attempt.label),
-        streamUrl,
-        streamHeaders: media?.headers || media?.data?.headers || {}
-      };
-    }
-
-    throw new Error("music_unplayable");
+    return {
+      title: song.title || song.name || query,
+      artist: artistText(song),
+      album: song.album || song.albumName || "",
+      cover: song.cover || song.artwork || song.albumPic || "",
+      duration: song.duration || song.interval || 0,
+      source: normalizeSource(song.platform || song.source || attempt.label),
+      streamUrl,
+      streamHeaders: media?.headers || media?.data?.headers || {}
+    };
   }
 
   async resolveXiaomusicUrlSong(baseUrl, url) {
@@ -321,6 +432,62 @@ export class MusicService {
     if (count === 1) await this.store.expire(key, windowSeconds);
     return count <= limit;
   }
+}
+
+function normalizeBulkQueries(payload = {}) {
+  const values = [
+    payload?.query,
+    ...(Array.isArray(payload?.queries) ? payload.queries : [])
+  ];
+  const seen = new Set();
+  const queries = [];
+  for (const value of values) {
+    const query = String(value || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const key = query.toLowerCase();
+    if (!query || seen.has(key)) continue;
+    seen.add(key);
+    queries.push(query);
+    if (queries.length >= 5) break;
+  }
+  return queries;
+}
+
+function clampBulkCount(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return 5;
+  return Math.max(1, Math.min(number, 5));
+}
+
+function addResolvedSong(results, seen, song, count) {
+  const signature = trackSignature(song);
+  if (!signature || seen.has(signature) || results.length >= count) return false;
+  seen.add(signature);
+  results.push(song);
+  return true;
+}
+
+function trackSignature(track) {
+  if (!track) return "";
+  const title = normalizeSignaturePart(track.title);
+  if (!title) return "";
+  const artist = normalizeSignaturePart(track.artist);
+  return `${title}:${artist}`;
+}
+
+function songSignature(song) {
+  if (!song || typeof song !== "object") return "";
+  const title = normalizeSignaturePart(song.title || song.name);
+  if (!title) return "";
+  const artist = normalizeSignaturePart(artistText(song));
+  return `${title}:${artist}`;
+}
+
+function normalizeSignaturePart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[《》"'.,，。:：\-_\[\]()（）]/g, "")
+    .trim();
 }
 
 function isAllowedNaturalControl(action, payload, naturalControl) {

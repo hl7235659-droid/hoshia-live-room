@@ -306,16 +306,44 @@ test("music intent recognition uses dedicated bridge endpoint and strips stream 
     intent: "request",
     confidence: 0.93,
     query: "周杰伦 晴天",
+    queries: [],
+    count: 1,
     target: { kind: "" },
     reply_hint: "好，帮你点晴天。",
     source: "astrbot_music_intent"
   });
 });
 
+test("music intent recognition normalizes bulk requests", async () => {
+  const intent = await recognizeMusicIntent(
+    { ...session, username: "tester" },
+    "来点 city pop",
+    baseConfig,
+    async () => responseJson(200, {
+      ok: true,
+      intent: {
+        intent: "request_many",
+        confidence: 0.91,
+        query: "city pop",
+        queries: ["city pop", "日系 city pop", "city pop", "山下达郎", "竹内玛莉亚", "复古都市流行", "extra"],
+        count: 10,
+        target: { kind: "" },
+        reply_hint: "给你排几首 city pop。"
+      }
+    })
+  );
+
+  assert.equal(intent.intent, "request_many");
+  assert.equal(intent.count, 5);
+  assert.deepEqual(intent.queries, ["city pop", "日系 city pop", "山下达郎", "竹内玛莉亚", "复古都市流行"]);
+});
+
 test("music intent recognition safely returns none on bridge failure", async () => {
   const intent = await recognizeMusicIntent(session, "普通聊天", baseConfig, async () => responseJson(502, { ok: false }));
   assert.equal(intent.intent, "none");
   assert.equal(intent.confidence, 0);
+  assert.deepEqual(intent.queries, []);
+  assert.equal(intent.count, 0);
 });
 
 test("astrbot judge skip is returned without fallback", async () => {

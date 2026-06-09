@@ -720,6 +720,7 @@ Recent music events:
 
 Supported intents:
 - request: viewer asks to play/request/add a song. Extract the best search query, including artist when present. Examples: "??????" => query "??? ??"; "?????????" => query "???????".
+- request_many: viewer asks for multiple songs, a singer's popular songs, a style playlist, or a mood playlist. Clamp count to 1..5. For singer hot songs, use query like "周杰伦 热门". For style/mood playlists, generate 3-5 concise search queries such as ["深夜 R&B", "华语 R&B", "治愈 R&B", "慢节奏 R&B", "夜晚 情歌"] or ["city pop", "日系 city pop", "竹内玛莉亚", "山下达郎", "复古都市流行"].
 - pause: asks to pause/stop temporarily.
 - resume: asks to continue/resume/play current music.
 - next: asks to skip/switch/cut to next song.
@@ -730,13 +731,16 @@ Supported intents:
 Rules:
 - Use confidence 0..1.
 - If the message is ordinary chat, lyrics discussion, or only says they like music, choose none.
-- If request is vague but clearly wants music, still choose request and make a concise Chinese search query.
+- If request is vague but clearly wants one song, choose request and make a concise Chinese search query.
+- If request asks for "几首", "多首", "歌单", "热门", or a number of songs, choose request_many.
 - Do not invent queue indexes not mentioned by the user.
 - Return ONLY JSON with this exact shape:
 {{
-  "intent": "request|pause|resume|next|remove|status|none",
+  "intent": "request|request_many|pause|resume|next|remove|status|none",
   "confidence": 0.0,
   "query": "",
+  "queries": [],
+  "count": 1,
   "target": {{"kind": ""}},
   "reply_hint": ""
 }}
@@ -768,7 +772,7 @@ Rules:
         if not isinstance(value, dict):
             return self._none_music_intent()
         intent = str(value.get("intent", "none")).strip().lower()
-        if intent not in {"request", "pause", "resume", "next", "remove", "status", "none"}:
+        if intent not in {"request", "request_many", "pause", "resume", "next", "remove", "status", "none"}:
             intent = "none"
         try:
             raw_confidence = float(value.get("confidence", 0) or 0)
@@ -785,10 +789,28 @@ Rules:
                 normalized_target["index"] = max(1, min(int(target.get("index")), 100))
             except Exception:
                 normalized_target = {"kind": ""}
+        queries = []
+        if isinstance(value.get("queries"), list):
+            seen_queries: set[str] = set()
+            for item in value.get("queries", [])[:8]:
+                query = self._safe_runtime_text(item, 160)
+                key = query.lower()
+                if not query or key in seen_queries:
+                    continue
+                seen_queries.add(key)
+                queries.append(query)
+                if len(queries) >= 5:
+                    break
+        try:
+            count = max(1, min(int(value.get("count", 1)), 5))
+        except Exception:
+            count = 1
         return {
             "intent": intent,
             "confidence": confidence,
             "query": self._safe_runtime_text(value.get("query"), 160),
+            "queries": queries,
+            "count": count,
             "target": normalized_target,
             "reply_hint": self._safe_runtime_text(value.get("reply_hint"), 160),
             "source": "astrbot_music_intent",
@@ -799,6 +821,8 @@ Rules:
             "intent": "none",
             "confidence": 0,
             "query": "",
+            "queries": [],
+            "count": 0,
             "target": {"kind": ""},
             "reply_hint": "",
             "source": "astrbot_music_intent",

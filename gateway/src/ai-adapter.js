@@ -170,7 +170,7 @@ function bridgeEndpoint(baseUrl, pathname) {
   return url.toString();
 }
 
-const musicIntents = new Set(["request", "pause", "resume", "next", "remove", "status", "none"]);
+const musicIntents = new Set(["request", "request_many", "pause", "resume", "next", "remove", "status", "none"]);
 const musicTargetKinds = new Set(["", "queue_index", "requested_by_self"]);
 
 function normalizeMusicIntent(value) {
@@ -185,10 +185,33 @@ function normalizeMusicIntent(value) {
     intent: normalizedIntent,
     confidence,
     query: String(value.query || "").trim().slice(0, 160),
+    queries: normalizeMusicIntentQueries(value.queries),
+    count: clampMusicIntentCount(value.count),
     target,
     reply_hint: String(value.reply_hint || "").trim().slice(0, 160),
     source: String(value.source || "astrbot_music_intent").slice(0, 80)
   };
+}
+
+function normalizeMusicIntentQueries(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const queries = [];
+  for (const item of value) {
+    const query = String(item || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const key = query.toLowerCase();
+    if (!query || seen.has(key)) continue;
+    seen.add(key);
+    queries.push(query);
+    if (queries.length >= 5) break;
+  }
+  return queries;
+}
+
+function clampMusicIntentCount(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(1, Math.min(number, 5));
 }
 
 function normalizeMusicIntentTarget(value) {
@@ -208,6 +231,8 @@ function noneMusicIntent(reason = "") {
     intent: "none",
     confidence: 0,
     query: "",
+    queries: [],
+    count: 0,
     target: { kind: "" },
     reply_hint: "",
     source: reason || "none"

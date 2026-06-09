@@ -466,6 +466,11 @@ async function handleNaturalMusicIntentFromDanmaku(session, text) {
     return true;
   }
 
+  if (intent.intent === "request_many") {
+    await handleBulkMusicRequestFromDanmaku(session, intent);
+    return true;
+  }
+
   if (intent.intent === "status") {
     await broadcastSystemText(formatMusicStatusText(musicState));
     return true;
@@ -489,7 +494,40 @@ function isActionableMusicIntent(intent) {
   if (!intent || intent.intent === "none") return false;
   if (Number(intent.confidence || 0) < 0.72) return false;
   if (intent.intent === "request") return Boolean(String(intent.query || "").trim());
+  if (intent.intent === "request_many") {
+    return Boolean(String(intent.query || "").trim() || (Array.isArray(intent.queries) && intent.queries.length));
+  }
   return ["pause", "resume", "next", "remove", "status"].includes(intent.intent);
+}
+
+async function handleBulkMusicRequestFromDanmaku(session, intent) {
+  const result = await musicService.requestSongs({
+    query: intent.query,
+    queries: intent.queries,
+    count: intent.count
+  }, session);
+
+  if (result.ok) {
+    for (const track of result.tracks || []) {
+      moduleEventStore.append(createMusicSongRequestedEvent(track, session, {
+        roomId: config.roomId,
+        memoryEligible: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
+        retentionDays: 30
+      }));
+    }
+    await broadcastSystemText(formatBulkMusicRequestSuccess(intent, result));
+  } else {
+    await broadcastSystemText(`♪ 批量点歌失败：${friendlyMusicError(result.error)}`);
+    sendToSession(session.user_id, { type: "music_error", error: result.error });
+  }
+  broadcastMusicState(session);
+}
+
+function formatBulkMusicRequestSuccess(intent, result) {
+  const label = String(intent.query || intent.queries?.[0] || "歌单").trim();
+  const titles = (result.tracks || []).slice(0, 5).map((track) => track.title).filter(Boolean);
+  const suffix = titles.length ? `：${titles.join("、")}` : "";
+  return `♪ 已加入 ${result.added_count || titles.length} 首${label}${suffix}`;
 }
 
 function intentToMusicControl(intent) {
