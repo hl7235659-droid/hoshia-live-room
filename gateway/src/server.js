@@ -17,13 +17,14 @@ import {
   verifyAccessCode,
   verifyPassword
 } from "./security.js";
-import { generateAiReply, summarizeLiveRoomContext } from "./ai-adapter.js";
+import { generateAiReply, recognizeMusicIntent, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
 import {
   buildModuleContext,
   createModuleEventStore,
+  createMusicModuleProvider,
   createMusicSongRequestedEvent
 } from "./module-context.js";
 import {
@@ -102,6 +103,9 @@ const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
 const musicService = new MusicService(config, { store });
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
+const moduleProviders = [
+  createMusicModuleProvider(musicService)
+];
 const sockets = new Map();
 const activeUserConnections = new Map();
 let characterState = "IDLE";
@@ -425,6 +429,9 @@ async function handleDanmaku(session, payload) {
     return;
   }
 
+  const musicIntentHandled = await handleNaturalMusicIntentFromDanmaku(session, text);
+  if (musicIntentHandled) return;
+
   enqueueAiReply(session, text);
 }
 
@@ -442,6 +449,86 @@ async function handleMusicRequestFromDanmaku(session, query) {
     sendToSession(session.user_id, { type: "music_error", error: result.error });
   }
   broadcastMusicState(session);
+}
+
+async function handleNaturalMusicIntentFromDanmaku(session, text) {
+  if (!config.musicEnabled || config.aiMode !== "astrbot") return false;
+  const musicState = musicService.publicState(session);
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+  const intent = await recognizeMusicIntent(session, text, config, globalThis.fetch, {
+    musicState,
+    moduleEvents
+  });
+  if (!isActionableMusicIntent(intent)) return false;
+
+  if (intent.intent === "request") {
+    await handleMusicRequestFromDanmaku(session, intent.query);
+    return true;
+  }
+
+  if (intent.intent === "status") {
+    await broadcastSystemText(formatMusicStatusText(musicState));
+    return true;
+  }
+
+  const payload = musicControlPayloadFromIntent(intent);
+  const result = musicService.control(intentToMusicControl(intent.intent), session, payload, {
+    naturalLanguage: true
+  });
+  broadcastMusicState(session);
+  if (result.ok) {
+    await broadcastSystemText(intent.reply_hint || formatMusicControlSuccess(session, intent));
+  } else {
+    await broadcastSystemText(`♪ 音乐操作失败：${friendlyMusicError(result.error)}`);
+    sendToSession(session.user_id, { type: "music_error", error: result.error });
+  }
+  return true;
+}
+
+function isActionableMusicIntent(intent) {
+  if (!intent || intent.intent === "none") return false;
+  if (Number(intent.confidence || 0) < 0.72) return false;
+  if (intent.intent === "request") return Boolean(String(intent.query || "").trim());
+  return ["pause", "resume", "next", "remove", "status"].includes(intent.intent);
+}
+
+function intentToMusicControl(intent) {
+  if (intent === "pause") return "pause";
+  if (intent === "resume") return "resume";
+  if (intent === "next") return "next";
+  if (intent === "remove") return "remove";
+  return "";
+}
+
+function musicControlPayloadFromIntent(intent) {
+  const target = intent?.target || {};
+  if (target.kind === "queue_index") return { queueIndex: target.index };
+  if (target.kind === "requested_by_self") return { requestedBySelf: true };
+  return {};
+}
+
+function formatMusicControlSuccess(session, intent) {
+  if (intent.intent === "pause") return `♪ Hoshia 已帮 ${session.nickname} 暂停播放。`;
+  if (intent.intent === "resume") return `♪ Hoshia 已帮 ${session.nickname} 继续播放。`;
+  if (intent.intent === "next") return `♪ Hoshia 已帮 ${session.nickname} 切到下一首。`;
+  if (intent.intent === "remove") return `♪ Hoshia 已帮 ${session.nickname} 删除待播歌曲。`;
+  return `♪ Hoshia 已处理音乐操作。`;
+}
+
+function formatMusicStatusText(state) {
+  const current = state.current ? trackSummary(state.current) : "暂无正在播放";
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+  const queueText = queue.length
+    ? queue.slice(0, 3).map((track, index) => `${index + 1}. ${trackSummary(track)}`).join("；")
+    : "待播为空";
+  return `♪ 当前：${current}。待播 ${queue.length} 首：${queueText}`;
+}
+
+function trackSummary(track) {
+  if (!track) return "";
+  const title = String(track.title || "未知歌曲");
+  const artist = String(track.artist || "");
+  return artist ? `${title} - ${artist}` : title;
 }
 
 function enqueueAiReply(session, text) {
@@ -504,8 +591,9 @@ async function handleAiReplyBatch(batch) {
   await sleep(450);
   const prompt = formatLiveRoomBatchPrompt(batch);
   const shortTermContext = await buildShortTermAiContext(batch);
-  const moduleContext = buildModuleContext({ musicService, session: batch[0]?.session });
+  const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
   const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+  const moduleMemoryEvents = moduleEventStore.consumeMemoryEvents({ roomId: config.roomId, limit: 24 });
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
@@ -515,6 +603,7 @@ async function handleAiReplyBatch(batch) {
     contextSummary: shortTermContext.contextSummary,
     moduleContext,
     moduleEvents,
+    moduleMemoryEvents,
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
       nickname: item.session.nickname,
@@ -525,8 +614,12 @@ async function handleAiReplyBatch(batch) {
     }))
   });
   if (reply.skipped) {
+    moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
     await setCharacterState("IDLE");
     return;
+  }
+  if (moduleMemoryEvents.length && reply.source !== "astrbot") {
+    moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
   }
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {

@@ -42,6 +42,53 @@ test("music service rejects disabled mode and non-admin controls", async () => {
   assert.equal(enabled.control("pause", { username: "friend" }).error, "music_forbidden");
 });
 
+test("music service allows natural-language playback controls for viewers", async () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = {
+    id: "track-1",
+    title: "Current",
+    artist: "Artist",
+    requested_by_id: "u1"
+  };
+  service.queue = [
+    { id: "track-2", title: "Next", requested_by_id: "u2" }
+  ];
+  service.status = "playing";
+
+  assert.equal(service.control("pause", { username: "friend" }, {}, { naturalLanguage: true }).ok, true);
+  assert.equal(service.status, "paused");
+  assert.equal(service.control("resume", { username: "friend" }, {}, { naturalLanguage: true }).ok, true);
+  assert.equal(service.status, "playing");
+  assert.equal(service.control("next", { username: "friend" }, {}, { naturalLanguage: true }).ok, true);
+  assert.equal(service.current.title, "Next");
+});
+
+test("music service removes queued tracks by queue index or requester for natural-language controls", async () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = { id: "track-1", title: "Current", requested_by_id: "u-owner" };
+  service.queue = [
+    { id: "track-2", title: "First", requested_by_id: "u-a" },
+    { id: "track-3", title: "Second", requested_by_id: "u-b" },
+    { id: "track-4", title: "Third", requested_by_id: "u-a" }
+  ];
+
+  const viewer = { user_id: "u-a", username: "friend" };
+  assert.equal(service.control("remove", viewer, { queueIndex: 2 }, { naturalLanguage: true }).ok, true);
+  assert.deepEqual(service.queue.map((track) => track.title), ["First", "Third"]);
+  assert.equal(service.control("remove", viewer, { requestedBySelf: true }, { naturalLanguage: true }).ok, true);
+  assert.deepEqual(service.queue.map((track) => track.title), []);
+  assert.equal(service.current.title, "Current");
+});
+
+test("music service rejects unsafe natural-language remove targets", async () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.queue = [{ id: "track-1", title: "Queued", requested_by_id: "u1" }];
+
+  assert.equal(service.control("remove", { user_id: "u1", username: "friend" }, { id: "track-1" }, { naturalLanguage: true }).error, "music_forbidden");
+  assert.equal(service.control("clear", { user_id: "u1", username: "friend" }, {}, { naturalLanguage: true }).error, "music_forbidden");
+  assert.equal(service.control("remove", { user_id: "u1", username: "friend" }, { queueIndex: 3 }, { naturalLanguage: true }).error, "music_target_not_found");
+});
+
 test("music service resolves xiaomusic result and normalizes playback state", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

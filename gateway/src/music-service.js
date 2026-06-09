@@ -92,11 +92,16 @@ export class MusicService {
     }
   }
 
-  control(action, session, payload = {}) {
+  control(action, session, payload = {}, options = {}) {
     if (!this.config.musicEnabled) return this.fail("music_disabled");
-    if (!this.isAdmin(session)) return this.fail("music_forbidden");
 
     const value = String(action || "").trim().toLowerCase();
+    const isAdmin = this.isAdmin(session);
+    const naturalControl = Boolean(options.naturalLanguage === true);
+    if (!isAdmin && !isAllowedNaturalControl(value, payload, naturalControl)) {
+      return this.fail("music_forbidden");
+    }
+
     if (value === "play" || value === "resume") {
       if (!this.current) this.current = this.queue.shift() || null;
       this.status = this.current ? "playing" : "idle";
@@ -106,13 +111,10 @@ export class MusicService {
       this.current = this.queue.shift() || null;
       this.status = this.current ? "playing" : "idle";
     } else if (value === "remove") {
-      const id = String(payload.id || "");
-      this.queue = this.queue.filter((track) => track.id !== id);
-      if (this.current?.id === id) {
-        this.current = this.queue.shift() || null;
-        this.status = this.current ? "playing" : "idle";
-      }
+      const removed = this.removeTracks(session, payload, { allowCurrent: isAdmin });
+      if (!removed) return this.fail("music_target_not_found");
     } else if (value === "clear") {
+      if (!isAdmin) return this.fail("music_forbidden");
       this.queue = [];
     } else {
       return this.fail("music_control_invalid");
@@ -120,6 +122,36 @@ export class MusicService {
 
     this.lastError = "";
     return { ok: true, state: this.publicState(session) };
+  }
+
+  removeTracks(session, payload = {}, { allowCurrent = false } = {}) {
+    const queueIndex = Math.floor(Number(payload.queueIndex ?? payload.queue_index ?? payload.index));
+    if (Number.isFinite(queueIndex) && queueIndex >= 1) {
+      if (queueIndex > this.queue.length) return 0;
+      this.queue.splice(queueIndex - 1, 1);
+      return 1;
+    }
+
+    const requestedBySelf = Boolean(payload.requestedBySelf ?? payload.requested_by_self);
+    if (requestedBySelf) {
+      const userId = String(session?.user_id || "");
+      if (!userId) return 0;
+      const before = this.queue.length;
+      this.queue = this.queue.filter((track) => track.requested_by_id !== userId);
+      return before - this.queue.length;
+    }
+
+    const id = String(payload.id || "");
+    if (!id) return 0;
+    const before = this.queue.length;
+    this.queue = this.queue.filter((track) => track.id !== id);
+    let removed = before - this.queue.length;
+    if (allowCurrent && this.current?.id === id) {
+      this.current = this.queue.shift() || null;
+      this.status = this.current ? "playing" : "idle";
+      removed += 1;
+    }
+    return removed;
   }
 
   async streamTrack(trackId, req, res) {
@@ -289,6 +321,17 @@ export class MusicService {
     if (count === 1) await this.store.expire(key, windowSeconds);
     return count <= limit;
   }
+}
+
+function isAllowedNaturalControl(action, payload, naturalControl) {
+  if (!naturalControl) return false;
+  if (action === "pause" || action === "resume" || action === "play" || action === "next") return true;
+  if (action !== "remove") return false;
+  return Boolean(
+    payload?.requestedBySelf
+    || payload?.requested_by_self
+    || Number(payload?.queueIndex ?? payload?.queue_index ?? payload?.index) >= 1
+  );
 }
 
 function parseXiaomusicSearchChain(value) {

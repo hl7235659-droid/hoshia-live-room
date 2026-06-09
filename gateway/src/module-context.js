@@ -3,6 +3,7 @@ const DEFAULT_RECENT_LIMIT = 24;
 
 export function createModuleEventStore({ maxEvents = DEFAULT_MAX_EVENTS } = {}) {
   const events = [];
+  const pendingMemoryEvents = [];
   const safeMax = Math.max(1, Math.min(Number(maxEvents) || DEFAULT_MAX_EVENTS, 500));
 
   return {
@@ -11,6 +12,10 @@ export function createModuleEventStore({ maxEvents = DEFAULT_MAX_EVENTS } = {}) 
       if (!normalized) return null;
       events.unshift(normalized);
       events.splice(safeMax);
+      if (normalized.memory_eligible) {
+        pendingMemoryEvents.unshift(normalized);
+        pendingMemoryEvents.splice(safeMax);
+      }
       return normalized;
     },
     listRecent({ roomId = "", limit = DEFAULT_RECENT_LIMIT, userIds = [] } = {}) {
@@ -23,28 +28,61 @@ export function createModuleEventStore({ maxEvents = DEFAULT_MAX_EVENTS } = {}) 
         .slice(0, safeLimit)
         .map((event) => ({ ...event }));
     },
-    consumeRecent(options = {}) {
-      return this.listRecent(options);
+    consumeMemoryEvents({ roomId = "", limit = DEFAULT_RECENT_LIMIT, userIds = [] } = {}) {
+      const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_RECENT_LIMIT, 100));
+      const room = cleanText(roomId, 80);
+      const userSet = new Set((Array.isArray(userIds) ? userIds : []).map((item) => cleanText(item, 80)).filter(Boolean));
+      const consumed = [];
+      for (let index = 0; index < pendingMemoryEvents.length && consumed.length < safeLimit;) {
+        const event = pendingMemoryEvents[index];
+        const roomMatches = !room || !event.room_id || event.room_id === room;
+        const userMatches = !userSet.size || userSet.has(event.user_id);
+        if (roomMatches && userMatches) {
+          consumed.push(event);
+          pendingMemoryEvents.splice(index, 1);
+          continue;
+        }
+        index += 1;
+      }
+      return consumed.map((event) => ({ ...event }));
+    },
+    restoreMemoryEvents(restoredEvents = []) {
+      for (const event of [...restoredEvents].reverse()) {
+        const normalized = sanitizeModuleEvent(event);
+        if (!normalized?.memory_eligible) continue;
+        pendingMemoryEvents.unshift(normalized);
+      }
+      pendingMemoryEvents.splice(safeMax);
     },
     clear() {
       events.splice(0);
+      pendingMemoryEvents.splice(0);
     },
     size() {
       return events.length;
+    },
+    pendingMemorySize() {
+      return pendingMemoryEvents.length;
     }
   };
 }
 
-export function buildModuleContext({ providers = [], musicService, session } = {}) {
+export function buildModuleContext({ providers = [], session } = {}) {
   const contexts = [];
   for (const provider of Array.isArray(providers) ? providers : []) {
     if (typeof provider?.getCapabilityContext !== "function") continue;
     contexts.push(sanitizeModuleContext(provider.getCapabilityContext(session)));
   }
-  if (musicService) {
-    contexts.push(buildMusicModuleContext(musicService, session));
-  }
   return contexts.filter(Boolean);
+}
+
+export function createMusicModuleProvider(musicService) {
+  return {
+    moduleId: "music",
+    getCapabilityContext(session) {
+      return buildMusicModuleContext(musicService, session);
+    }
+  };
 }
 
 export function buildMusicModuleContext(musicService, session) {

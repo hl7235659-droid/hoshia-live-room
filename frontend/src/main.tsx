@@ -2039,7 +2039,6 @@ function MusicRoomPanel({
   onMusicState: (state: MusicState) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [requestText, setRequestText] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [notice, setNotice] = useState("");
   const current = musicState.current;
@@ -2076,17 +2075,6 @@ function MusicRoomPanel({
     }
   }
 
-  async function requestSong(event: FormEvent) {
-    event.preventDefault();
-    const query = requestText.trim();
-    if (!query || !canUseMusic) return;
-    setNotice("Searching...");
-    const payload = await postMusic("request", { query });
-    if (payload?.state) onMusicState(payload.state);
-    setNotice(payload?.ok ? "Added to queue." : friendlyMusicNotice(payload?.error));
-    if (payload?.ok) setRequestText("");
-  }
-
   async function control(action: string, id?: string) {
     const payload = await postMusic("control", { action, id });
     if (payload?.state) onMusicState(payload.state);
@@ -2115,19 +2103,6 @@ function MusicRoomPanel({
           <span>{audioUnlocked ? "on" : "sound"}</span>
         </button>
       </div>
-      <form className="music-request" onSubmit={requestSong}>
-        <input
-          value={requestText}
-          onChange={(event) => setRequestText(event.target.value)}
-          placeholder={musicState.enabled ? "点歌 / song name" : "Music provider disabled"}
-          disabled={!canUseMusic}
-          maxLength={160}
-        />
-        <button type="submit" disabled={!canUseMusic || !requestText.trim()}>
-          <Music size={14} />
-          <span>点歌</span>
-        </button>
-      </form>
       <div className="music-room-controls">
         {canControl ? (
           <>
@@ -2145,7 +2120,7 @@ function MusicRoomPanel({
             </button>
           </>
         ) : (
-          <span className="music-room-hint">Friends can request songs. Host controls playback.</span>
+          <span className="music-room-hint">直接在弹幕里让 Hoshia 点歌、切歌或控制播放。</span>
         )}
       </div>
       {musicState.queue.length ? (
@@ -2170,8 +2145,8 @@ function MusicRoomPanel({
   );
 }
 
-async function postMusic(kind: "request" | "control", body: Record<string, unknown>) {
-  const endpoint = kind === "request" ? "api/music/request" : "api/music/control";
+async function postMusic(_kind: "control", body: Record<string, unknown>) {
+  const endpoint = "api/music/control";
   try {
     return await fetch(appPath(endpoint), {
       method: "POST",
@@ -2204,6 +2179,7 @@ function friendlyMusicNotice(error?: string) {
   if (error === "music_rate_limited") return "Too many song requests. Try again later.";
   if (error === "music_queue_full") return "Song queue is full.";
   if (error === "music_forbidden") return "Only the host can control playback.";
+  if (error === "music_target_not_found") return "Could not find that queued song.";
   return error ? "Music request failed." : "";
 }
 

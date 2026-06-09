@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateAiReply, summarizeLiveRoomContext } from "../src/ai-adapter.js";
+import { generateAiReply, recognizeMusicIntent, summarizeLiveRoomContext } from "../src/ai-adapter.js";
 
 const session = {
   user_id: "user-1",
@@ -266,6 +266,56 @@ test("context summary uses dedicated bridge endpoint", async () => {
   );
 
   assert.equal(summary, "Alice is preparing a demo this week.");
+});
+
+test("music intent recognition uses dedicated bridge endpoint and strips stream URLs", async () => {
+  const intent = await recognizeMusicIntent(
+    { ...session, username: "tester" },
+    "Hoshia 帮我点周杰伦晴天",
+    baseConfig,
+    async (url, options) => {
+      assert.equal(url, "http://astrbot:18081/live-room/music/intent");
+      assert.equal(options.headers.Authorization, "Bearer secret-token");
+      const body = JSON.parse(options.body);
+      assert.equal(body.text, "Hoshia 帮我点周杰伦晴天");
+      assert.equal(body.music_state.current.title, "Old Song");
+      assert.equal(body.music_state.current.stream_url, undefined);
+      assert.equal(body.music_state.queue[0].stream_url, undefined);
+      return responseJson(200, {
+        ok: true,
+        intent: {
+          intent: "request",
+          confidence: 0.93,
+          query: "周杰伦 晴天",
+          target: { kind: "" },
+          reply_hint: "好，帮你点晴天。"
+        }
+      });
+    },
+    {
+      musicState: {
+        enabled: true,
+        status: "playing",
+        current: { title: "Old Song", artist: "Singer", source: "qqmusic", requested_by: "Alice", stream_url: "/api/music/stream/secret" },
+        queue: [{ title: "Queued Song", artist: "Band", source: "qqmusic", requested_by: "Bob", stream_url: "/api/music/stream/secret2" }]
+      }
+    }
+  );
+
+  assert.deepEqual(intent, {
+    intent: "request",
+    confidence: 0.93,
+    query: "周杰伦 晴天",
+    target: { kind: "" },
+    reply_hint: "好，帮你点晴天。",
+    source: "astrbot_music_intent"
+  });
+});
+
+test("music intent recognition safely returns none on bridge failure", async () => {
+  const intent = await recognizeMusicIntent(session, "普通聊天", baseConfig, async () => responseJson(502, { ok: false }));
+  assert.equal(intent.intent, "none");
+  assert.equal(intent.confidence, 0);
 });
 
 test("astrbot judge skip is returned without fallback", async () => {

@@ -4,6 +4,7 @@ import {
   buildModuleContext,
   buildMusicModuleContext,
   createModuleEventStore,
+  createMusicModuleProvider,
   createMusicSongRequestedEvent,
   sanitizeModuleEvent
 } from "../src/module-context.js";
@@ -125,6 +126,28 @@ test("generic module providers can contribute future capability contexts", () =>
   ]);
 });
 
+test("music module can be registered through provider registry", () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = {
+    id: "track-provider",
+    title: "Billie Jean",
+    artist: "Michael Jackson",
+    source: "musicfree",
+    requested_by: "003",
+    requested_by_id: "user-003",
+    requested_at: "2026-06-09T12:00:00.000Z"
+  };
+
+  const contexts = buildModuleContext({
+    providers: [createMusicModuleProvider(service)],
+    session: { username: "viewer" }
+  });
+
+  assert.equal(contexts.length, 1);
+  assert.equal(contexts[0].module_id, "music");
+  assert.equal(contexts[0].current_state.some((line) => line.includes("Billie Jean - Michael Jackson")), true);
+});
+
 test("module event store keeps recent events and sanitizes sensitive text", () => {
   const store = createModuleEventStore({ maxEvents: 2 });
   store.append({
@@ -162,4 +185,61 @@ test("module event store keeps recent events and sanitizes sensitive text", () =
     event_type: "music.song_requested",
     summary_hint: "token=secret should be hidden"
   }), null);
+});
+
+test("module memory events are consumed once while recent events remain available", () => {
+  const store = createModuleEventStore({ maxEvents: 5 });
+  store.append({
+    room_id: "room-a",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u1",
+    nickname: "A",
+    summary_hint: "A 点了 Purple Rain - Prince",
+    memory_eligible: true,
+    data: {
+      title: "Purple Rain",
+      artist: "Prince",
+      source: "musicfree",
+      secret: "should not pass"
+    }
+  });
+  store.append({
+    room_id: "room-a",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u2",
+    nickname: "B",
+    summary_hint: "B 点了普通歌",
+    memory_eligible: false
+  });
+
+  const first = store.consumeMemoryEvents({ roomId: "room-a" });
+  const second = store.consumeMemoryEvents({ roomId: "room-a" });
+  const recent = store.listRecent({ roomId: "room-a" });
+
+  assert.equal(first.length, 1);
+  assert.equal(first[0].user_id, "u1");
+  assert.deepEqual(first[0].data, { title: "Purple Rain", artist: "Prince", source: "musicfree" });
+  assert.deepEqual(second, []);
+  assert.equal(recent.length, 2);
+});
+
+test("consumed module memory events can be restored after skipped AI replies", () => {
+  const store = createModuleEventStore({ maxEvents: 5 });
+  store.append({
+    room_id: "room-a",
+    module_id: "music",
+    event_type: "music.song_requested",
+    user_id: "u1",
+    nickname: "A",
+    summary_hint: "A 点了 Baba O'Riley - The Who",
+    memory_eligible: true
+  });
+
+  const consumed = store.consumeMemoryEvents({ roomId: "room-a" });
+  assert.equal(store.pendingMemorySize(), 0);
+  store.restoreMemoryEvents(consumed);
+  assert.equal(store.pendingMemorySize(), 1);
+  assert.equal(store.consumeMemoryEvents({ roomId: "room-a" })[0].summary_hint, "A 点了 Baba O'Riley - The Who");
 });

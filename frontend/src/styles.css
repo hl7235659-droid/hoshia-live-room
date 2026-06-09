@@ -2026,7 +2026,6 @@ button:disabled {
 }
 
 .music-room-now,
-.music-request,
 .music-room-controls,
 .music-queue,
 .music-queue span,
@@ -2096,24 +2095,6 @@ button:disabled {
   font-weight: 950;
 }
 
-.music-request {
-  gap: 6px;
-}
-
-.music-request input {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid rgba(43, 127, 169, 0.28);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  color: #172033;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.music-request button,
 .music-room-controls button {
   height: 34px;
   width: auto;

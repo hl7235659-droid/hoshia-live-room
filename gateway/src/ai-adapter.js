@@ -56,6 +56,7 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
     if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
     if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
+    if (Array.isArray(metadata.moduleMemoryEvents) && metadata.moduleMemoryEvents.length) body.module_memory_events = metadata.moduleMemoryEvents;
 
     const response = await fetchImpl(options.astrbotBridgeUrl, {
       method: "POST",
@@ -118,12 +119,120 @@ export async function summarizeLiveRoomContext(options, payload, fetchImpl = glo
   }
 }
 
+export async function recognizeMusicIntent(session, text, options, fetchImpl = globalThis.fetch, metadata = {}) {
+  if (options.aiMode !== "astrbot") return noneMusicIntent("ai_mode_not_astrbot");
+  if (!fetchImpl || !options.astrbotBridgeUrl || !options.astrbotBridgeToken) {
+    return noneMusicIntent("astrbot_bridge_unavailable");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+
+  try {
+    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, "/live-room/music/intent"), {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        room_id: options.roomId,
+        user_id: session?.user_id || "",
+        username: session?.username || "",
+        nickname: session?.nickname || "",
+        text: String(text || "").slice(0, 500),
+        music_state: safeMusicStateForIntent(metadata.musicState),
+        module_events: Array.isArray(metadata.moduleEvents) ? metadata.moduleEvents.slice(0, 24) : []
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) return noneMusicIntent(`astrbot_music_intent_http_${response.status}`);
+    const payload = await response.json();
+    if (!payload?.ok) return noneMusicIntent(`astrbot_music_intent_${payload?.error || "failed"}`);
+    return normalizeMusicIntent(payload.intent || payload);
+  } catch (error) {
+    console.warn("music_intent_recognition_failed", {
+      type: error.name || "Error",
+      message: error.message
+    });
+    return noneMusicIntent("music_intent_failed");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function bridgeEndpoint(baseUrl, pathname) {
   const url = new URL(baseUrl);
   url.pathname = pathname;
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+const musicIntents = new Set(["request", "pause", "resume", "next", "remove", "status", "none"]);
+const musicTargetKinds = new Set(["", "queue_index", "requested_by_self"]);
+
+function normalizeMusicIntent(value) {
+  if (!value || typeof value !== "object") return noneMusicIntent("bad_music_intent");
+  const intent = String(value.intent || "none").trim().toLowerCase();
+  const normalizedIntent = musicIntents.has(intent) ? intent : "none";
+  let confidence = Number(value.confidence || 0);
+  if (confidence > 1 && confidence <= 100) confidence /= 100;
+  confidence = Math.max(0, Math.min(confidence || 0, 1));
+  const target = normalizeMusicIntentTarget(value.target);
+  return {
+    intent: normalizedIntent,
+    confidence,
+    query: String(value.query || "").trim().slice(0, 160),
+    target,
+    reply_hint: String(value.reply_hint || "").trim().slice(0, 160),
+    source: String(value.source || "astrbot_music_intent").slice(0, 80)
+  };
+}
+
+function normalizeMusicIntentTarget(value) {
+  if (!value || typeof value !== "object") return { kind: "" };
+  const kind = String(value.kind || "").trim().toLowerCase();
+  const safeKind = musicTargetKinds.has(kind) ? kind : "";
+  const target = { kind: safeKind };
+  if (safeKind === "queue_index") {
+    const index = Math.floor(Number(value.index));
+    if (Number.isFinite(index)) target.index = Math.max(1, Math.min(index, 100));
+  }
+  return target;
+}
+
+function noneMusicIntent(reason = "") {
+  return {
+    intent: "none",
+    confidence: 0,
+    query: "",
+    target: { kind: "" },
+    reply_hint: "",
+    source: reason || "none"
+  };
+}
+
+function safeMusicStateForIntent(state) {
+  if (!state || typeof state !== "object") return { enabled: false };
+  return {
+    enabled: Boolean(state.enabled),
+    status: String(state.status || "idle").slice(0, 32),
+    current: safeTrackForIntent(state.current),
+    queue: Array.isArray(state.queue) ? state.queue.slice(0, 20).map(safeTrackForIntent).filter(Boolean) : [],
+    can_control: Boolean(state.can_control)
+  };
+}
+
+function safeTrackForIntent(track) {
+  if (!track || typeof track !== "object") return null;
+  return {
+    title: String(track.title || "").slice(0, 120),
+    artist: String(track.artist || "").slice(0, 120),
+    source: String(track.source || "").slice(0, 40),
+    requested_by: String(track.requested_by || "").slice(0, 32)
+  };
 }
 
 function normalizeReply(reply, fallbackSource) {

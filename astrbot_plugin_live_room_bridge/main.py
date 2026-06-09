@@ -116,7 +116,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/context/summarize", "/live-room/memory/debug-recall"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -135,6 +135,8 @@ class LiveRoomBridgePlugin(Star):
             return await self._handle_context_summarize(payload)
         if request["path"] == "/live-room/memory/debug-recall":
             return await self._handle_debug_recall(payload)
+        if request["path"] == "/live-room/music/intent":
+            return await self._handle_music_intent(payload)
 
         text = str(payload.get("text", "")).strip()
         prompt_override = str(payload.get("prompt", "")).strip()
@@ -147,6 +149,7 @@ class LiveRoomBridgePlugin(Star):
         context_summary = str(payload.get("context_summary", "")).strip()
         module_context = self._clean_module_context(payload.get("module_context", []))
         module_events = self._clean_module_events(payload.get("module_events", []))
+        module_memory_events = self._clean_module_events(payload.get("module_memory_events", []))
         force_reply = bool(payload.get("force_reply"))
         reply_mode = str(payload.get("reply_mode", "")).strip()[:48]
         if not text or len(text) > 3000:
@@ -157,7 +160,7 @@ class LiveRoomBridgePlugin(Star):
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
             prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
-            memory_context = await self._build_livingmemory_context(room_id, messages, module_events)
+            memory_context = await self._build_livingmemory_context(room_id, messages)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
             short_term_context = self._build_short_term_context(context_summary, recent_context)
@@ -192,7 +195,7 @@ class LiveRoomBridgePlugin(Star):
             if not reply_text:
                 return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "empty_llm_response"}
             if self.livingmemory_enabled and self.livingmemory_auto_summary_enabled:
-                asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text, module_events))
+                asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text, module_memory_events))
             return HTTPStatus.OK, {
                 "ok": True,
                 "text": reply_text,
@@ -303,8 +306,19 @@ class LiveRoomBridgePlugin(Star):
                 "memory_kind": self._safe_identifier(item.get("memory_kind") or "module_event", 80),
                 "retention_days": self._safe_retention_days(item.get("retention_days")),
                 "occurred_at": self._safe_runtime_text(item.get("occurred_at"), 40),
+                "data": self._clean_module_event_data(item.get("data")),
             })
         return events
+
+    def _clean_module_event_data(self, value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        data: dict[str, str] = {}
+        for key, limit in {"title": 120, "artist": 120, "source": 40}.items():
+            text = self._safe_runtime_text(value.get(key), limit)
+            if text:
+                data[key] = text
+        return data
 
     def _format_module_prompt_context(self, module_context: list[dict[str, Any]], module_events: list[dict[str, Any]]) -> str:
         sections: list[str] = []
@@ -326,7 +340,9 @@ class LiveRoomBridgePlugin(Star):
         for event in module_events[:24]:
             actor = event["nickname"] or event["user_id"] or "viewer"
             timestamp = f"[{event['occurred_at']}] " if event["occurred_at"] else ""
-            event_lines.append(f"- {timestamp}{actor}: {event['summary_hint']} ({event['event_type']})")
+            data_text = self._module_event_data_text(event)
+            suffix = f" / data: {data_text}" if data_text else ""
+            event_lines.append(f"- {timestamp}{actor}: {event['summary_hint']} ({event['event_type']}){suffix}")
         if event_lines:
             sections.append("Recent module events:\n" + "\n".join(event_lines))
 
@@ -353,6 +369,17 @@ class LiveRoomBridgePlugin(Star):
             return max(1, min(int(value), 365))
         except (TypeError, ValueError):
             return self.livingmemory_recent_state_retention_days
+
+    def _module_event_data_text(self, event: dict[str, Any]) -> str:
+        data = event.get("data")
+        if not isinstance(data, dict):
+            return ""
+        parts = []
+        for key in ("title", "artist", "source"):
+            value = str(data.get(key, "")).strip()
+            if value:
+                parts.append(f"{key}={value}")
+        return ", ".join(parts)[:320]
 
     def _livingmemory_star(self) -> Any | None:
         try:
@@ -587,8 +614,10 @@ class LiveRoomBridgePlugin(Star):
         module_event_lines = []
         for event in list(module_events or [])[-12:]:
             when = f"[{event.get('occurred_at')}] " if event.get("occurred_at") else ""
+            data_text = self._module_event_data_text(event)
+            data_suffix = f" / data={data_text}" if data_text else ""
             module_event_lines.append(
-                f"- {when}{event.get('summary_hint', '')} / kind={event.get('memory_kind', 'module_event')} / retention_days={event.get('retention_days', self.livingmemory_recent_state_retention_days)}"
+                f"- {when}{event.get('summary_hint', '')} / kind={event.get('memory_kind', 'module_event')} / retention_days={event.get('retention_days', self.livingmemory_recent_state_retention_days)}{data_suffix}"
             )
         module_event_section = "\n".join(module_event_lines) if module_event_lines else "(none)"
         return f"""
@@ -632,6 +661,148 @@ Additional JSON requirements:
 - A single music.song_requested event without explicit preference usually means return {"memories": []}; multiple related events may become "recent_state" with retention_days 30.
 - Do not create memories for one-off jokes, throwaway chat, system prompts, bridge internals, tokens, credentials, or Hoshia persona text.
 """.strip()
+
+    async def _handle_music_intent(self, payload: dict[str, Any]):
+        text = str(payload.get("text", "")).strip()
+        if not text or len(text) > 500:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid_text"}
+
+        room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
+        user_id = str(payload.get("user_id", "")).strip()[:80]
+        nickname = str(payload.get("nickname", "")).strip()[:32]
+        music_state = self._clean_music_state(payload.get("music_state", {}))
+        module_events = self._clean_module_events(payload.get("module_events", []))
+
+        try:
+            provider_id = await self.context.get_current_chat_provider_id(f"{room_id}:music-intent:{user_id or 'anonymous'}")
+            llm_response = await self.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=self._build_music_intent_prompt(text, nickname, music_state, module_events),
+                system_prompt=(
+                    "You are a strict intent classifier for Hoshia live-room music control. "
+                    "Return ONLY one valid JSON object. Do not chat. Do not expose URLs, cookies, tokens, paths, or internal services."
+                ),
+            )
+            data = _extract_json(str(getattr(llm_response, "completion_text", "") or ""))
+            return HTTPStatus.OK, {"ok": True, "intent": self._normalize_music_intent(data)}
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] music intent failed: {exc}", exc_info=True)
+            return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "music_intent_failed"}
+
+    def _build_music_intent_prompt(self, text: str, nickname: str, music_state: dict[str, Any], module_events: list[dict[str, Any]]) -> str:
+        queue_lines = []
+        for index, track in enumerate(music_state.get("queue", [])[:10], start=1):
+            requester = f" / requested_by={track.get('requested_by', '')}" if track.get("requested_by") else ""
+            artist = f" - {track.get('artist', '')}" if track.get("artist") else ""
+            queue_lines.append(f"{index}. {track.get('title', '')}{artist}{requester}")
+        current = music_state.get("current") or {}
+        current_line = "(none)"
+        if current:
+            artist = f" - {current.get('artist', '')}" if current.get("artist") else ""
+            current_line = f"{current.get('title', '')}{artist}"
+        event_lines = [f"- {event.get('summary_hint', '')}" for event in module_events[:8]]
+        return f"""
+Classify whether this viewer message is asking Hoshia to operate the music player.
+
+Viewer nickname: {nickname or "viewer"}
+Viewer message:
+{text}
+
+Music state:
+- enabled: {music_state.get("enabled")}
+- status: {music_state.get("status")}
+- current: {current_line}
+- queue:
+{chr(10).join(queue_lines) if queue_lines else "(empty)"}
+
+Recent music events:
+{chr(10).join(event_lines) if event_lines else "(none)"}
+
+Supported intents:
+- request: viewer asks to play/request/add a song. Extract the best search query, including artist when present. Examples: "??????" => query "??? ??"; "?????????" => query "???????".
+- pause: asks to pause/stop temporarily.
+- resume: asks to continue/resume/play current music.
+- next: asks to skip/switch/cut to next song.
+- remove: asks to delete queued songs. For "???/?3?/?????", target={{"kind":"queue_index","index":3}}. For "??????/?????", target={{"kind":"requested_by_self"}}.
+- status: asks what is playing or what is in the queue.
+- none: not a music operation.
+
+Rules:
+- Use confidence 0..1.
+- If the message is ordinary chat, lyrics discussion, or only says they like music, choose none.
+- If request is vague but clearly wants music, still choose request and make a concise Chinese search query.
+- Do not invent queue indexes not mentioned by the user.
+- Return ONLY JSON with this exact shape:
+{{
+  "intent": "request|pause|resume|next|remove|status|none",
+  "confidence": 0.0,
+  "query": "",
+  "target": {{"kind": ""}},
+  "reply_hint": ""
+}}
+"""
+
+    def _clean_music_state(self, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {"enabled": False, "status": "idle", "current": None, "queue": []}
+        return {
+            "enabled": bool(value.get("enabled")),
+            "status": self._safe_identifier(value.get("status") or "idle", 32),
+            "current": self._clean_music_track(value.get("current")),
+            "queue": [item for item in (self._clean_music_track(track) for track in list(value.get("queue") or [])[:20]) if item],
+        }
+
+    def _clean_music_track(self, value: Any) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        title = self._safe_runtime_text(value.get("title"), 120)
+        if not title:
+            return None
+        return {
+            "title": title,
+            "artist": self._safe_runtime_text(value.get("artist"), 120),
+            "requested_by": self._safe_runtime_text(value.get("requested_by"), 32),
+        }
+
+    def _normalize_music_intent(self, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return self._none_music_intent()
+        intent = str(value.get("intent", "none")).strip().lower()
+        if intent not in {"request", "pause", "resume", "next", "remove", "status", "none"}:
+            intent = "none"
+        try:
+            raw_confidence = float(value.get("confidence", 0) or 0)
+        except (TypeError, ValueError):
+            raw_confidence = 0.0
+        confidence = _clamp_score(raw_confidence) / 10.0 if raw_confidence > 1 else max(0.0, min(raw_confidence, 1.0))
+        target = value.get("target") if isinstance(value.get("target"), dict) else {}
+        kind = str(target.get("kind", "")).strip().lower()
+        if kind not in {"", "queue_index", "requested_by_self"}:
+            kind = ""
+        normalized_target: dict[str, Any] = {"kind": kind}
+        if kind == "queue_index":
+            try:
+                normalized_target["index"] = max(1, min(int(target.get("index")), 100))
+            except Exception:
+                normalized_target = {"kind": ""}
+        return {
+            "intent": intent,
+            "confidence": confidence,
+            "query": self._safe_runtime_text(value.get("query"), 160),
+            "target": normalized_target,
+            "reply_hint": self._safe_runtime_text(value.get("reply_hint"), 160),
+            "source": "astrbot_music_intent",
+        }
+
+    def _none_music_intent(self) -> dict[str, Any]:
+        return {
+            "intent": "none",
+            "confidence": 0,
+            "query": "",
+            "target": {"kind": ""},
+            "reply_hint": "",
+            "source": "astrbot_music_intent",
+        }
 
     async def _handle_context_summarize(self, payload: dict[str, Any]):
         room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"
