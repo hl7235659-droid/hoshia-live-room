@@ -1,4 +1,4 @@
-import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
+import { Fragment, type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Pause, Play, Save, Send, ShieldCheck, Signal, SkipForward, Sparkles, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
@@ -1154,10 +1154,15 @@ function HoshiaTimelineOverlay({
               {post.interactions.length ? (
                 <div className="post-comments">
                   {post.interactions.map((interaction) => (
-                    <div className={`post-comment ${interaction.nickname === "Hoshia" ? "hoshia" : ""}`} key={interaction.id}>
-                      <strong>{interaction.nickname || (interaction.user_id === session.user_id ? session.nickname : "viewer")}</strong>
-                      <span>{interaction.content}</span>
-                    </div>
+                    <Fragment key={interaction.id}>
+                      <div className={`post-comment ${interaction.nickname === "Hoshia" ? "hoshia" : ""}`}>
+                        <strong>{interaction.nickname || (interaction.user_id === session.user_id ? session.nickname : "viewer")}</strong>
+                        <span>{interaction.content}</span>
+                      </div>
+                      {interaction.type === "comment" && interaction.reply_status === "pending" ? (
+                        <div className="post-comment-pending" aria-live="polite">Hoshia 稍后回复</div>
+                      ) : null}
+                    </Fragment>
                   ))}
                 </div>
               ) : null}

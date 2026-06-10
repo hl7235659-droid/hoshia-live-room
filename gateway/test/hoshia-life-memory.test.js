@@ -72,6 +72,72 @@ test("life memory service filters sensitive-looking memory content", () => {
   }
 });
 
+test("memory packet links a dynamic comment to a live-room question", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    const post = db.createHoshiaPost(normalizePostInput({
+      id: "post-practice",
+      content: "刚刚排位输了两把，但我觉得问题不在我。",
+      mood: "annoyed",
+      activity: "gaming",
+      source_type: "manual"
+    }, new Date("2026-06-10T11:55:00.000Z")));
+    service.recordPost(post);
+
+    const comment = db.addHoshiaPostInteraction({
+      ...normalizeCommentInput({
+        id: "comment-practice",
+        content: "菜就多练，今天练了吗"
+      }, {
+        user_id: "user-1",
+        nickname: "Alice"
+      }, new Date("2026-06-10T11:58:00.000Z")),
+      post_id: post.id
+    });
+    service.recordInteraction({ post, interaction: comment });
+
+    const reply = db.addHoshiaPostInteraction({
+      id: "reply-practice",
+      post_id: post.id,
+      user_id: "hoshia",
+      nickname: "Hoshia",
+      type: "reply",
+      content: "我会练，等下把下一局结果告诉你。",
+      parent_interaction_id: comment.id,
+      created_at: "2026-06-10T11:59:00.000Z"
+    });
+    service.recordInteraction({ post, interaction: reply });
+
+    db.addHoshiaLifeMemory({
+      id: "memory-sensitive-practice",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "post_comment",
+      source_id: post.id,
+      content: "Alice pasted api_key=secret-value while talking about 今天练了吗.",
+      importance: 1,
+      created_at: "2026-06-10T11:59:30.000Z"
+    });
+
+    const packet = service.buildMemoryPacket({
+      session: { user_id: "user-1", nickname: "Alice" },
+      query: "今天练了吗",
+      scene: "live_room",
+      limit: 4
+    });
+
+    assert.equal(packet.some((line) => line.includes("菜就多练，今天练了吗") || line.includes("下一局结果")), true);
+    assert.equal(packet.some((line) => line.includes("secret-value") || line.includes("api_key=")), false);
+  } finally {
+    cleanup();
+  }
+});
+
 test("memory packet falls back to recent viewer post memories for short live-room queries", () => {
   const { db, cleanup } = openTempDb();
   try {

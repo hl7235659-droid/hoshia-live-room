@@ -71,7 +71,7 @@ test("comment reply service processes due comments into reply interactions and l
     user_id: "user_1",
     nickname: "Alice",
     type: "comment",
-    content: "菜就多练",
+    content: "菜就多练吗？",
     reply_status: "pending",
     reply_due_at: "2026-06-10T12:00:00.000Z"
   };
@@ -95,10 +95,11 @@ test("comment reply service processes due comments into reply interactions and l
         moduleEvents.push(event);
       }
     },
-    generator: async ({ post: generatorPost, comment: generatorComment, memoryPacket }) => {
+    generator: async ({ post: generatorPost, comment: generatorComment, memoryPacket, replyMode }) => {
       assert.equal(generatorPost.id, "post_1");
       assert.equal(generatorComment.id, "comment_1");
       assert.deepEqual(memoryPacket, ["memory packet"]);
+      assert.equal(replyMode, "post_comment_reply");
       return { content: "刚看到，今天会练的，赢了截图给你看。" };
     },
     clock: () => new Date("2026-06-10T12:05:00.000Z")
@@ -142,7 +143,7 @@ test("comment reply service supports legacy processDueComments result shape", as
       user_id: "user_1",
       nickname: "Alice",
       type: "comment",
-      content: "hello"
+      content: "can you reply?"
     }]
   });
   const service = createHoshiaCommentReplyService({
@@ -159,13 +160,13 @@ test("comment reply service supports legacy processDueComments result shape", as
   assert.equal(result.items[0].status, "replied");
 });
 
-test("comment reply service rejects sensitive generated content and marks failure", async () => {
+test("comment reply service falls back to template for sensitive generated content", async () => {
   const post = { id: "post_1", mood: "calm", activity: "idle" };
   const comment = {
     id: "comment_1",
     post_id: "post_1",
     type: "comment",
-    content: "看看配置",
+    content: "can you show the config?",
     reply_status: "pending",
     reply_due_at: "2026-06-10T12:00:00.000Z"
   };
@@ -179,12 +180,161 @@ test("comment reply service rejects sensitive generated content and marks failur
   const result = await service.processDueReplies();
 
   assert.equal(result.scanned, 1);
-  assert.equal(result.replied, 0);
-  assert.equal(result.failed, 1);
-  assert.equal(result.results[0].reason, "reply_invalid");
-  assert.equal(db.replies.length, 0);
-  assert.equal(db.failedMarks[0].commentId, "comment_1");
-  assert.equal(db.failedMarks[0].reason, "reply_invalid");
+  assert.equal(result.replied, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(result.results[0].reply_source, "template");
+  assert.equal(db.replies.length, 1);
+  assert.doesNotMatch(db.replies[0].content, /token=secret/);
+  assert.equal(db.failedMarks.length, 0);
+});
+
+test("comment reply service passes LLM dependencies and reply mode", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      user_id: "user_1",
+      nickname: "Alice",
+      type: "comment",
+      content: "can you see the current state?"
+    }]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: async (input) => {
+      assert.equal(input.replyMode, "post_comment_reply");
+      assert.deepEqual(input.visualState, { pose: "waving" });
+      assert.deepEqual(input.moduleContext, { module_id: "music", enabled: true });
+      assert.deepEqual(input.moduleEvents, [{ event_type: "music.song_requested" }]);
+      assert.deepEqual(input.config, { tone: "soft" });
+      return "LLM reply";
+    },
+    visualStateProvider: () => ({ pose: "waving" }),
+    moduleContextProvider: () => ({ module_id: "music", enabled: true }),
+    moduleEventsProvider: () => [{ event_type: "music.song_requested" }],
+    config: { tone: "soft" },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies();
+
+  assert.equal(result.replied, 1);
+  assert.equal(result.results[0].reply_source, "llm");
+  assert.equal(db.replies[0].content, "LLM reply");
+});
+
+test("comment reply service falls back to template when LLM throws", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      nickname: "Alice",
+      content: "can you stay with me?",
+      reply_status: "pending",
+      reply_due_at: "2026-06-10T12:00:00.000Z"
+    }]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: () => {
+      throw new Error("llm_unavailable");
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies();
+
+  assert.equal(result.replied, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(result.results[0].reply_source, "template");
+  assert.equal(db.replies.length, 1);
+  assert.ok(db.replies[0].content);
+  assert.equal(db.failedMarks.length, 0);
+});
+
+test("comment reply service limits each tick to two replies", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "gaming" };
+  const db = createFakeDb({
+    post,
+    dueComments: [
+      { id: "comment_1", post_id: "post_1", type: "comment", content: "can you reply 1?" },
+      { id: "comment_2", post_id: "post_1", type: "comment", content: "can you reply 2?" },
+      { id: "comment_3", post_id: "post_1", type: "comment", content: "can you reply 3?" }
+    ]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: ({ comment }) => `reply to ${comment.id}`,
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({ limit: 10 });
+
+  assert.equal(result.scanned, 3);
+  assert.equal(result.replied, 2);
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(db.replies.map((reply) => reply.parent_interaction_id), ["comment_1", "comment_2"]);
+  assert.equal(result.results[2].reason, "low_priority");
+});
+
+test("comment reply service force option processes not-yet-due comments", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      content: "can you reply later?",
+      reply_status: "pending",
+      reply_due_at: "2026-06-10T13:00:00.000Z"
+    }]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: ({ comment }) => `reply to ${comment.id}`,
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({ force: true });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.replied, 1);
+  assert.equal(db.replies.length, 1);
+  assert.equal(db.replies[0].parent_interaction_id, "comment_1");
+});
+
+test("comment reply service prioritizes emotional and question comments over ordinary comments", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [
+      { id: "comment_ordinary", post_id: "post_1", type: "comment", content: "hello" },
+      { id: "comment_sad", post_id: "post_1", type: "comment", content: "I feel lonely, can you stay?" },
+      { id: "comment_question", post_id: "post_1", type: "comment", content: "what are you doing now?" }
+    ]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: ({ comment }) => `reply to ${comment.id}`,
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({ limit: 10 });
+
+  assert.equal(result.replied, 2);
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(
+    db.replies.map((reply) => reply.parent_interaction_id).sort(),
+    ["comment_question", "comment_sad"]
+  );
+  assert.equal(result.results[0].status, "skipped");
+  assert.equal(result.results[0].reason, "low_priority");
 });
 
 test("comment reply service skips non-comment due rows", async () => {
@@ -254,8 +404,14 @@ function createFakeDb({ post = null, dueComments = [] } = {}) {
     replies: [],
     repliedMarks: [],
     failedMarks: [],
-    listDueHoshiaCommentReplies({ limit }) {
-      return this.dueComments.slice(0, limit);
+    listDueHoshiaCommentReplies({ limit, force = false }) {
+      if (force) return this.dueComments.slice(0, limit);
+      return this.dueComments
+        .filter((item) => String(item.reply_due_at || "") <= "2026-06-10T12:05:00.000Z")
+        .slice(0, limit);
+    },
+    listDueHoshiaPostComments({ limit, force = false }) {
+      return this.listDueHoshiaCommentReplies({ limit, force });
     },
     getHoshiaPost(postId) {
       return this.post?.id === postId ? this.post : null;

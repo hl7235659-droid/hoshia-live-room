@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 
 const characterId = "hoshia";
-const sensitivePattern = /(?:\.env|token=|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|cloudflared|trycloudflare|[A-Za-z]:[\\/]|\/home\/ubuntu|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i;
+const sensitivePattern = /(?:\.env|token=|api[_-]?key=|authorization:|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|cloudflared|trycloudflare|[A-Za-z]:[\\/]|\/home\/ubuntu|\b\d{1,3}(?:\.\d{1,3}){3}\b|https?:\/\/(?:localhost|127\.0\.0\.1|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.))/i;
 
 export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) {
   return {
@@ -45,11 +45,11 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           user_id: interaction.user_id,
           type: "event",
           source: "post_comment",
-          source_id: interaction.id,
+          source_id: post.id,
           content: `${interaction.nickname || "A viewer"} commented on Hoshia's ${post.activity || "daily"} update: ${interaction.content}`,
-          importance: importanceForText(interaction.content, 0.58),
+          importance: importanceForText(interaction.content, questionLike(interaction.content) ? 0.72 : 0.58),
           emotion: emotionForText(interaction.content),
-          tags: ["comment", post.activity, post.mood].filter(Boolean),
+          tags: ["comment", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean),
           expires_at: daysFromNow(clock(), 45)
         });
       }
@@ -59,11 +59,11 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           user_id: interaction.user_id,
           type: commitmentLike(interaction.content) ? "commitment" : "event",
           source: "post_reply",
-          source_id: interaction.id,
+          source_id: post.id,
           content: `Hoshia replied in a post thread: ${interaction.content}`,
           importance: importanceForText(interaction.content, 0.66),
           emotion: emotionForText(interaction.content),
-          tags: ["reply", post.activity, post.mood].filter(Boolean)
+          tags: ["reply", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean)
         });
       }
       return null;
@@ -112,6 +112,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           ...this.searchMemories({ userId, query: "", sourceFilter: "post_reply", limit: Math.max(limit * 3, 12) })
         ],
         userId,
+        query: text,
         postId,
         now: clock(),
         limit
@@ -242,11 +243,11 @@ function memoryPacketQuery({ query = "", scene = "", postId = "", batch = [] } =
   ].filter(Boolean).join(" ");
 }
 
-function rankMemoryPacketCandidates({ memories = [], userId = "", postId = "", now = new Date(), limit = 6 } = {}) {
+function rankMemoryPacketCandidates({ memories = [], userId = "", query = "", postId = "", now = new Date(), limit = 6 } = {}) {
   const byId = new Map();
   for (const memory of memories) {
     if (!memory || sensitivePattern.test(memory.content || "")) continue;
-    const score = memoryPacketScore(memory, { userId, postId, now });
+    const score = memoryPacketScore(memory, { userId, query, postId, now });
     const previous = byId.get(memory.id);
     if (!previous || score > previous._packet_score) {
       byId.set(memory.id, { ...memory, _packet_score: score });
@@ -259,13 +260,15 @@ function rankMemoryPacketCandidates({ memories = [], userId = "", postId = "", n
     .slice(0, Math.max(1, Math.min(Math.floor(Number(limit) || 6), 20)));
 }
 
-function memoryPacketScore(memory, { userId = "", postId = "", now = new Date() } = {}) {
+function memoryPacketScore(memory, { userId = "", query = "", postId = "", now = new Date() } = {}) {
   let score = Number(memory.match_score || 0) + Number(memory.importance || 0) * 10;
   if (memory.user_id && userId && memory.user_id === userId) score += 20;
   if (memory.type === "commitment") score += 70;
   if (memory.source === "post_reply") score += 45;
   if (memory.source === "post_comment") score += 40;
-  if (postId && memory.source_id === postId) score += 30;
+  if (postId && memory.source_id === postId) score += 60;
+  if (questionLike(memory.content)) score += questionLike(query) ? 30 : 12;
+  if (commitmentLike(memory.content)) score += 25;
   score += recencyScore(memory.created_at, now);
   return score;
 }
@@ -283,12 +286,19 @@ function importanceForText(text, fallback) {
   let score = fallback;
   if (/(记住|remember|答应|promise|承诺|说过|截图|下次|喜欢|讨厌)/i.test(value)) score += 0.22;
   if (/(动态|评论|主页|练|排位|游戏|电竞|项目|直播间|Hoshia)/i.test(value)) score += 0.12;
+  if (questionLike(value)) score += 0.12;
   if (value.length >= 80) score += 0.08;
   return clampNumber(score, 0, 1, fallback);
 }
 
 function commitmentLike(text) {
   return /(答应|承诺|promise|说过|记住|remember|下次|截图|给你看)/i.test(String(text || ""));
+}
+
+function questionLike(text) {
+  const value = String(text || "").trim();
+  return /[?？]$/.test(value) ||
+    /(?:吗|呢|么|是不是|有没有|会不会|能不能|要不要|练了吗|了吗|what|why|when|where|how|did you|do you|can you)/i.test(value);
 }
 
 function emotionForText(text) {

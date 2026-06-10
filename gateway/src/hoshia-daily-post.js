@@ -3,31 +3,49 @@ import { sanitizeModuleEvent } from "./module-context.js";
 
 const characterId = "hoshia";
 const dailySourceType = "daily_state";
+const pulseSourceType = "state_pulse";
 const defaultTimeZone = "Asia/Shanghai";
+const defaultDailyMin = 1;
+const defaultDailyMax = 5;
 
 export function createHoshiaDailyPostService({
   db,
   visualStateService,
   clock = () => new Date(),
   enabled = false,
-  dailyLimit = 1,
+  dailyLimit = defaultDailyMax,
+  dailyMin = defaultDailyMin,
+  dailyMax = null,
+  minIntervalMinutes = 0,
+  minIntervalMs = null,
+  activeWindow = null,
   timeZone = defaultTimeZone,
   roomId = ""
 } = {}) {
-  const safeLimit = normalizeDailyPostLimit(dailyLimit);
+  const safeDailyMin = normalizeDailyPostMinimum(dailyMin);
+  const safeDailyMax = normalizeDailyPostMaximum(dailyMax ?? dailyLimit, safeDailyMin);
+  const safeMinIntervalMs = normalizeMinIntervalMs(minIntervalMs ?? minutesToMs(minIntervalMinutes));
+  const safeActiveWindow = normalizeActiveWindow(activeWindow);
   const safeTimeZone = cleanText(timeZone, 64) || defaultTimeZone;
 
   return {
-    planDailyPost({ now = clock(), state = null } = {}) {
+    planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType } = {}) {
       const currentNow = asDate(now);
       const currentState = normalizeVisualState(state || readVisualState(visualStateService));
+      const safeSourceType = normalizeDailySourceType(sourceType);
+      const safeSequence = normalizeSequence(sequence);
       const postInput = normalizePostInput({
-        id: `daily_${dayKeyFor(currentNow, safeTimeZone)}_${currentState.activity}_${currentState.mood}`,
+        id: postIdFor({
+          sourceType: safeSourceType,
+          dayKey: dayKeyFor(currentNow, safeTimeZone),
+          sequence: safeSequence,
+          state: currentState
+        }),
         content: buildDailyPostContent(currentState, currentNow, safeTimeZone),
         image_url: "",
         mood: currentState.mood,
         activity: currentState.activity,
-        source_type: dailySourceType,
+        source_type: safeSourceType,
         created_at: currentNow.toISOString()
       }, currentNow);
 
@@ -36,7 +54,8 @@ export function createHoshiaDailyPostService({
         postInput,
         state: currentState,
         day_key: dayKeyFor(currentNow, safeTimeZone),
-        source_type: dailySourceType
+        source_type: safeSourceType,
+        sequence: safeSequence
       };
     },
 
@@ -44,21 +63,39 @@ export function createHoshiaDailyPostService({
       return listDailyPostsForDate({
         db,
         now: asDate(now),
-        limit: safeLimit,
+        limit: safeDailyMax,
         timeZone: safeTimeZone
       });
     },
 
-    tick({ force = false, now = clock() } = {}) {
+    tick({ force = false, ignoreLimit = false, now = clock() } = {}) {
       const currentNow = asDate(now);
+      const dayKey = dayKeyFor(currentNow, safeTimeZone);
       if (!force && !enabled) {
         return {
           ok: true,
           created: false,
           skipped: true,
           reason: "daily_post_disabled",
-          daily_limit: safeLimit,
-          day_key: dayKeyFor(currentNow, safeTimeZone)
+          daily_count: 0,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          post: null,
+          day_key: dayKey
+        };
+      }
+
+      if (!force && !isWithinActiveWindow(currentNow, safeActiveWindow, safeTimeZone)) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_post_outside_active_window",
+          daily_count: 0,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          post: null,
+          day_key: dayKey
         };
       }
 
@@ -66,23 +103,45 @@ export function createHoshiaDailyPostService({
       const existing = listDailyPostsForDate({
         db,
         now: currentNow,
-        limit: safeLimit,
+        limit: 100,
         timeZone: safeTimeZone
       });
-      if (existing.length >= safeLimit) {
+      if (!ignoreLimit && existing.length >= safeDailyMax) {
         return {
           ok: true,
           created: false,
           skipped: true,
-          reason: "daily_limit_reached",
-          post: existing[0],
+          reason: "daily_max_reached",
+          post: existing[0] || null,
           daily_count: existing.length,
-          daily_limit: safeLimit,
-          day_key: dayKeyFor(currentNow, safeTimeZone)
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
         };
       }
 
-      const plan = this.planDailyPost({ now: currentNow });
+      if (!force && hasRecentDailyPost(existing, currentNow, safeMinIntervalMs)) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_post_min_interval",
+          post: existing[0] || null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+
+      const currentState = normalizeVisualState(readVisualState(visualStateService));
+      const sourceType = existing.length < safeDailyMin ? dailySourceType : pulseSourceType;
+      const plan = this.planDailyPost({
+        now: currentNow,
+        state: currentState,
+        sequence: existing.length + 1,
+        sourceType
+      });
       if (!plan.postInput) {
         return {
           ok: false,
@@ -90,7 +149,9 @@ export function createHoshiaDailyPostService({
           skipped: true,
           reason: "daily_post_invalid",
           daily_count: existing.length,
-          daily_limit: safeLimit,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          post: null,
           day_key: plan.day_key
         };
       }
@@ -106,10 +167,12 @@ export function createHoshiaDailyPostService({
         state: plan.state,
         moduleEvent: createHoshiaDailyPostCreatedEvent(post, plan.state, {
           roomId,
-          occurredAt: post?.created_at || currentNow.toISOString()
+          occurredAt: post?.created_at || currentNow.toISOString(),
+          sourceType: plan.source_type
         }),
         daily_count: existing.length + 1,
-        daily_limit: safeLimit,
+        daily_min: safeDailyMin,
+        daily_max: safeDailyMax,
         day_key: plan.day_key
       };
     }
@@ -118,15 +181,17 @@ export function createHoshiaDailyPostService({
 
 export function createHoshiaDailyPostCreatedEvent(post, state, {
   roomId = "",
-  occurredAt = new Date().toISOString()
+  occurredAt = new Date().toISOString(),
+  sourceType = post?.source_type || dailySourceType
 } = {}) {
   if (!post) return null;
   const currentState = normalizeVisualState(state || post);
+  const safeSourceType = normalizeDailySourceType(sourceType);
   return sanitizeModuleEvent({
     room_id: roomId,
     module_id: "hoshia_daily_post",
     event_type: "hoshia_daily_post.created",
-    summary_hint: `Hoshia created a daily ${currentState.activity}/${currentState.mood} post.`,
+    summary_hint: `Hoshia created a ${safeSourceType} ${currentState.activity}/${currentState.mood} post.`,
     memory_eligible: true,
     memory_kind: "hoshia_daily_post",
     retention_days: 30,
@@ -134,8 +199,8 @@ export function createHoshiaDailyPostCreatedEvent(post, state, {
     data: {
       activity: currentState.activity,
       mood: currentState.mood,
-      source: dailySourceType,
-      reason: "internal_state_daily_post"
+      source: safeSourceType,
+      reason: safeSourceType === pulseSourceType ? "internal_state_pulse_post" : "internal_state_daily_post"
     }
   });
 }
@@ -166,6 +231,20 @@ export function normalizeDailyPostLimit(value) {
   return Math.max(1, Math.min(number, 10));
 }
 
+export function normalizeDailyPostMinimum(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return defaultDailyMin;
+  return Math.max(1, Math.min(number, defaultDailyMax));
+}
+
+export function normalizeDailyPostMaximum(value, minimum = defaultDailyMin) {
+  const number = Math.floor(Number(value));
+  const fallback = defaultDailyMax;
+  const safeMinimum = normalizeDailyPostMinimum(minimum);
+  if (!Number.isFinite(number)) return Math.max(safeMinimum, fallback);
+  return Math.max(safeMinimum, Math.min(number, defaultDailyMax));
+}
+
 function listDailyPostsForDate({ db, now, limit, timeZone }) {
   assertPostStore(db);
   const targetDay = dayKeyFor(now, timeZone);
@@ -174,9 +253,78 @@ function listDailyPostsForDate({ db, now, limit, timeZone }) {
     limit: 100,
     viewerUserId: ""
   })
-    .filter((post) => post.source_type === dailySourceType)
+    .filter((post) => post.source_type === dailySourceType || post.source_type === pulseSourceType)
     .filter((post) => dayKeyFor(post.created_at, timeZone) === targetDay)
     .slice(0, limit);
+}
+
+function postIdFor({ sourceType, dayKey, sequence, state }) {
+  const prefix = sourceType === pulseSourceType ? "pulse" : "daily";
+  return `${prefix}_${dayKey}_${normalizeSequence(sequence)}_${state.activity}_${state.mood}`;
+}
+
+function normalizeDailySourceType(value) {
+  return value === pulseSourceType ? pulseSourceType : dailySourceType;
+}
+
+function normalizeSequence(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number < 1) return 1;
+  return Math.min(number, 999);
+}
+
+function normalizeMinIntervalMs(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.min(number, 24 * 60 * 60 * 1000);
+}
+
+function minutesToMs(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return number * 60 * 1000;
+}
+
+function hasRecentDailyPost(existing, now, minIntervalMs) {
+  if (minIntervalMs <= 0 || existing.length === 0) return false;
+  const lastPostAt = existing
+    .map((post) => asDate(post.created_at).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((a, b) => b - a)[0];
+  if (!Number.isFinite(lastPostAt)) return false;
+  return asDate(now).getTime() - lastPostAt < minIntervalMs;
+}
+
+function normalizeActiveWindow(value) {
+  if (!value) return null;
+  const start = value.startHour ?? value.start ?? value.from;
+  const end = value.endHour ?? value.end ?? value.to;
+  const startHour = normalizeHour(start);
+  const endHour = normalizeHour(end);
+  if (startHour === null || endHour === null || startHour === endHour) return null;
+  return { startHour, endHour };
+}
+
+function normalizeHour(value) {
+  const match = String(value ?? "").match(/^(\d{1,2})(?::\d{1,2})?$/);
+  const number = match ? Number(match[1]) : Number(value);
+  if (!Number.isFinite(number)) return null;
+  const hour = Math.floor(number);
+  if (hour < 0 || hour > 23) return null;
+  return hour;
+}
+
+function isWithinActiveWindow(now, activeWindow, timeZone) {
+  if (!activeWindow) return true;
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: cleanText(timeZone, 64) || defaultTimeZone,
+    hour: "2-digit",
+    hour12: false
+  }).format(asDate(now)));
+  if (activeWindow.startHour < activeWindow.endHour) {
+    return hour >= activeWindow.startHour && hour < activeWindow.endHour;
+  }
+  return hour >= activeWindow.startHour || hour < activeWindow.endHour;
 }
 
 function readVisualState(visualStateService) {

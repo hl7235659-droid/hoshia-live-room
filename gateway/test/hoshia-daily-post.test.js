@@ -28,6 +28,7 @@ test("daily post service plans an internal state post from visual state", () => 
   assert.equal(plan.ok, true);
   assert.equal(plan.postInput.character_id, "hoshia");
   assert.equal(plan.postInput.source_type, "daily_state");
+  assert.equal(plan.postInput.id, "daily_20260610_1_gaming_annoyed");
   assert.equal(plan.postInput.activity, "gaming");
   assert.equal(plan.postInput.mood, "annoyed");
   assert.equal(plan.postInput.image_url, "");
@@ -52,6 +53,9 @@ test("daily tick is disabled by default unless forced by the caller", () => {
     const created = service.tick({ force: true });
     assert.equal(created.created, true);
     assert.equal(created.post.source_type, "daily_state");
+    assert.equal(created.daily_count, 1);
+    assert.equal(created.daily_min, 1);
+    assert.equal(created.daily_max, 5);
     assert.equal(created.moduleEvent.module_id, "hoshia_daily_post");
     assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 1);
   } finally {
@@ -59,7 +63,7 @@ test("daily tick is disabled by default unless forced by the caller", () => {
   }
 });
 
-test("daily tick creates at most one post for the same Shanghai day", () => {
+test("daily tick creates at least one daily_state and caps each day at five posts", () => {
   const { db, cleanup } = openTempDb();
   try {
     const service = createHoshiaDailyPostService({
@@ -74,14 +78,145 @@ test("daily tick creates at most one post for the same Shanghai day", () => {
       clock: () => new Date("2026-06-10T15:30:00.000Z")
     });
 
+    const results = Array.from({ length: 6 }, () => service.tick());
+
+    assert.equal(results[0].created, true);
+    assert.equal(results[0].post.source_type, "daily_state");
+    assert.equal(results[0].post.id, "daily_20260610_1_sleepy_sleepy");
+    assert.equal(results[0].daily_count, 1);
+    assert.equal(results[4].created, true);
+    assert.equal(results[4].post.source_type, "state_pulse");
+    assert.equal(results[4].post.id, "pulse_20260610_5_sleepy_sleepy");
+    assert.equal(results[4].daily_count, 5);
+    assert.equal(results[5].created, false);
+    assert.equal(results[5].reason, "daily_max_reached");
+    assert.equal(results[5].daily_count, 5);
+    assert.equal(results[5].daily_min, 1);
+    assert.equal(results[5].daily_max, 5);
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 5);
+  } finally {
+    cleanup();
+  }
+});
+
+test("dailyMin controls daily_state quota before state_pulse posts", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      dailyMin: 2,
+      dailyMax: 5,
+      visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
     const first = service.tick();
     const second = service.tick();
+    const third = service.tick();
+
+    assert.equal(first.post.source_type, "daily_state");
+    assert.equal(second.post.source_type, "daily_state");
+    assert.equal(third.post.source_type, "state_pulse");
+    assert.equal(first.post.id, "daily_20260610_1_thinking_focused");
+    assert.equal(second.post.id, "daily_20260610_2_thinking_focused");
+    assert.equal(third.post.id, "pulse_20260610_3_thinking_focused");
+  } finally {
+    cleanup();
+  }
+});
+
+test("daily tick respects minimum interval unless forced", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    let now = new Date("2026-06-10T12:00:00.000Z");
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      minIntervalMinutes: 60,
+      visualStateService: visualState({ activity: "happy", mood: "playful" }),
+      clock: () => now
+    });
+
+    const first = service.tick();
+    now = new Date("2026-06-10T12:30:00.000Z");
+    const skipped = service.tick();
+    const forced = service.tick({ force: true });
 
     assert.equal(first.created, true);
-    assert.equal(second.created, false);
-    assert.equal(second.reason, "daily_limit_reached");
-    assert.equal(second.post.id, first.post.id);
-    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 1);
+    assert.equal(skipped.created, false);
+    assert.equal(skipped.reason, "daily_post_min_interval");
+    assert.equal(skipped.daily_count, 1);
+    assert.equal(forced.created, true);
+    assert.equal(forced.post.source_type, "state_pulse");
+    assert.equal(forced.daily_count, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test("repeated identical state creates non-conflicting sequence ids", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      visualStateService: visualState({ activity: "otaku", mood: "curious" }),
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+
+    const ids = Array.from({ length: 5 }, () => service.tick().post.id);
+
+    assert.deepEqual(ids, [
+      "daily_20260610_1_otaku_curious",
+      "pulse_20260610_2_otaku_curious",
+      "pulse_20260610_3_otaku_curious",
+      "pulse_20260610_4_otaku_curious",
+      "pulse_20260610_5_otaku_curious"
+    ]);
+    assert.equal(new Set(ids).size, 5);
+  } finally {
+    cleanup();
+  }
+});
+
+test("force bypasses disabled and active window checks but not daily max", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: false,
+      activeWindow: { startHour: 9, endHour: 17 },
+      visualStateService: visualState({ activity: "sports", mood: "energetic" }),
+      clock: () => new Date("2026-06-10T18:00:00.000Z")
+    });
+
+    const results = Array.from({ length: 6 }, () => service.tick({ force: true }));
+
+    assert.equal(results.filter((result) => result.created).length, 5);
+    assert.equal(results[5].created, false);
+    assert.equal(results[5].reason, "daily_max_reached");
+    assert.equal(results[5].daily_count, 5);
+  } finally {
+    cleanup();
+  }
+});
+
+test("ignoreLimit is available only for tests that need to bypass daily max", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      visualStateService: visualState({ activity: "gaming", mood: "competitive" }),
+      clock: () => new Date("2026-06-10T09:00:00.000Z")
+    });
+
+    const results = Array.from({ length: 6 }, () => service.tick({ ignoreLimit: true }));
+
+    assert.equal(results[5].created, true);
+    assert.equal(results[5].daily_count, 6);
+    assert.equal(results[5].post.id, "pulse_20260610_6_gaming_competitive");
   } finally {
     cleanup();
   }

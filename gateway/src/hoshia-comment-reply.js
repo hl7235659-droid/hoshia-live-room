@@ -1,4 +1,4 @@
-import { nanoid } from "nanoid";
+﻿import { nanoid } from "nanoid";
 import { sanitizeModuleEvent } from "./module-context.js";
 
 const CHARACTER_ID = "hoshia";
@@ -13,17 +13,24 @@ export function createHoshiaCommentReplyService({
   moduleEventStore = null,
   generator,
   replyGenerator,
+  aiReplyGenerator,
+  visualStateProvider = null,
+  moduleContextProvider = null,
+  moduleEventsProvider = null,
+  config = {},
+  dailyReplyLimit = 20,
   clock = () => new Date(),
   random = Math.random,
   minDelayMinutes = DEFAULT_MIN_DELAY_MINUTES,
   maxDelayMinutes = DEFAULT_MAX_DELAY_MINUTES,
-  defaultLimit = DEFAULT_LIMIT
+  defaultLimit = DEFAULT_LIMIT,
+  maxRepliesPerTick = 2
 } = {}) {
   if (!db) {
     throw new Error("db is required");
   }
-  const generateReply = generator || replyGenerator || defaultCommentReplyGenerator;
-  if (typeof generateReply !== "function") {
+  const generateReply = aiReplyGenerator || generator || replyGenerator || null;
+  if (generateReply && typeof generateReply !== "function") {
     throw new Error("generator must be a function");
   }
 
@@ -63,26 +70,40 @@ export function createHoshiaCommentReplyService({
       };
     },
 
-    async processDueReplies({ limit = defaultLimit, now = clock() } = {}) {
+    async processDueReplies({ limit = defaultLimit, force = false, now = clock() } = {}) {
       return processDue({
         db,
         lifeMemoryService,
         moduleEventStore,
         generator: generateReply,
+        visualStateProvider,
+        moduleContextProvider,
+        moduleEventsProvider,
+        config,
+        dailyReplyLimit,
         limit,
+        force,
         defaultLimit,
+        maxRepliesPerTick,
         now
       });
     },
 
-    async processDueComments({ limit = defaultLimit, now = clock() } = {}) {
+    async processDueComments({ limit = defaultLimit, force = false, now = clock() } = {}) {
       const result = await processDue({
         db,
         lifeMemoryService,
         moduleEventStore,
         generator: generateReply,
+        visualStateProvider,
+        moduleContextProvider,
+        moduleEventsProvider,
+        config,
+        dailyReplyLimit,
         limit,
+        force,
         defaultLimit,
+        maxRepliesPerTick,
         now
       });
       return {
@@ -98,18 +119,18 @@ export function createHoshiaCommentReplyService({
 }
 
 export async function defaultCommentReplyGenerator({ post, comment } = {}) {
-  const nickname = cleanText(comment?.nickname, 24) || "你";
+  const nickname = cleanText(comment?.nickname, 24) || "\u4f60";
   const activity = cleanIdentifier(post?.activity, 32);
   const mood = cleanIdentifier(post?.mood, 32);
   const commentText = cleanText(comment?.content, 120);
   const prefix = activity === "gaming"
-    ? "刚打完一小局才看到评论"
-    : "刚回来看了一眼动态";
+    ? "\u521a\u6253\u5b8c\u4e00\u5c0f\u5c40\u624d\u770b\u5230\u8bc4\u8bba"
+    : "\u521a\u56de\u6765\u770b\u4e86\u4e00\u773c\u52a8\u6001";
   const moodTail = mood === "annoyed"
-    ? "我才没有被戳到，只是记下来了。"
-    : "这条我先记着啦。";
-  const echo = commentText ? `你刚才说“${commentText}”，` : "";
-  return `${prefix}，${nickname}，${echo}${moodTail}`;
+    ? "\u6211\u624d\u6ca1\u6709\u88ab\u6233\u5230\uff0c\u53ea\u662f\u8bb0\u4e0b\u6765\u4e86\u3002"
+    : "\u8fd9\u6761\u6211\u5148\u8bb0\u7740\u5566\u3002";
+  const echo = commentText ? `\u4f60\u521a\u624d\u8bf4\u201c${commentText}\u201d\uff0c` : "";
+  return `${prefix}\uff0c${nickname}\uff0c${echo}${moodTail}`;
 }
 
 export const defaultReplyGenerator = defaultCommentReplyGenerator;
@@ -148,24 +169,52 @@ async function processDue({
   lifeMemoryService,
   moduleEventStore,
   generator,
+  visualStateProvider,
+  moduleContextProvider,
+  moduleEventsProvider,
+  config,
+  dailyReplyLimit,
   limit,
+  force,
   defaultLimit,
+  maxRepliesPerTick,
   now
 }) {
   const nowIso = toIso(now);
   const dueComments = listDueComments(db, {
     now: nowIso,
-    limit: clampInt(limit, 1, 50, defaultLimit)
+    limit: clampInt(limit, 1, 50, defaultLimit),
+    force: Boolean(force)
   });
+  const normalizedComments = dueComments.map((rawComment) => normalizeDueComment(rawComment));
+  const remainingDailyReplies = Math.max(0, clampInt(dailyReplyLimit, 0, 100, 20) - countRepliesToday(db, nowIso));
+  const replyLimit = Math.min(clampInt(maxRepliesPerTick, 1, 2, 2), remainingDailyReplies);
+  if (replyLimit <= 0) {
+    return {
+      scanned: normalizedComments.length,
+      replied: 0,
+      failed: 0,
+      skipped: normalizedComments.length,
+      results: normalizedComments.map((comment) => skipped(comment, "daily_reply_limit_reached"))
+    };
+  }
+  const selectedIds = new Set(selectReplyCandidates(normalizedComments, replyLimit).map((item) => item.id));
   const results = [];
 
-  for (const rawComment of dueComments) {
-    const dueComment = normalizeDueComment(rawComment);
+  for (const dueComment of normalizedComments) {
+    if (isComment(dueComment) && !selectedIds.has(dueComment.id)) {
+      results.push(skipped(dueComment, "low_priority"));
+      continue;
+    }
     const result = await processOneDueComment({
       db,
       lifeMemoryService,
       moduleEventStore,
       generator,
+      visualStateProvider,
+      moduleContextProvider,
+      moduleEventsProvider,
+      config,
       dueComment,
       now: nowIso
     });
@@ -196,6 +245,10 @@ async function processOneDueComment({
   lifeMemoryService,
   moduleEventStore,
   generator,
+  visualStateProvider,
+  moduleContextProvider,
+  moduleEventsProvider,
+  config,
   dueComment,
   now
 }) {
@@ -212,7 +265,7 @@ async function processOneDueComment({
 
   try {
     const memoryPacket = typeof lifeMemoryService?.buildMemoryPacket === "function"
-      ? lifeMemoryService.buildMemoryPacket({
+      ? await lifeMemoryService.buildMemoryPacket({
         session: { user_id: dueComment.user_id, nickname: dueComment.nickname },
         query: `${post.content || ""} ${dueComment.content || ""}`,
         scene: "post_comment_reply",
@@ -220,12 +273,23 @@ async function processOneDueComment({
         limit: 6
       })
       : [];
-    const generated = await generator({
+    const replyContext = await buildReplyContext({
+      post,
+      comment: dueComment,
+      now,
+      visualStateProvider,
+      moduleContextProvider,
+      moduleEventsProvider
+    });
+    const generated = await generateWithFallback({
+      generator,
       post,
       comment: dueComment,
       memoryPacket,
       now,
-      lifeMemoryService
+      lifeMemoryService,
+      config,
+      ...replyContext
     });
     const content = normalizeGeneratedContent(generated);
     if (!content) {
@@ -260,18 +324,170 @@ async function processOneDueComment({
       moduleEventStore.append(createHoshiaCommentReplyGeneratedEvent({
         post,
         comment: dueComment,
-        reply
+        reply,
+        roomId: config?.roomId || config?.room_id || ""
       }));
     }
 
     return {
       status: "replied",
       comment_id: dueComment.id,
-      reply_id: reply.id
+      reply_id: reply.id,
+      reply_source: generated?.source || "template"
     };
   } catch (error) {
     return failComment(db, dueComment, cleanText(error?.message, 80) || "reply_failed", now);
   }
+}
+
+async function generateWithFallback({
+  generator,
+  post,
+  comment,
+  memoryPacket,
+  now,
+  lifeMemoryService,
+  config,
+  visualState,
+  moduleContext,
+  moduleEvents
+}) {
+  const input = {
+    post,
+    comment,
+    memoryPacket,
+    now,
+    lifeMemoryService,
+    config,
+    visualState,
+    moduleContext,
+    moduleEvents,
+    replyMode: "post_comment_reply"
+  };
+
+  if (generator) {
+    try {
+      const generated = await generator(input);
+      const content = normalizeGeneratedContent(generated);
+      if (content) {
+        return normalizeGeneratedReply(generated, content, "llm");
+      }
+    } catch {
+      // Template fallback keeps async replies from failing when the LLM is unavailable.
+    }
+  }
+
+  const fallback = await defaultCommentReplyGenerator(input);
+  const fallbackContent = normalizeGeneratedContent(fallback);
+  return normalizeGeneratedReply(fallback, fallbackContent, "template");
+}
+
+function normalizeGeneratedReply(generated, content, source) {
+  if (generated && typeof generated === "object") {
+    return {
+      ...generated,
+      content,
+      source
+    };
+  }
+  return {
+    content,
+    source
+  };
+}
+
+async function buildReplyContext({
+  post,
+  comment,
+  now,
+  visualStateProvider,
+  moduleContextProvider,
+  moduleEventsProvider
+}) {
+  const input = {
+    post,
+    comment,
+    now,
+    session: { user_id: comment.user_id, nickname: comment.nickname }
+  };
+  const [visualState, moduleContext, moduleEvents] = await Promise.all([
+    resolveProviderValue(visualStateProvider, input),
+    resolveProviderValue(moduleContextProvider, input),
+    resolveProviderValue(moduleEventsProvider, input)
+  ]);
+  return { visualState, moduleContext, moduleEvents };
+}
+
+async function resolveProviderValue(provider, input) {
+  if (!provider) return null;
+  if (typeof provider === "function") return provider(input);
+  if (typeof provider.getCapabilityContext === "function") return provider.getCapabilityContext(input.session || input);
+  if (typeof provider.getContext === "function") return provider.getContext(input);
+  if (typeof provider.getCurrentState === "function") return provider.getCurrentState(input);
+  if (typeof provider.listRecentEvents === "function") return provider.listRecentEvents(input);
+  if (typeof provider.list === "function") return provider.list(input);
+  return provider;
+}
+
+function selectReplyCandidates(comments, maxCount) {
+  return comments
+    .filter(isComment)
+    .map((comment, index) => ({
+      ...comment,
+      _replyPriority: scoreReplyCandidate(comment),
+      _index: index
+    }))
+    .filter((comment) => comment._replyPriority > 0)
+    .sort((left, right) => {
+      if (right._replyPriority !== left._replyPriority) return right._replyPriority - left._replyPriority;
+      return left._index - right._index;
+    })
+    .slice(0, maxCount);
+}
+
+function scoreReplyCandidate(comment) {
+  const text = cleanText(comment?.content, 240).toLowerCase();
+  if (!text) return 0;
+  const activity = cleanIdentifier(comment?.post?.activity, 48);
+  const mood = cleanIdentifier(comment?.post?.mood, 48);
+
+  let score = 0;
+  if (/[?？吗呢]/.test(text) || /(怎么|为什么|为啥|如何|能不能|可以|what|why|how|can you)/i.test(text)) {
+    score += 5;
+  }
+  if (/(难过|伤心|孤独|陪陪|抱抱|低落|不开心|emo|哭|累|烦|sad|lonely|tired|upset)/i.test(text)) {
+    score += 6;
+  }
+  if (/(哈哈|笑死|真的假的|然后呢|你说呢|不会吧|菜就多练|调侃|追问|lol|really)/i.test(text)) {
+    score += 3;
+  }
+  if (/(现在|刚才|动态|直播|游戏|排位|动漫|运动|打完|赢|输|截图|音乐|歌|队列|礼物|新闻|tts|声音|live2d|表情|姿势|状态)/i.test(text)) {
+    score += 4;
+  }
+  if ((activity && text.includes(activity)) || (mood && text.includes(mood))) {
+    score += 4;
+  }
+  if (activity === "gaming" && /(game|gaming|play|win|lose|游戏|排位|赢|输)/i.test(text)) {
+    score += 4;
+  }
+  if (activity === "music" && /(music|song|queue|音乐|歌|队列)/i.test(text)) {
+    score += 4;
+  }
+  if (activity === "live2d" && /(live2d|pose|face|expression|表情|姿势|动作)/i.test(text)) {
+    score += 4;
+  }
+
+  return score;
+}
+
+function countRepliesToday(db, nowIso) {
+  if (typeof db?.listHoshiaPosts !== "function") return 0;
+  const day = String(nowIso || "").slice(0, 10);
+  if (!day) return 0;
+  return db.listHoshiaPosts({ characterId: CHARACTER_ID, limit: 100, viewerUserId: "" })
+    .flatMap((post) => Array.isArray(post.interactions) ? post.interactions : [])
+    .filter((interaction) => interaction.type === "reply" && String(interaction.created_at || "").startsWith(day))
+    .length;
 }
 
 function markReplied(db, comment, reply, now) {
@@ -412,3 +628,4 @@ function clampNumber(value, min, max, fallback) {
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(number, max));
 }
+

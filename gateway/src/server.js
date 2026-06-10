@@ -136,14 +136,28 @@ const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   db,
   lifeMemoryService: hoshiaLifeMemoryService,
   moduleEventStore,
+  aiReplyGenerator: generatePostCommentReply,
+  visualStateProvider: () => hoshiaVisualStateService.publicState(),
+  moduleContextProvider: ({ session }) => buildModuleContext({ providers: moduleProviders, session }),
+  moduleEventsProvider: () => moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 }),
+  config,
+  dailyReplyLimit: config.hoshiaCommentReplyDailyLimit,
   minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
-  maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes
+  maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes,
+  defaultLimit: config.hoshiaCommentReplyTickLimit,
+  maxRepliesPerTick: config.hoshiaCommentReplyTickLimit
 });
 const hoshiaDailyPostService = createHoshiaDailyPostService({
   db,
   visualStateService: hoshiaVisualStateService,
   enabled: config.hoshiaDailyPostEnabled,
-  dailyLimit: config.hoshiaDailyPostLimit,
+  dailyMin: config.hoshiaDailyPostMin,
+  dailyMax: config.hoshiaDailyPostMax,
+  minIntervalMinutes: config.hoshiaStatePostMinIntervalMinutes,
+  activeWindow: {
+    start: config.hoshiaStatePostActiveWindowStart,
+    end: config.hoshiaStatePostActiveWindowEnd
+  },
   roomId: config.roomId
 });
 const moduleProviders = [
@@ -478,39 +492,19 @@ app.post("/api/hoshia/comments/reply-tick", requireSession, async (req, res) => 
     return res.json({ ok: true, processed_count: 0, failed_count: 0, items: [], reason: "async_comment_reply_disabled" });
   }
   const result = await runCommentReplyTick({
-    limit: req.body?.limit
+    limit: req.body?.limit,
+    force: req.body?.force === true
   });
   res.json(result);
 });
 
 app.post("/api/hoshia/posts/daily/tick", requireSession, async (req, res) => {
-  const result = hoshiaDailyPostService.tick({
-    force: req.body?.force === true
+  const result = runDailyPostTick({
+    force: req.body?.force === true,
+    ignoreLimit: req.body?.ignoreLimit === true,
+    session: req.session,
+    source: "manual"
   });
-  if (result.post && result.created) {
-    hoshiaLifeMemoryService.recordPost(result.post);
-    moduleEventStore.append(result.moduleEvent || createHoshiaPostCreatedEvent(result.post, req.session, {
-      roomId: config.roomId,
-      reason: "daily_state"
-    }));
-    const visualUpdate = updateHoshiaVisualState({
-      body: {
-        mood: result.post.mood,
-        activity: result.post.activity,
-        state_reason: "Hoshia wrote a daily timeline update"
-      },
-      session: req.session,
-      reason: "daily timeline post"
-    });
-    if (visualUpdate.changed) {
-      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, req.session, {
-        roomId: config.roomId,
-        reason: visualUpdate.reason,
-        source: "daily_post"
-      }));
-      broadcastHoshiaState(visualUpdate.state);
-    }
-  }
   res.json({
     ...result,
     post: result.post ? publicPostForViewer(result.post.id, req.session.user_id) : null
@@ -680,11 +674,53 @@ function runScheduledHoshiaVisualTick() {
     }));
     broadcastHoshiaState(result.state);
   }
+  runDailyPostTick({
+    force: false,
+    session: null,
+    source: "scheduled_visual_tick"
+  });
   scheduleNextHoshiaVisualTick();
 }
 
-async function runCommentReplyTick({ limit = 10 } = {}) {
-  const result = await hoshiaCommentReplyService.processDueComments({ limit });
+function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled" } = {}) {
+  const result = hoshiaDailyPostService.tick({ force, ignoreLimit });
+  if (result.post && result.created) {
+    hoshiaLifeMemoryService.recordPost(result.post);
+    moduleEventStore.append(result.moduleEvent || createHoshiaPostCreatedEvent(result.post, session, {
+      roomId: config.roomId,
+      reason: result.post.source_type || "daily_state"
+    }));
+    const visualUpdate = updateHoshiaVisualState({
+      body: {
+        mood: result.post.mood,
+        activity: result.post.activity,
+        state_reason: result.post.source_type === "state_pulse"
+          ? "Hoshia wrote a state pulse timeline update"
+          : "Hoshia wrote a daily timeline update"
+      },
+      session,
+      reason: "daily timeline post"
+    });
+    if (visualUpdate.changed) {
+      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, session, {
+        roomId: config.roomId,
+        reason: visualUpdate.reason,
+        source: source === "manual" ? "daily_post" : source
+      }));
+      broadcastHoshiaState(visualUpdate.state);
+    }
+    broadcast({
+      type: "hoshia_posts_changed",
+      room_id: config.roomId,
+      reason: result.post.source_type || "daily_post",
+      timestamp: new Date().toISOString()
+    });
+  }
+  return result;
+}
+
+async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit, force = false } = {}) {
+  const result = await hoshiaCommentReplyService.processDueComments({ limit, force });
   if (result.processed_count > 0) {
     const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
       text: "Hoshia replied to timeline comments",
@@ -707,6 +743,59 @@ async function runCommentReplyTick({ limit = 10 } = {}) {
   }
   scheduleCommentReplyTick();
   return result;
+}
+
+async function generatePostCommentReply({
+  post,
+  comment,
+  memoryPacket = [],
+  visualState = null,
+  moduleContext = [],
+  moduleEvents = []
+} = {}) {
+  if (config.aiMode !== "astrbot") return "";
+  const prompt = formatPostCommentReplyPrompt({ post, comment, memoryPacket, visualState });
+  const reply = await generateAiReply({
+    user_id: comment?.user_id || "post-comment-viewer",
+    username: comment?.nickname || "viewer",
+    nickname: comment?.nickname || "viewer",
+    room_id: config.roomId
+  }, prompt, config, globalThis.fetch, {
+    forceReply: true,
+    replyMode: "post_comment_reply",
+    replyTargets: [comment?.nickname].filter(Boolean),
+    moduleContext: Array.isArray(moduleContext) ? moduleContext : [],
+    moduleEvents: Array.isArray(moduleEvents) ? moduleEvents : [],
+    messages: [{
+      user_id: comment?.user_id || "",
+      nickname: comment?.nickname || "",
+      text: comment?.content || "",
+      timestamp: comment?.created_at || ""
+    }]
+  });
+  if (reply?.skipped || !reply?.text) return "";
+  return {
+    content: String(reply.text).slice(0, 500),
+    source: reply.source || "astrbot"
+  };
+}
+
+function formatPostCommentReplyPrompt({ post, comment, memoryPacket = [], visualState = null } = {}) {
+  const state = visualState || {};
+  return [
+    hoshiaPersonaPrompt,
+    "You are Hoshia replying asynchronously under one of your own timeline posts.",
+    "Write only one short natural reply from Hoshia. Do not include labels, JSON, system notes, file paths, tokens, internal URLs, or logs.",
+    "Do not sound like customer support. Keep continuity with the post, the comment, and Hoshia's current mood.",
+    `Post: ${String(post?.content || "").slice(0, 700)}`,
+    `Post state: activity=${String(post?.activity || "")}; mood=${String(post?.mood || "")}`,
+    `Viewer ${String(comment?.nickname || "viewer").slice(0, 32)} commented: ${String(comment?.content || "").slice(0, 500)}`,
+    `Current Hoshia state: activity=${String(state.activity || "")}; mood=${String(state.mood || "")}; energy=${Number(state.energy || 0)}; social_need=${Number(state.social_need || 0)}; visual=${String(state.visual_description || "").slice(0, 220)}`,
+    ...(Array.isArray(memoryPacket) && memoryPacket.length ? [
+      ...memoryPacket,
+      "Use these memories only for continuity. Do not reveal internal field names."
+    ] : [])
+  ].filter(Boolean).join("\n");
 }
 
 function scheduleCommentReplyTick(delayMs = 60000) {

@@ -629,9 +629,10 @@ export class LiveRoomDatabase {
     `).all(postId).map(compactPostInteraction);
   }
 
-  listDueHoshiaPostComments({ now = new Date().toISOString(), limit = 10 } = {}) {
+  listDueHoshiaPostComments({ now = new Date().toISOString(), limit = 10, force = false } = {}) {
     const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 10), 50));
-    return this.db.prepare(`
+    const forcePending = Boolean(force);
+    const query = this.db.prepare(`
       SELECT
         interaction.id,
         interaction.post_id,
@@ -657,10 +658,11 @@ export class LiveRoomDatabase {
       WHERE interaction.type = 'comment'
         AND interaction.reply_status = 'pending'
         AND interaction.reply_due_at IS NOT NULL
-        AND interaction.reply_due_at <= ?
+        ${forcePending ? "" : "AND interaction.reply_due_at <= ?"}
       ORDER BY datetime(interaction.reply_due_at) ASC, interaction.id ASC
       LIMIT ?
-    `).all(now, safeLimit);
+    `);
+    return forcePending ? query.all(safeLimit) : query.all(now, safeLimit);
   }
 
   listDueHoshiaCommentReplies(options = {}) {
