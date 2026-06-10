@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+const defaultSummaryTimeZone = "Asia/Shanghai";
+
 export function openLiveRoomDatabase(databasePath) {
   mkdirSync(path.dirname(databasePath), { recursive: true });
   const db = new DatabaseSync(databasePath);
@@ -712,6 +714,15 @@ export class LiveRoomDatabase {
     });
   }
 
+  markHoshiaCommentReplySkipped({ commentId, skippedAt } = {}) {
+    const comment = this.getHoshiaPostInteraction(commentId);
+    return this.markHoshiaPostCommentReplyStatus(commentId, {
+      status: "skipped",
+      replyDueAt: comment?.reply_due_at || "",
+      repliedAt: skippedAt
+    });
+  }
+
   countHoshiaPostsBySourceOnDate({ sourceType, date, characterId = "hoshia" } = {}) {
     const row = this.db.prepare(`
       SELECT COUNT(*) AS total
@@ -733,6 +744,59 @@ export class LiveRoomDatabase {
       ORDER BY datetime(created_at) DESC, id DESC
       LIMIT 1
     `).get(characterId, sourceType, date) || null;
+  }
+
+  countHoshiaPostsForDay({ now = new Date().toISOString(), timeZone = defaultSummaryTimeZone, characterId = "hoshia" } = {}) {
+    const targetDay = dayKeyForTimeZone(now, timeZone);
+    const rows = this.db.prepare(`
+      SELECT source_type, created_at
+      FROM hoshia_posts
+      WHERE character_id = ?
+      ORDER BY datetime(created_at) DESC, id DESC
+    `).all(characterId);
+    const bySource = {};
+    let total = 0;
+    for (const row of rows) {
+      if (dayKeyForTimeZone(row.created_at, timeZone) !== targetDay) continue;
+      total += 1;
+      const sourceType = String(row.source_type || "manual");
+      bySource[sourceType] = Number(bySource[sourceType] || 0) + 1;
+    }
+    return { day_key: targetDay, total, by_source: bySource };
+  }
+
+  countHoshiaRepliesForDay({ now = new Date().toISOString(), timeZone = defaultSummaryTimeZone, characterId = "hoshia" } = {}) {
+    const targetDay = dayKeyForTimeZone(now, timeZone);
+    const rows = this.db.prepare(`
+      SELECT interaction.created_at
+      FROM hoshia_post_interactions interaction
+      JOIN hoshia_posts post ON post.id = interaction.post_id
+      WHERE post.character_id = ?
+        AND interaction.type = 'reply'
+      ORDER BY datetime(interaction.created_at) DESC, interaction.id DESC
+    `).all(characterId);
+    let total = 0;
+    for (const row of rows) {
+      if (dayKeyForTimeZone(row.created_at, timeZone) === targetDay) total += 1;
+    }
+    return { day_key: targetDay, total };
+  }
+
+  countHoshiaCommentReplyStatuses({ characterId = "hoshia" } = {}) {
+    const rows = this.db.prepare(`
+      SELECT COALESCE(interaction.reply_status, '') AS reply_status, COUNT(*) AS total
+      FROM hoshia_post_interactions interaction
+      JOIN hoshia_posts post ON post.id = interaction.post_id
+      WHERE post.character_id = ?
+        AND interaction.type = 'comment'
+      GROUP BY COALESCE(interaction.reply_status, '')
+    `).all(characterId);
+    const counts = {};
+    for (const row of rows) {
+      const key = String(row.reply_status || "none") || "none";
+      counts[key] = Number(row.total || 0);
+    }
+    return counts;
   }
 
   addHoshiaLifeMemory({
@@ -921,6 +985,20 @@ function compactPostInteraction(row) {
     replied_at: row.replied_at || "",
     created_at: row.created_at
   };
+}
+
+function dayKeyForTimeZone(value = new Date(), timeZone = defaultSummaryTimeZone) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timeZone || defaultSummaryTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const year = parts.find((item) => item.type === "year")?.value || "0000";
+  const month = parts.find((item) => item.type === "month")?.value || "01";
+  const day = parts.find((item) => item.type === "day")?.value || "01";
+  return `${year}${month}${day}`;
 }
 
 function normalizeLifeMemoryRow(row) {

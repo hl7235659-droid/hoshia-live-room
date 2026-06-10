@@ -88,6 +88,13 @@ Important options:
 - `PROACTIVE_REPLY_MIN_IDLE_SECONDS` / `PROACTIVE_REPLY_MAX_IDLE_SECONDS`: random idle window before Hoshia speaks; defaults to `300`-`900`.
 - `PROACTIVE_REPLY_MAX_UNANSWERED`: pauses idle proactive replies after this many unanswered proactive messages; defaults to `3`.
 - `PROACTIVE_REPLY_CONTEXT_MESSAGES`: recent room messages sent as proactive reply context; defaults to `24`.
+- `HOSHIA_DAILY_POST_ENABLED`: enables automatic Hoshia timeline posts; defaults to `true`. Set it to `false` to pause automatic posting without affecting manual ticks.
+- `HOSHIA_DAILY_POST_MIN` / `HOSHIA_DAILY_POST_MAX`: daily automatic post floor and cap; defaults to `1` and `5`.
+- `HOSHIA_STATE_POST_MIN_INTERVAL_MINUTES`: minimum spacing between automatic posts; defaults to `90`.
+- `HOSHIA_STATE_POST_ACTIVE_WINDOW_START` / `HOSHIA_STATE_POST_ACTIVE_WINDOW_END`: local active posting window for automatic posts; defaults to `10:00`-`23:50`.
+- `HOSHIA_ASYNC_COMMENT_REPLY_ENABLED`: enables delayed Hoshia timeline replies; defaults to `true`. Set it to `false` to pause automatic comment replies while keeping posting online.
+- `HOSHIA_COMMENT_REPLY_TICK_LIMIT`: maximum replies processed in one reply tick; defaults to `2`.
+- `HOSHIA_COMMENT_REPLY_DAILY_LIMIT`: maximum delayed timeline replies per day; defaults to `20`.
 - AstrBot bridge news topics are configured in the AstrBot plugin, not in the gateway `.env`: enable `news_capability_enabled`, set `news_source_urls` to private/internal RSSHub feeds, and keep any `tavily_api_key` only in server-side AstrBot config.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.

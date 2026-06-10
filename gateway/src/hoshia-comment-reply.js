@@ -203,6 +203,7 @@ async function processDue({
 
   for (const dueComment of normalizedComments) {
     if (isComment(dueComment) && !selectedIds.has(dueComment.id)) {
+      markSkipped(db, dueComment, nowIso);
       results.push(skipped(dueComment, "low_priority"));
       continue;
     }
@@ -503,6 +504,23 @@ function markReplied(db, comment, reply, now) {
     db.markHoshiaPostCommentReplyStatus(comment.id, {
       status: "replied",
       replyId: reply.id,
+      replyDueAt: comment.reply_due_at || "",
+      repliedAt: now
+    });
+  }
+}
+
+function markSkipped(db, comment, now) {
+  if (typeof db.markHoshiaCommentReplySkipped === "function") {
+    db.markHoshiaCommentReplySkipped({
+      commentId: comment.id,
+      skippedAt: now
+    });
+    return;
+  }
+  if (typeof db.markHoshiaPostCommentReplyStatus === "function") {
+    db.markHoshiaPostCommentReplyStatus(comment.id, {
+      status: "skipped",
       replyDueAt: comment.reply_due_at || "",
       repliedAt: now
     });

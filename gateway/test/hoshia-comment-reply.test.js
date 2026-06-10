@@ -280,6 +280,8 @@ test("comment reply service limits each tick to two replies", async () => {
   assert.equal(result.skipped, 1);
   assert.deepEqual(db.replies.map((reply) => reply.parent_interaction_id), ["comment_1", "comment_2"]);
   assert.equal(result.results[2].reason, "low_priority");
+  assert.equal(db.skippedMarks.length, 1);
+  assert.equal(db.skippedMarks[0].commentId, "comment_3");
 });
 
 test("comment reply service force option processes not-yet-due comments", async () => {
@@ -404,6 +406,7 @@ function createFakeDb({ post = null, dueComments = [] } = {}) {
     replies: [],
     repliedMarks: [],
     failedMarks: [],
+    skippedMarks: [],
     listDueHoshiaCommentReplies({ limit, force = false }) {
       if (force) return this.dueComments.slice(0, limit);
       return this.dueComments
@@ -430,6 +433,10 @@ function createFakeDb({ post = null, dueComments = [] } = {}) {
     },
     markHoshiaCommentReplyFailed(input) {
       this.failedMarks.push(input);
+      return input;
+    },
+    markHoshiaCommentReplySkipped(input) {
+      this.skippedMarks.push(input);
       return input;
     }
   };

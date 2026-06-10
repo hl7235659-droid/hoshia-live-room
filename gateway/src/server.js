@@ -46,6 +46,7 @@ import {
 } from "./hoshia-life-memory.js";
 import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
+import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
 import {
   createProactiveReplyState,
   markUserActivityForProactive,
@@ -378,6 +379,13 @@ app.get("/api/hoshia/state", requireSession, async (_req, res) => {
   });
 });
 
+app.get("/api/hoshia/ops/summary", requireSession, async (_req, res) => {
+  res.json({
+    ok: true,
+    summary: getHoshiaOpsSummary()
+  });
+});
+
 app.get("/api/hoshia/posts", requireSession, async (req, res) => {
   res.json({
     ok: true,
@@ -489,13 +497,30 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
 
 app.post("/api/hoshia/comments/reply-tick", requireSession, async (req, res) => {
   if (!config.hoshiaAsyncCommentReplyEnabled && req.body?.force !== true) {
-    return res.json({ ok: true, processed_count: 0, failed_count: 0, items: [], reason: "async_comment_reply_disabled" });
+    const summary = getHoshiaOpsSummary();
+    return res.json({
+      ok: true,
+      processed_count: 0,
+      failed_count: 0,
+      items: [],
+      reason: "async_comment_reply_disabled",
+      reply_processed_today: summary.reply_processed_today,
+      reply_daily_limit: summary.limits.comment_reply_daily_limit,
+      pending_comment_count: summary.pending_comment_count
+    });
   }
   const result = await runCommentReplyTick({
     limit: req.body?.limit,
     force: req.body?.force === true
   });
-  res.json(result);
+  const summary = getHoshiaOpsSummary();
+  res.json({
+    ...result,
+    reason: result.reason || "",
+    reply_processed_today: summary.reply_processed_today,
+    reply_daily_limit: summary.limits.comment_reply_daily_limit,
+    pending_comment_count: summary.pending_comment_count
+  });
 });
 
 app.post("/api/hoshia/posts/daily/tick", requireSession, async (req, res) => {
@@ -505,8 +530,12 @@ app.post("/api/hoshia/posts/daily/tick", requireSession, async (req, res) => {
     session: req.session,
     source: "manual"
   });
+  const summary = getHoshiaOpsSummary();
   res.json({
     ...result,
+    reply_processed_today: summary.reply_processed_today,
+    reply_daily_limit: summary.limits.comment_reply_daily_limit,
+    pending_comment_count: summary.pending_comment_count,
     post: result.post ? publicPostForViewer(result.post.id, req.session.user_id) : null
   });
 });
@@ -526,10 +555,18 @@ app.post("/api/hoshia/state/update", requireSession, async (req, res) => {
     broadcastHoshiaState(result.state);
   }
   scheduleNextHoshiaVisualTick();
+  const summary = getHoshiaOpsSummary();
   res.json({
     ok: true,
     changed: result.changed,
-    state: result.state
+    state: result.state,
+    reason: result.reason || "",
+    daily_count: summary.generated_post_count,
+    daily_min: summary.limits.daily_min,
+    daily_max: summary.limits.daily_max,
+    reply_processed_today: summary.reply_processed_today,
+    reply_daily_limit: summary.limits.comment_reply_daily_limit,
+    pending_comment_count: summary.pending_comment_count
   });
 });
 
@@ -547,10 +584,18 @@ app.post("/api/hoshia/state/tick", requireSession, async (req, res) => {
     broadcastHoshiaState(result.state);
   }
   scheduleNextHoshiaVisualTick();
+  const summary = getHoshiaOpsSummary();
   res.json({
     ok: true,
     changed: result.changed,
-    state: result.state
+    state: result.state,
+    reason: result.reason || "",
+    daily_count: summary.generated_post_count,
+    daily_min: summary.limits.daily_min,
+    daily_max: summary.limits.daily_max,
+    reply_processed_today: summary.reply_processed_today,
+    reply_daily_limit: summary.limits.comment_reply_daily_limit,
+    pending_comment_count: summary.pending_comment_count
   });
 });
 
@@ -717,6 +762,16 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
     });
   }
   return result;
+}
+
+function getHoshiaOpsSummary(now = new Date()) {
+  return buildHoshiaOpsSummary({
+    db,
+    visualState: hoshiaVisualStateService.publicState(),
+    config,
+    now,
+    timeZone: config.realityContextTimezone || "Asia/Shanghai"
+  });
 }
 
 async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit, force = false } = {}) {

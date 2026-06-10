@@ -259,6 +259,96 @@ test("hoshia posts interactions and life memories are persisted", () => {
   }
 });
 
+test("hoshia ops counters group daily posts replies and comment statuses", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    db.createHoshiaPost({
+      id: "post-daily",
+      character_id: "hoshia",
+      content: "daily",
+      mood: "calm",
+      activity: "idle",
+      source_type: "daily_state",
+      created_at: "2026-06-10T16:30:00.000Z",
+      updated_at: "2026-06-10T16:30:00.000Z"
+    });
+    db.createHoshiaPost({
+      id: "post-pulse",
+      character_id: "hoshia",
+      content: "pulse",
+      mood: "happy",
+      activity: "happy",
+      source_type: "state_pulse",
+      created_at: "2026-06-11T02:00:00.000Z",
+      updated_at: "2026-06-11T02:00:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "comment-pending",
+      post_id: "post-daily",
+      user_id: "user-1",
+      nickname: "Alice",
+      type: "comment",
+      content: "pending",
+      reply_status: "pending",
+      reply_due_at: "2026-06-11T03:00:00.000Z",
+      created_at: "2026-06-11T02:10:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "comment-failed",
+      post_id: "post-daily",
+      user_id: "user-2",
+      nickname: "Bob",
+      type: "comment",
+      content: "failed",
+      reply_status: "failed",
+      replied_at: "2026-06-11T03:10:00.000Z",
+      created_at: "2026-06-11T02:20:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "comment-skipped",
+      post_id: "post-pulse",
+      user_id: "user-3",
+      nickname: "Caro",
+      type: "comment",
+      content: "skipped",
+      reply_status: "skipped",
+      replied_at: "2026-06-11T03:20:00.000Z",
+      created_at: "2026-06-11T02:30:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "reply-1",
+      post_id: "post-pulse",
+      user_id: "hoshia",
+      nickname: "Hoshia",
+      type: "reply",
+      content: "reply",
+      parent_interaction_id: "comment-pending",
+      created_at: "2026-06-11T03:30:00.000Z"
+    });
+
+    const posts = db.countHoshiaPostsForDay({
+      now: "2026-06-11T04:00:00.000Z",
+      timeZone: "Asia/Shanghai"
+    });
+    const replies = db.countHoshiaRepliesForDay({
+      now: "2026-06-11T04:00:00.000Z",
+      timeZone: "Asia/Shanghai"
+    });
+    const statuses = db.countHoshiaCommentReplyStatuses();
+
+    assert.equal(posts.day_key, "20260611");
+    assert.equal(posts.total, 2);
+    assert.equal(posts.by_source.daily_state, 1);
+    assert.equal(posts.by_source.state_pulse, 1);
+    assert.equal(replies.total, 1);
+    assert.equal(statuses.pending, 1);
+    assert.equal(statuses.failed, 1);
+    assert.equal(statuses.skipped, 1);
+  } finally {
+    cleanup();
+  }
+});
+
 test("user profile and password can be updated", () => {
   const { db, cleanup } = openTempDb();
   try {
