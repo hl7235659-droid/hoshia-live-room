@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Pause, Play, Save, Send, ShieldCheck, Signal, SkipForward, Sparkles, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Pause, Play, Save, Send, Settings, ShieldCheck, Signal, SkipForward, Sparkles, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
 import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
@@ -781,6 +781,8 @@ function LiveMobile({
   onLeave: () => void;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [hoshiaPosts, setHoshiaPosts] = useState<HoshiaPost[]>(() => (isDemo ? demoHoshiaPosts : []));
 
@@ -863,6 +865,7 @@ function LiveMobile({
           socketStatus={socketStatus}
           audience={audience}
           onOpenAccount={() => setAccountOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
           onOpenTimeline={() => setTimelineOpen(true)}
           onLeave={onLeave}
         />
@@ -873,16 +876,25 @@ function LiveMobile({
           audience={audience}
           socketStatus={socketStatus}
           nickname={session.nickname}
-          danmakuColor={session.danmaku_color || ""}
+          audioEnabled={audioEnabled}
           onSendStart={onLocalSendStart}
           onDemoSend={onDemoSend}
-          onOpenAccount={() => setAccountOpen(true)}
         />
         {accountOpen ? (
           <AccountSettingsModal
             session={session}
             isDemo={isDemo}
             onClose={() => setAccountOpen(false)}
+            onSessionUpdate={onSessionUpdate}
+          />
+        ) : null}
+        {settingsOpen ? (
+          <RoomSettingsModal
+            session={session}
+            isDemo={isDemo}
+            audioEnabled={audioEnabled}
+            onAudioEnabledChange={setAudioEnabled}
+            onClose={() => setSettingsOpen(false)}
             onSessionUpdate={onSessionUpdate}
           />
         ) : null}
@@ -916,6 +928,7 @@ function LiveOverlay({
   socketStatus,
   audience,
   onOpenAccount,
+  onOpenSettings,
   onOpenTimeline,
   onLeave
 }: {
@@ -925,6 +938,7 @@ function LiveOverlay({
   socketStatus: string;
   audience: AudiencePayload | null;
   onOpenAccount: () => void;
+  onOpenSettings: () => void;
   onOpenTimeline: () => void;
   onLeave: () => void;
 }) {
@@ -1009,6 +1023,19 @@ function LiveOverlay({
                 <AccountAvatar session={session} size="tiny" />
                 <span>Personal account</span>
                 <strong>@{session.nickname}</strong>
+              </button>
+              <button
+                type="button"
+                className="island-action primary"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenSettings();
+                }}
+              >
+                <Settings size={16} />
+                <span>Settings</span>
+                <strong>sound / color</strong>
               </button>
               <div className="island-action status" role="note">
                 <LockKeyhole size={14} />
@@ -1950,7 +1977,6 @@ function AccountSettingsModal({
 }) {
   const [nickname, setNickname] = useState(session.nickname);
   const [avatarUrl, setAvatarUrl] = useState(session.avatar_url || "");
-  const [danmakuColor, setDanmakuColor] = useState(normalizeColorInput(session.danmaku_color) || "#FF5F9B");
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1964,19 +1990,15 @@ function AccountSettingsModal({
     setProfileNotice(null);
     const nextNickname = nickname.trim();
     const nextAvatarUrl = avatarUrl.trim();
-    const nextDanmakuColor = normalizeColorInput(danmakuColor);
+    const currentDanmakuColor = normalizeColorInput(session.danmaku_color) || "#FF5F9B";
 
     if (nextNickname.length < 2) {
       setProfileNotice({ type: "error", text: "Display name needs at least 2 characters." });
       return;
     }
-    if (!nextDanmakuColor) {
-      setProfileNotice({ type: "error", text: "Choose a valid #RRGGBB danmaku color." });
-      return;
-    }
 
     if (isDemo) {
-      onSessionUpdate({ ...session, nickname: nextNickname, avatar_url: nextAvatarUrl, danmaku_color: nextDanmakuColor });
+      onSessionUpdate({ ...session, nickname: nextNickname, avatar_url: nextAvatarUrl, danmaku_color: currentDanmakuColor });
       setProfileNotice({ type: "success", text: "Demo profile updated in this preview." });
       return;
     }
@@ -1985,7 +2007,7 @@ function AccountSettingsModal({
     const response = await fetch(appPath("api/account/profile"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nickname: nextNickname, avatarUrl: nextAvatarUrl, danmakuColor: nextDanmakuColor })
+      body: JSON.stringify({ nickname: nextNickname, avatarUrl: nextAvatarUrl, danmakuColor: currentDanmakuColor })
     });
     setProfileBusy(false);
 
@@ -2091,31 +2113,8 @@ function AccountSettingsModal({
             <Image size={14} />
             <span>Leave blank to use initials. Uploaded avatar storage can be added later.</span>
           </div>
-          <label>
-            <span>My danmaku color</span>
-            <div className="danmaku-color-control">
-              <input
-                className="danmaku-color-swatch"
-                value={normalizeColorInput(danmakuColor) || "#FF5F9B"}
-                onChange={(event) => setDanmakuColor(event.target.value)}
-                type="color"
-                aria-label="Choose my danmaku color"
-              />
-              <input
-                value={danmakuColor}
-                onChange={(event) => setDanmakuColor(event.target.value)}
-                maxLength={7}
-                placeholder="#FF5F9B"
-                spellCheck={false}
-              />
-            </div>
-          </label>
-          <div className="avatar-url-help">
-            <Palette size={14} />
-            <span>This color is attached to your own sent danmaku, so every viewer sees it the same way.</span>
-          </div>
           {profileNotice ? <AccountNotice notice={profileNotice} /> : null}
-          <button type="submit" className="account-save-button" disabled={profileBusy || nickname.trim().length < 2 || !normalizeColorInput(danmakuColor)}>
+          <button type="submit" className="account-save-button" disabled={profileBusy || nickname.trim().length < 2}>
             {profileBusy ? <Signal size={16} /> : <Save size={16} />}
             {profileBusy ? "Saving..." : "Save profile"}
           </button>
@@ -2168,6 +2167,137 @@ function AccountSettingsModal({
           >
             {passwordBusy ? <Signal size={16} /> : <KeyRound size={16} />}
             {passwordBusy ? "Updating..." : "Update password"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function RoomSettingsModal({
+  session,
+  isDemo,
+  audioEnabled,
+  onAudioEnabledChange,
+  onClose,
+  onSessionUpdate
+}: {
+  session: Session;
+  isDemo: boolean;
+  audioEnabled: boolean;
+  onAudioEnabledChange: (enabled: boolean) => void;
+  onClose: () => void;
+  onSessionUpdate: (user: Session) => void;
+}) {
+  const [danmakuColor, setDanmakuColor] = useState(normalizeColorInput(session.danmaku_color) || "#FF5F9B");
+  const [colorBusy, setColorBusy] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const normalizedColor = normalizeColorInput(danmakuColor);
+
+  async function saveDanmakuColor(event: FormEvent) {
+    event.preventDefault();
+    setNotice(null);
+    if (!normalizedColor) {
+      setNotice({ type: "error", text: "Choose a valid #RRGGBB danmaku color." });
+      return;
+    }
+
+    if (isDemo) {
+      onSessionUpdate({ ...session, danmaku_color: normalizedColor });
+      setNotice({ type: "success", text: "Demo danmaku color updated." });
+      return;
+    }
+
+    setColorBusy(true);
+    const response = await fetch(appPath("api/account/profile"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nickname: session.nickname,
+        avatarUrl: session.avatar_url || "",
+        danmakuColor: normalizedColor
+      })
+    });
+    setColorBusy(false);
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setNotice({ type: "error", text: accountErrorMessage(payload?.error) });
+      return;
+    }
+
+    onSessionUpdate(payload.user);
+    setNotice({ type: "success", text: "Danmaku color saved." });
+  }
+
+  return (
+    <div className="account-modal-layer" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="room-settings-title">
+        <header className="account-modal-header">
+          <div className="account-modal-title">
+            <span className="settings-title-icon" aria-hidden="true"><Settings size={20} /></span>
+            <div>
+              <span>Room settings</span>
+              <h3 id="room-settings-title">Sound and danmaku</h3>
+            </div>
+          </div>
+          <button type="button" className="account-close-button" aria-label="Close room settings" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <section className="settings-card" aria-label="Sound settings">
+          <div className="account-section-heading">
+            <Volume2 size={17} />
+            <div>
+              <strong>Music sound</strong>
+              <span>Control whether this device plays room music.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`settings-toggle ${audioEnabled ? "enabled" : ""}`}
+            aria-pressed={audioEnabled}
+            onClick={() => onAudioEnabledChange(!audioEnabled)}
+          >
+            <span>{audioEnabled ? "Sound on" : "Sound off"}</span>
+            <i aria-hidden="true" />
+          </button>
+        </section>
+
+        <form className="settings-card" onSubmit={saveDanmakuColor}>
+          <div className="account-section-heading">
+            <Palette size={17} />
+            <div>
+              <strong>Danmaku color</strong>
+              <span>Choose the color attached to your own sent messages.</span>
+            </div>
+          </div>
+          <label>
+            <span>My danmaku color</span>
+            <div className="danmaku-color-control">
+              <input
+                className="danmaku-color-swatch"
+                value={normalizedColor || "#FF5F9B"}
+                onChange={(event) => setDanmakuColor(event.target.value)}
+                type="color"
+                aria-label="Choose my danmaku color"
+              />
+              <input
+                value={danmakuColor}
+                onChange={(event) => setDanmakuColor(event.target.value)}
+                maxLength={7}
+                placeholder="#FF5F9B"
+                spellCheck={false}
+              />
+            </div>
+          </label>
+          {notice ? <AccountNotice notice={notice} /> : null}
+          <button type="submit" className="account-save-button" disabled={colorBusy || !normalizedColor}>
+            {colorBusy ? <Signal size={16} /> : <Save size={16} />}
+            {colorBusy ? "Saving..." : "Save color"}
           </button>
         </form>
       </section>
@@ -2253,10 +2383,9 @@ function BottomDock({
   audience,
   socketStatus,
   nickname,
-  danmakuColor,
+  audioEnabled,
   onSendStart,
-  onDemoSend,
-  onOpenAccount
+  onDemoSend
 }: {
   messages: LiveMessage[];
   musicState: MusicState;
@@ -2264,10 +2393,9 @@ function BottomDock({
   audience: AudiencePayload | null;
   socketStatus: string;
   nickname: string;
-  danmakuColor: string;
+  audioEnabled: boolean;
   onSendStart: () => void;
   onDemoSend?: (text: string) => void;
-  onOpenAccount: () => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [musicOpen, setMusicOpen] = useState(false);
@@ -2276,7 +2404,6 @@ function BottomDock({
   const historyCount = Math.min(messages.length, 100);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const onlineMembers = (audience?.users || []).filter((user) => user.online && user.nickname !== nickname);
-  const visibleDanmakuColor = normalizeColorInput(danmakuColor) || "#FF5F9B";
 
   function toggleHistory() {
     setHistoryOpen((current) => {
@@ -2364,6 +2491,7 @@ function BottomDock({
             musicState={musicState}
             socketStatus={socketStatus}
             onMusicState={onMusicState}
+            audioEnabled={audioEnabled}
             expanded={musicOpen}
           />
         ) : historyOpen ? (
@@ -2419,16 +2547,6 @@ function BottomDock({
             onChange={(event) => setText(event.target.value)}
             placeholder="Send a message or @Hoshia..."
           />
-          <button
-            type="button"
-            className="danmaku-color-button"
-            onClick={onOpenAccount}
-            title="Set my danmaku color"
-            aria-label="Set my danmaku color"
-          >
-            <i style={{ backgroundColor: visibleDanmakuColor }} aria-hidden="true" />
-            <Palette size={17} />
-          </button>
           <button type="submit" title="Send" disabled={!canSend}>
             <Send size={20} />
           </button>
@@ -2447,15 +2565,16 @@ function MusicRoomPanel({
   musicState,
   socketStatus,
   onMusicState,
+  audioEnabled,
   expanded
 }: {
   musicState: MusicState;
   socketStatus: string;
   onMusicState: (state: MusicState) => void;
+  audioEnabled: boolean;
   expanded: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [notice, setNotice] = useState("");
   const current = musicState.current;
   const queuedTracks = current ? [current, ...musicState.queue] : musicState.queue;
@@ -2476,21 +2595,12 @@ function MusicRoomPanel({
       audio.src = nextSrc;
       audio.load();
     }
-    if (!audioUnlocked || musicState.status !== "playing") {
+    if (!audioEnabled || musicState.status !== "playing") {
       audio.pause();
       return;
     }
-    void audio.play().catch(() => setNotice("Tap enable sound to start music on this device."));
-  }, [audioUnlocked, current?.id, current?.stream_url, musicState.status]);
-
-  async function enableAudio() {
-    setAudioUnlocked(true);
-    setNotice("");
-    const audio = audioRef.current;
-    if (audio && current?.stream_url && musicState.status === "playing") {
-      await audio.play().catch(() => setNotice("Browser blocked autoplay. Tap once more after the track loads."));
-    }
-  }
+    void audio.play().catch(() => setNotice("Browser blocked playback. Turn sound off and on again after the track loads."));
+  }, [audioEnabled, current?.id, current?.stream_url, musicState.status]);
 
   async function control(action: string, id?: string) {
     const payload = await postMusic("control", { action, id });
@@ -2510,39 +2620,23 @@ function MusicRoomPanel({
           <strong>{current ? trackLabel(current) : "No song playing"}</strong>
         </div>
       </div>
-      <div className="music-room-actions">
-        <button
-          type="button"
-          className="music-sound-button"
-          onClick={enableAudio}
-          disabled={!current?.stream_url || audioUnlocked}
-          title="Enable sound on this device"
-        >
-          <Volume2 size={15} />
-          <span>{audioUnlocked ? "on" : "sound"}</span>
-        </button>
-      </div>
       <div className="music-room-expanded" aria-hidden={!expanded}>
-        <div className="music-room-controls">
-          {canControl ? (
-            <>
-              <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
-                {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-                <span>{isPlaying ? "pause" : "play"}</span>
-              </button>
-              <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
-                <SkipForward size={14} />
-                <span>next</span>
-              </button>
-              <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
-                <Trash2 size={14} />
-                <span>clear</span>
-              </button>
-            </>
-          ) : (
-            <span className="music-room-hint">直接在弹幕里让 Hoshia 点歌、切歌或控制播放。</span>
-          )}
-        </div>
+        {canControl ? (
+          <div className="music-room-controls">
+            <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
+              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+              <span>{isPlaying ? "pause" : "play"}</span>
+            </button>
+            <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
+              <SkipForward size={14} />
+              <span>next</span>
+            </button>
+            <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
+              <Trash2 size={14} />
+              <span>clear</span>
+            </button>
+          </div>
+        ) : null}
         <div className="music-queue" aria-label="Song queue">
           {queuedTracks.map((track, index) => (
             <div className="music-queue-row" key={track.id || `track-${index}`}>

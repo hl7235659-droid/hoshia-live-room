@@ -876,7 +876,8 @@ button:disabled {
   backdrop-filter: blur(8px) saturate(1.05);
 }
 
-.account-modal {
+.account-modal,
+.settings-modal {
   width: min(100%, 392px);
   max-height: min(820px, 100%);
   padding: 13px;
@@ -947,7 +948,8 @@ button:disabled {
   background: rgba(43, 127, 169, 0.08);
 }
 
-.account-card {
+.account-card,
+.settings-card {
   padding: 12px;
   display: grid;
   gap: 10px;
@@ -982,19 +984,22 @@ button:disabled {
   line-height: 1.3;
 }
 
-.account-card label {
+.account-card label,
+.settings-card label {
   display: grid;
   gap: 5px;
 }
 
-.account-card label > span {
+.account-card label > span,
+.settings-card label > span {
   color: #4f7997;
   font-size: 10px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
-.account-card input {
+.account-card input,
+.settings-card input {
   width: 100%;
   height: 42px;
   border: 2px solid rgba(43, 127, 169, 0.2);
@@ -1013,17 +1018,20 @@ button:disabled {
   gap: 8px;
 }
 
-.account-card input.danmaku-color-swatch {
+.account-card input.danmaku-color-swatch,
+.settings-card input.danmaku-color-swatch {
   width: 52px;
   padding: 3px;
   cursor: pointer;
 }
 
-.account-card input:focus {
+.account-card input:focus,
+.settings-card input:focus {
   border-color: rgba(43, 127, 169, 0.42);
 }
 
-.account-card input:disabled {
+.account-card input:disabled,
+.settings-card input:disabled {
   color: rgba(23, 32, 51, 0.42);
   background: rgba(255, 255, 255, 0.5);
 }
@@ -1066,6 +1074,73 @@ button:disabled {
 .account-save-button:disabled {
   opacity: 0.5;
   box-shadow: none;
+}
+
+.settings-title-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(43, 127, 169, 0.22);
+  border-radius: 15px;
+  color: #2b7fa9;
+  background: rgba(216, 245, 255, 0.72);
+}
+
+.settings-toggle {
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px 6px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+  border: 2px solid rgba(43, 127, 169, 0.2);
+  border-radius: 16px;
+  color: #294b60;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 20px rgba(34, 115, 163, 0.1);
+  text-align: left;
+}
+
+.settings-toggle span {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.settings-toggle i {
+  width: 40px;
+  height: 24px;
+  position: relative;
+  border-radius: 999px;
+  background: rgba(23, 32, 51, 0.16);
+  transition: background 180ms ease;
+}
+
+.settings-toggle i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 4px 9px rgba(23, 32, 51, 0.18);
+  transition: transform 180ms ease;
+}
+
+.settings-toggle.enabled {
+  color: #172033;
+  background: rgba(255, 241, 123, 0.76);
+}
+
+.settings-toggle.enabled i {
+  background: #2b7fa9;
+}
+
+.settings-toggle.enabled i::after {
+  transform: translateX(16px);
 }
 
 .live-title {
@@ -1552,6 +1627,7 @@ button:disabled {
 }
 
 .history-drawer {
+  --dock-panel-height: 190px;
   position: relative;
   z-index: 1;
   width: 100%;
@@ -1567,12 +1643,12 @@ button:disabled {
 }
 
 .history-drawer.open {
-  height: 178px;
+  height: var(--dock-panel-height);
   min-height: 0;
 }
 
 .history-drawer.music-active {
-  height: 190px;
+  height: var(--dock-panel-height);
 }
 
 .history-header {
@@ -2031,7 +2107,7 @@ button:disabled {
   margin: 0;
   padding: 10px 12px 3px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 42px 48px;
+  grid-template-columns: auto minmax(0, 1fr) 48px;
   align-items: center;
   gap: 8px;
   background: transparent;
@@ -2074,11 +2150,14 @@ button:disabled {
   position: relative;
   z-index: 2;
   width: 100%;
+  height: 100%;
+  min-height: 0;
   justify-self: stretch;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 9px 10px 8px;
+  overflow: hidden;
   border-bottom: 1px solid rgba(23, 32, 51, 0.14);
   background:
     radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.54), transparent 38%),
@@ -2086,11 +2165,9 @@ button:disabled {
 }
 
 .music-room-now,
-.music-room-actions,
 .music-room-controls,
 .music-queue,
-.music-room-controls button,
-.music-sound-button {
+.music-room-controls button {
   display: flex;
   align-items: center;
 }
@@ -2098,7 +2175,7 @@ button:disabled {
 .music-room-now {
   width: 100%;
   min-width: 0;
-  padding: 0 86px 0 0;
+  padding: 0;
   gap: 8px;
   justify-content: flex-start;
   color: inherit;
@@ -2124,7 +2201,6 @@ button:disabled {
 }
 
 .music-room-title span,
-.music-room-hint,
 .music-notice,
 .music-queue small {
   color: #6c7890;
@@ -2149,28 +2225,11 @@ button:disabled {
   white-space: nowrap;
 }
 
-.music-sound-button {
-  width: auto;
-  height: 30px;
-  padding: 0 8px;
-  gap: 4px;
-  border-radius: 999px;
-  color: #294b60;
-  background: rgba(255, 255, 255, 0.78);
-  font-size: 10px;
-  font-weight: 950;
-}
-
-.music-room-actions {
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  justify-content: flex-end;
-}
-
 .music-room-expanded {
   grid-column: 1 / -1;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -2186,7 +2245,7 @@ button:disabled {
 }
 
 .music-room.open .music-room-expanded {
-  max-height: 260px;
+  max-height: 100%;
   opacity: 1;
   transform: translateY(0) scaleY(1);
 }
@@ -2218,9 +2277,10 @@ button:disabled {
 
 .music-queue {
   width: 100%;
+  min-height: 0;
   display: grid;
   gap: 0;
-  max-height: 150px;
+  max-height: none;
   overflow: auto;
 }
 
@@ -2344,29 +2404,6 @@ button:disabled {
   place-items: center;
   border-radius: 16px;
   background: #fff17b;
-}
-
-.sendbar .danmaku-color-button {
-  width: 42px;
-  height: 48px;
-  position: relative;
-  color: #294b60;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.danmaku-color-button i {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(23, 32, 51, 0.24);
-  border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.64);
-}
-
-.sendbar .danmaku-color-button:hover:not(:disabled) {
-  background: #d8f5ff;
 }
 
 .mention-combo {
