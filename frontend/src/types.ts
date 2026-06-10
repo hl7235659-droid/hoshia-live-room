@@ -76,6 +76,9 @@ export type HoshiaPostInteraction = {
   type: "comment" | "reply" | "like";
   content: string;
   parent_interaction_id: string;
+  reply_status?: string;
+  reply_due_at?: string;
+  replied_at?: string;
   created_at: string;
 };
 

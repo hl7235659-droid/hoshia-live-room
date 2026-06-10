@@ -33,7 +33,7 @@ test("visual state service creates a default persisted Hoshia state", () => {
   }
 });
 
-test("visual state only nudges internal energy and social need on chat", () => {
+test("quiet late-night interaction only nudges internal energy and social need", () => {
   const { db, cleanup } = openTempDb();
   try {
     const service = createHoshiaVisualStateService({
@@ -53,6 +53,111 @@ test("visual state only nudges internal energy and social need on chat", () => {
     assert.equal(result.state.current_png, before.current_png);
     assert.ok(result.state.energy < before.energy);
     assert.ok(result.state.social_need >= before.social_need);
+  } finally {
+    cleanup();
+  }
+});
+
+test("viewer topic does not directly switch activity mood or PNG", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+
+    const result = service.applyUserInteraction({
+      text: "that ranked match was a lost game, need more practice",
+      session: { user_id: "user-1", nickname: "viewer" }
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(result.state.activity, "idle");
+    assert.equal(result.state.mood, "calm");
+    assert.match(result.state.current_png, /idle_calm_01/);
+    assert.ok(result.state.social_need < 48);
+  } finally {
+    cleanup();
+  }
+});
+
+test("scheduled tick applies late-night rhythm and unmet social need", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+    service.update({
+      activity: "idle",
+      mood: "calm",
+      energy: 50,
+      social_need: 62,
+      state_reason: "test setup",
+      updated_at: "2026-06-10T10:00:00.000Z"
+    });
+
+    const result = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-10T16:30:00.000Z")
+    });
+
+    assert.equal(result.state.activity, "sleepy");
+    assert.equal(result.state.mood, "lonely");
+    assert.equal(result.state.energy, 43);
+    assert.equal(result.state.social_need, 68);
+    assert.match(result.state.current_png, /sleepy_lonely_02/);
+  } finally {
+    cleanup();
+  }
+});
+
+test("scheduled tick decays stale transient activities toward idle", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+    service.update({
+      activity: "gaming",
+      mood: "competitive",
+      energy: 65,
+      social_need: 40,
+      state_reason: "scheduled visual refresh",
+      updated_at: "2026-06-10T10:00:00.000Z"
+    });
+
+    const result = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-10T03:00:00.000Z")
+    });
+
+    assert.equal(result.state.activity, "idle");
+    assert.equal(result.state.mood, "calm");
+    assert.equal(result.state.social_need, 44);
+    assert.match(result.state.current_png, /idle_calm_01|idle_calm_02/);
+  } finally {
+    cleanup();
+  }
+});
+
+test("visual state reason strips path-like or internal details before module events use it", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+
+    const result = service.tick({
+      reason: "loaded from C:\\Users\\owner\\secret\\.env",
+      now: new Date("2026-06-10T10:30:00.000Z")
+    });
+
+    assert.equal(result.reason, "visual state updated");
+    assert.equal(result.state.state_reason, "visual state updated");
+    assert.doesNotMatch(result.reason, /C:\\|\.env|secret/i);
   } finally {
     cleanup();
   }

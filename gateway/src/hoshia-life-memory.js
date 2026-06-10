@@ -96,11 +96,26 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
       });
     },
 
-    buildMemoryPacket({ batch = [], query = "", limit = 6 } = {}) {
-      const primary = Array.isArray(batch) ? batch.find((item) => item?.session?.user_id) : null;
+    buildMemoryPacket({ session = null, batch = [], query = "", scene = "", postId = "", limit = 6 } = {}) {
+      const primary = session?.user_id
+        ? { session }
+        : (Array.isArray(batch) ? batch.find((item) => item?.session?.user_id) : null);
       const userId = primary?.session?.user_id || "";
-      const text = query || (Array.isArray(batch) ? batch.map((item) => item?.text || "").join(" ") : "");
-      const memories = this.searchMemories({ userId, query: text, limit });
+      const text = memoryPacketQuery({ query, scene, postId, batch });
+      const memories = rankMemoryPacketCandidates({
+        memories: [
+          ...this.searchMemories({ userId, query: text, limit: Math.max(limit * 3, 12) }),
+          ...this.searchMemories({ userId, query: "", limit: Math.max(limit * 4, 20) }),
+          ...this.searchMemories({ userId, query: text, sourceFilter: "post_comment", limit: Math.max(limit * 3, 12) }),
+          ...this.searchMemories({ userId, query: "", sourceFilter: "post_comment", limit: Math.max(limit * 3, 12) }),
+          ...this.searchMemories({ userId, query: text, sourceFilter: "post_reply", limit: Math.max(limit * 3, 12) }),
+          ...this.searchMemories({ userId, query: "", sourceFilter: "post_reply", limit: Math.max(limit * 3, 12) })
+        ],
+        userId,
+        postId,
+        now: clock(),
+        limit
+      });
       if (!memories.length) return [];
       return [
         "【Hoshia life memory】",
@@ -139,6 +154,9 @@ export function publicInteraction(row) {
     type: row.type,
     content: row.content || "",
     parent_interaction_id: row.parent_interaction_id || "",
+    reply_status: row.reply_status || "",
+    reply_due_at: row.reply_due_at || "",
+    replied_at: row.replied_at || "",
     created_at: row.created_at
   };
 }
@@ -213,6 +231,51 @@ function memoryLine(memory) {
   const when = shortDate(memory.created_at);
   const user = memory.user_id ? "viewer-related" : "Hoshia";
   return `${when} ${user} ${memory.type}: ${cleanText(memory.content, 220)}`;
+}
+
+function memoryPacketQuery({ query = "", scene = "", postId = "", batch = [] } = {}) {
+  return [
+    query,
+    scene,
+    postId,
+    ...(Array.isArray(batch) ? batch.map((item) => item?.text || "") : [])
+  ].filter(Boolean).join(" ");
+}
+
+function rankMemoryPacketCandidates({ memories = [], userId = "", postId = "", now = new Date(), limit = 6 } = {}) {
+  const byId = new Map();
+  for (const memory of memories) {
+    if (!memory || sensitivePattern.test(memory.content || "")) continue;
+    const score = memoryPacketScore(memory, { userId, postId, now });
+    const previous = byId.get(memory.id);
+    if (!previous || score > previous._packet_score) {
+      byId.set(memory.id, { ...memory, _packet_score: score });
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => b._packet_score - a._packet_score ||
+      b.importance - a.importance ||
+      String(b.created_at || "").localeCompare(String(a.created_at || "")))
+    .slice(0, Math.max(1, Math.min(Math.floor(Number(limit) || 6), 20)));
+}
+
+function memoryPacketScore(memory, { userId = "", postId = "", now = new Date() } = {}) {
+  let score = Number(memory.match_score || 0) + Number(memory.importance || 0) * 10;
+  if (memory.user_id && userId && memory.user_id === userId) score += 20;
+  if (memory.type === "commitment") score += 70;
+  if (memory.source === "post_reply") score += 45;
+  if (memory.source === "post_comment") score += 40;
+  if (postId && memory.source_id === postId) score += 30;
+  score += recencyScore(memory.created_at, now);
+  return score;
+}
+
+function recencyScore(value, now = new Date()) {
+  const created = new Date(value).getTime();
+  const current = new Date(now).getTime();
+  if (!Number.isFinite(created) || !Number.isFinite(current)) return 0;
+  const ageDays = Math.max(0, (current - created) / 86400000);
+  return Math.max(0, 10 - Math.min(ageDays, 10));
 }
 
 function importanceForText(text, fallback) {

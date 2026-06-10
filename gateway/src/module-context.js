@@ -238,6 +238,65 @@ export function createHoshiaVisualStateChangedEvent(state, session, {
   });
 }
 
+export function createHoshiaPostCreatedEvent(post, session, {
+  roomId = "",
+  reason = "daily_post"
+} = {}) {
+  if (!post) return null;
+  const activity = cleanText(post.activity, 32);
+  const mood = cleanText(post.mood, 32);
+  const sourceType = cleanText(post.source_type, 48);
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_timeline",
+    event_type: "hoshia_timeline.post_created",
+    user_id: session?.user_id || "",
+    nickname: cleanText(session?.nickname, 32),
+    summary_hint: cleanText(`Hoshia posted a ${activity || "daily"} timeline update`, 240),
+    memory_eligible: false,
+    retention_days: 14,
+    occurred_at: post.created_at || new Date().toISOString(),
+    data: {
+      activity,
+      mood,
+      source_type: sourceType,
+      post_id: post.id,
+      reason
+    }
+  });
+}
+
+export function createHoshiaCommentReplyEvent({ post, comment, reply, status = "replied" } = {}, {
+  roomId = ""
+} = {}) {
+  const activity = cleanText(post?.activity, 32);
+  const mood = cleanText(post?.mood, 32);
+  const eventType = status === "pending"
+    ? "hoshia_timeline.comment_reply_pending"
+    : "hoshia_timeline.comment_replied";
+  const viewer = cleanText(comment?.nickname, 32) || "viewer";
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_timeline",
+    event_type: eventType,
+    user_id: comment?.user_id || "",
+    nickname: viewer,
+    summary_hint: status === "pending"
+      ? `${viewer} commented on Hoshia's timeline; a delayed reply is pending`
+      : `Hoshia replied to ${viewer}'s timeline comment`,
+    memory_eligible: false,
+    retention_days: 14,
+    occurred_at: reply?.created_at || comment?.created_at || new Date().toISOString(),
+    data: {
+      activity,
+      mood,
+      post_id: post?.id,
+      comment_id: comment?.id,
+      status
+    }
+  });
+}
+
 export function sanitizeModuleContext(context) {
   if (!context || typeof context !== "object") return null;
   const moduleId = cleanIdentifier(context.module_id, 48);
@@ -288,7 +347,7 @@ function formatTrackLine(track) {
 
 function sanitizeEventData(data) {
   const allowed = {};
-  for (const key of ["title", "artist", "source", "activity", "mood", "reason"]) {
+  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status"]) {
     const value = cleanText(data[key], key === "source" ? 40 : 120);
     if (value) allowed[key] = value;
   }

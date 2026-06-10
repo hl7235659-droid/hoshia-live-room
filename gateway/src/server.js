@@ -24,6 +24,8 @@ import { buildHostLifeContext } from "./host-life-context.js";
 import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import {
   buildModuleContext,
+  createHoshiaCommentReplyEvent,
+  createHoshiaPostCreatedEvent,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
   createMusicModuleProvider,
@@ -42,6 +44,8 @@ import {
   normalizePostInput,
   publicPost
 } from "./hoshia-life-memory.js";
+import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
+import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
 import {
   createProactiveReplyState,
   markUserActivityForProactive,
@@ -128,6 +132,20 @@ const musicService = new MusicService(config, { store });
 const hoshiaVisualStateService = createHoshiaVisualStateService({ db });
 const hoshiaLifeMemoryService = createHoshiaLifeMemoryService({ db });
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
+const hoshiaCommentReplyService = createHoshiaCommentReplyService({
+  db,
+  lifeMemoryService: hoshiaLifeMemoryService,
+  moduleEventStore,
+  minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
+  maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes
+});
+const hoshiaDailyPostService = createHoshiaDailyPostService({
+  db,
+  visualStateService: hoshiaVisualStateService,
+  enabled: config.hoshiaDailyPostEnabled,
+  dailyLimit: config.hoshiaDailyPostLimit,
+  roomId: config.roomId
+});
 const moduleProviders = [
   createMusicModuleProvider(musicService),
   createHoshiaVisualModuleProvider(hoshiaVisualStateService)
@@ -150,6 +168,7 @@ const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
   config.hoshiaStateTickMaxMinutes
 );
 let hoshiaVisualTickTimer = null;
+let hoshiaCommentReplyTimer = null;
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -362,6 +381,10 @@ app.post("/api/hoshia/posts", requireSession, async (req, res) => {
   if (!input) return res.status(400).json({ error: "post_invalid" });
   const post = db.createHoshiaPost(input);
   hoshiaLifeMemoryService.recordPost(post);
+  moduleEventStore.append(createHoshiaPostCreatedEvent(post, req.session, {
+    roomId: config.roomId,
+    reason: post.source_type || "manual"
+  }));
   const result = updateHoshiaVisualState({
     body: {
       mood: post.mood,
@@ -416,11 +439,28 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
   if (!post) return res.status(404).json({ error: "post_not_found" });
   const input = normalizeCommentInput(req.body, req.session, new Date());
   if (!input) return res.status(400).json({ error: "comment_invalid" });
+  const replyFields = config.hoshiaAsyncCommentReplyEnabled
+    ? hoshiaCommentReplyService.pendingFields({
+      minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
+      maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes
+    })
+    : { reply_status: "none" };
   const interaction = db.addHoshiaPostInteraction({
     ...input,
+    ...replyFields,
     post_id: post.id
   });
   hoshiaLifeMemoryService.recordInteraction({ post, interaction });
+  if (interaction?.reply_status === "pending") {
+    moduleEventStore.append(createHoshiaCommentReplyEvent({
+      post,
+      comment: interaction,
+      status: "pending"
+    }, {
+      roomId: config.roomId
+    }));
+    scheduleCommentReplyTick();
+  }
   const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
     text: input.content,
     session: req.session
@@ -430,6 +470,50 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
     ok: true,
     interaction,
     post: publicPostForViewer(post.id, req.session.user_id)
+  });
+});
+
+app.post("/api/hoshia/comments/reply-tick", requireSession, async (req, res) => {
+  if (!config.hoshiaAsyncCommentReplyEnabled && req.body?.force !== true) {
+    return res.json({ ok: true, processed_count: 0, failed_count: 0, items: [], reason: "async_comment_reply_disabled" });
+  }
+  const result = await runCommentReplyTick({
+    limit: req.body?.limit
+  });
+  res.json(result);
+});
+
+app.post("/api/hoshia/posts/daily/tick", requireSession, async (req, res) => {
+  const result = hoshiaDailyPostService.tick({
+    force: req.body?.force === true
+  });
+  if (result.post && result.created) {
+    hoshiaLifeMemoryService.recordPost(result.post);
+    moduleEventStore.append(result.moduleEvent || createHoshiaPostCreatedEvent(result.post, req.session, {
+      roomId: config.roomId,
+      reason: "daily_state"
+    }));
+    const visualUpdate = updateHoshiaVisualState({
+      body: {
+        mood: result.post.mood,
+        activity: result.post.activity,
+        state_reason: "Hoshia wrote a daily timeline update"
+      },
+      session: req.session,
+      reason: "daily timeline post"
+    });
+    if (visualUpdate.changed) {
+      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, req.session, {
+        roomId: config.roomId,
+        reason: visualUpdate.reason,
+        source: "daily_post"
+      }));
+      broadcastHoshiaState(visualUpdate.state);
+    }
+  }
+  res.json({
+    ...result,
+    post: result.post ? publicPostForViewer(result.post.id, req.session.user_id) : null
   });
 });
 
@@ -599,6 +683,48 @@ function runScheduledHoshiaVisualTick() {
   scheduleNextHoshiaVisualTick();
 }
 
+async function runCommentReplyTick({ limit = 10 } = {}) {
+  const result = await hoshiaCommentReplyService.processDueComments({ limit });
+  if (result.processed_count > 0) {
+    const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
+      text: "Hoshia replied to timeline comments",
+      session: { user_id: "hoshia", nickname: "Hoshia" }
+    });
+    if (visualUpdate.changed) {
+      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, null, {
+        roomId: config.roomId,
+        reason: "timeline comment reply",
+        source: "comment_reply"
+      }));
+      broadcastHoshiaState(visualUpdate.state);
+    }
+    broadcast({
+      type: "hoshia_posts_changed",
+      room_id: config.roomId,
+      reason: "comment_reply",
+      timestamp: new Date().toISOString()
+    });
+  }
+  scheduleCommentReplyTick();
+  return result;
+}
+
+function scheduleCommentReplyTick(delayMs = 60000) {
+  if (hoshiaCommentReplyTimer) clearTimeout(hoshiaCommentReplyTimer);
+  if (!config.hoshiaAsyncCommentReplyEnabled) return;
+  hoshiaCommentReplyTimer = setTimeout(() => {
+    hoshiaCommentReplyTimer = null;
+    void runCommentReplyTick().catch((error) => {
+      console.warn("hoshia_comment_reply_tick_failed", {
+        type: error?.name || "Error",
+        message: error?.message || String(error)
+      });
+      scheduleCommentReplyTick(120000);
+    });
+  }, Math.max(1000, Number(delayMs) || 60000));
+  hoshiaCommentReplyTimer.unref?.();
+}
+
 function scheduleNextHoshiaVisualTick() {
   if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
   hoshiaVisualTickTimer = setTimeout(
@@ -609,10 +735,12 @@ function scheduleNextHoshiaVisualTick() {
 }
 
 scheduleNextHoshiaVisualTick();
+scheduleCommentReplyTick();
 
 wss.on("close", () => {
   clearInterval(websocketHeartbeat);
   if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
+  if (hoshiaCommentReplyTimer) clearTimeout(hoshiaCommentReplyTimer);
 });
 
 async function handleDanmaku(session, payload) {

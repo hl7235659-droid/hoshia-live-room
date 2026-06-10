@@ -58,14 +58,15 @@ export function createHoshiaVisualStateService({ db, clock = () => new Date() })
 
     tick({ reason = "scheduled visual refresh", now = clock() } = {}) {
       const current = ensureState(db, () => now);
-      const nextActivity = activityForRhythm(current, now);
-      const nextMood = moodForActivity(nextActivity, current, now);
+      const rhythm = rhythmForState(current, now);
+      const nextActivity = activityForRhythm(rhythm, now);
+      const nextMood = moodForActivity(nextActivity, rhythm);
       const next = normalizeState({
         ...current,
         activity: nextActivity,
         mood: nextMood,
-        energy: energyForRhythm(current, now),
-        social_need: socialNeedForRhythm(current),
+        energy: rhythm.energy,
+        social_need: rhythm.social_need,
         state_reason: reason,
         updated_at: now.toISOString()
       });
@@ -74,7 +75,7 @@ export function createHoshiaVisualStateService({ db, clock = () => new Date() })
       return {
         changed: hasVisualStateChanged(current, next),
         state: publicVisualState(next),
-        reason
+        reason: next.state_reason
       };
     },
 
@@ -225,7 +226,7 @@ function normalizeState(value = {}) {
     energy: clampInt(value.energy, 0, 100, 72),
     social_need: clampInt(value.social_need, 0, 100, 48),
     current_png: currentAsset.path,
-    state_reason: cleanText(value.state_reason, 160) || "visual state updated",
+    state_reason: cleanStateReason(value.state_reason) || "visual state updated",
     updated_at: cleanText(value.updated_at, 40) || new Date().toISOString()
   };
 }
@@ -272,14 +273,11 @@ function classifyInteraction(text) {
 }
 
 function activityForRhythm(current, now) {
-  const hour = Number(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    hour: "2-digit",
-    hour12: false
-  }).format(now));
+  const hour = shanghaiHour(now);
   if (hour >= 23 || hour < 6) return "sleepy";
-  if (current.social_need >= 76 && current.energy <= 45) return "emo";
-  if (current.energy >= 80 && current.social_need <= 35) return "happy";
+  if (current.social_need >= 78 && current.energy <= 50) return "emo";
+  if (current.energy >= 82 && current.social_need <= 35) return "happy";
+  if (shouldDecayToIdle(current)) return current.energy <= 35 ? "thinking" : "idle";
   return current.activity || "idle";
 }
 
@@ -291,21 +289,46 @@ function moodForActivity(activity, current = {}) {
   if (activity === "happy") return current.mood === "playful" ? "playful" : "happy";
   if (activity === "thinking") return current.mood === "focused" ? "focused" : "thinking";
   if (activity === "emo") return current.social_need >= 65 ? "lonely" : "emo";
-  return current.mood && validMoods.has(current.mood) ? current.mood : "calm";
+  return hoshiaStagePngAssets.some((item) => item.activity === activity && item.mood === current.mood)
+    ? current.mood
+    : "calm";
 }
 
-function energyForRhythm(current, now) {
+function rhythmForState(current, now) {
+  const hour = shanghaiHour(now);
+  return {
+    ...current,
+    energy: clampInt(Number(current.energy) + energyDeltaForHour(hour), 0, 100, 70),
+    social_need: clampInt(Number(current.social_need) + socialNeedDeltaForHour(hour), 0, 100, 50)
+  };
+}
+
+function energyDeltaForHour(hour) {
+  if (hour >= 23 || hour < 6) return -7;
+  if (hour >= 6 && hour < 10) return 3;
+  if (hour >= 12 && hour < 15) return -2;
+  if (hour >= 19 && hour < 23) return -1;
+  return 0;
+}
+
+function socialNeedDeltaForHour(hour) {
+  if (hour >= 23 || hour < 6) return 6;
+  if (hour >= 18 && hour < 23) return 5;
+  return 4;
+}
+
+function shouldDecayToIdle(current) {
+  if (!["gaming", "sports", "otaku", "thinking"].includes(current.activity)) return false;
+  return !/^viewer /i.test(String(current.state_reason || ""));
+}
+
+function shanghaiHour(now) {
   const hour = Number(new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Shanghai",
     hour: "2-digit",
     hour12: false
   }).format(now));
-  const delta = hour >= 23 || hour < 6 ? -6 : -1;
-  return clampInt(Number(current.energy) + delta, 0, 100, 70);
-}
-
-function socialNeedForRhythm(current) {
-  return clampInt(Number(current.social_need) + 4, 0, 100, 50);
+  return Number.isFinite(hour) ? hour % 24 : 12;
 }
 
 function hasVisualStateChanged(before, after) {
@@ -345,6 +368,13 @@ function cleanText(value, maxLength) {
     .trim()
     .slice(0, maxLength);
   if (/(?:\.env|ssh-|BEGIN [A-Z ]*PRIVATE KEY|token=|password=|secret=)/i.test(text)) return "";
+  return text;
+}
+
+function cleanStateReason(value) {
+  const text = cleanText(value, 160);
+  if (!text) return "";
+  if (/(?:[a-z]:\\|\/home\/|\/users\/|\/assets\/|https?:\/\/|localhost|127\.0\.0\.1|internal)/i.test(text)) return "";
   return text;
 }
 

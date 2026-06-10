@@ -95,6 +95,9 @@ export function openLiveRoomDatabase(databasePath) {
       type TEXT NOT NULL,
       content TEXT,
       parent_interaction_id TEXT,
+      reply_status TEXT,
+      reply_due_at TEXT,
+      replied_at TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -138,6 +141,7 @@ export function openLiveRoomDatabase(databasePath) {
     );
   `);
   migrateUsersTable(db);
+  migrateHoshiaPostInteractionsTable(db);
   return new LiveRoomDatabase(db);
 }
 
@@ -563,8 +567,12 @@ export class LiveRoomDatabase {
     type,
     content = "",
     parent_interaction_id = "",
+    reply_status = "",
+    reply_due_at = "",
+    replied_at = "",
     created_at = new Date().toISOString()
   }) {
+    const status = type === "comment" ? (reply_status || "none") : "";
     this.db.prepare(`
       INSERT OR IGNORE INTO hoshia_post_interactions (
         id,
@@ -574,8 +582,11 @@ export class LiveRoomDatabase {
         type,
         content,
         parent_interaction_id,
+        reply_status,
+        reply_due_at,
+        replied_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       post_id,
@@ -584,33 +595,142 @@ export class LiveRoomDatabase {
       type,
       content || null,
       parent_interaction_id || null,
+      status || null,
+      reply_due_at || null,
+      replied_at || null,
       created_at
     );
-    return this.getHoshiaPostInteraction(id) || (type === "like"
+    const inserted = this.getHoshiaPostInteraction(id) || (type === "like"
       ? this.db.prepare(`
-        SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, created_at
+        SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, reply_status, reply_due_at, replied_at, created_at
         FROM hoshia_post_interactions
         WHERE post_id = ? AND user_id = ? AND type = 'like'
         LIMIT 1
       `).get(post_id, user_id)
       : null);
+    return inserted ? compactPostInteraction(inserted) : null;
   }
 
   getHoshiaPostInteraction(id) {
-    return this.db.prepare(`
-      SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, created_at
+    const row = this.db.prepare(`
+      SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, reply_status, reply_due_at, replied_at, created_at
       FROM hoshia_post_interactions
       WHERE id = ?
     `).get(id) || null;
+    return row ? compactPostInteraction(row) : null;
   }
 
   listHoshiaPostInteractions(postId) {
     return this.db.prepare(`
-      SELECT id, post_id, user_id, COALESCE(nickname, '') AS nickname, type, COALESCE(content, '') AS content, COALESCE(parent_interaction_id, '') AS parent_interaction_id, created_at
+      SELECT id, post_id, user_id, COALESCE(nickname, '') AS nickname, type, COALESCE(content, '') AS content, COALESCE(parent_interaction_id, '') AS parent_interaction_id, COALESCE(reply_status, '') AS reply_status, COALESCE(reply_due_at, '') AS reply_due_at, COALESCE(replied_at, '') AS replied_at, created_at
       FROM hoshia_post_interactions
       WHERE post_id = ?
       ORDER BY datetime(created_at) ASC, id ASC
-    `).all(postId);
+    `).all(postId).map(compactPostInteraction);
+  }
+
+  listDueHoshiaPostComments({ now = new Date().toISOString(), limit = 10 } = {}) {
+    const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 10), 50));
+    return this.db.prepare(`
+      SELECT
+        interaction.id,
+        interaction.post_id,
+        interaction.user_id,
+        COALESCE(interaction.nickname, '') AS nickname,
+        interaction.type,
+        COALESCE(interaction.content, '') AS content,
+        COALESCE(interaction.parent_interaction_id, '') AS parent_interaction_id,
+        COALESCE(interaction.reply_status, '') AS reply_status,
+        COALESCE(interaction.reply_due_at, '') AS reply_due_at,
+        COALESCE(interaction.replied_at, '') AS replied_at,
+        interaction.created_at,
+        post.character_id,
+        post.content AS post_content,
+        COALESCE(post.image_url, '') AS post_image_url,
+        COALESCE(post.mood, '') AS post_mood,
+        COALESCE(post.activity, '') AS post_activity,
+        post.source_type,
+        post.created_at AS post_created_at,
+        post.updated_at AS post_updated_at
+      FROM hoshia_post_interactions interaction
+      JOIN hoshia_posts post ON post.id = interaction.post_id
+      WHERE interaction.type = 'comment'
+        AND interaction.reply_status = 'pending'
+        AND interaction.reply_due_at IS NOT NULL
+        AND interaction.reply_due_at <= ?
+      ORDER BY datetime(interaction.reply_due_at) ASC, interaction.id ASC
+      LIMIT ?
+    `).all(now, safeLimit);
+  }
+
+  listDueHoshiaCommentReplies(options = {}) {
+    return this.listDueHoshiaPostComments(options);
+  }
+
+  markHoshiaPostCommentReplyStatus(commentId, {
+    status,
+    replyId = "",
+    reason = "",
+    replyDueAt = null,
+    repliedAt = null
+  } = {}) {
+    this.db.prepare(`
+      UPDATE hoshia_post_interactions
+      SET reply_status = ?,
+          reply_due_at = ?,
+          replied_at = ?
+      WHERE id = ? AND type = 'comment'
+    `).run(status || null, replyDueAt || null, repliedAt || null, commentId);
+    return this.getHoshiaPostInteraction(commentId);
+  }
+
+  markHoshiaCommentReplyPending({ commentId, replyDueAt } = {}) {
+    return this.markHoshiaPostCommentReplyStatus(commentId, {
+      status: "pending",
+      replyDueAt,
+      repliedAt: ""
+    });
+  }
+
+  markHoshiaCommentReplyReplied({ commentId, repliedAt } = {}) {
+    const comment = this.getHoshiaPostInteraction(commentId);
+    return this.markHoshiaPostCommentReplyStatus(commentId, {
+      status: "replied",
+      replyDueAt: comment?.reply_due_at || "",
+      repliedAt
+    });
+  }
+
+  markHoshiaCommentReplyFailed({ commentId, failedAt } = {}) {
+    const comment = this.getHoshiaPostInteraction(commentId);
+    return this.markHoshiaPostCommentReplyStatus(commentId, {
+      status: "failed",
+      replyDueAt: comment?.reply_due_at || "",
+      repliedAt: failedAt
+    });
+  }
+
+  countHoshiaPostsBySourceOnDate({ sourceType, date, characterId = "hoshia" } = {}) {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM hoshia_posts
+      WHERE character_id = ?
+        AND source_type = ?
+        AND substr(created_at, 1, 10) = ?
+    `).get(characterId, sourceType, date);
+    return Number(row?.total || 0);
+  }
+
+  findHoshiaPostBySourceOnDate({ sourceType, date, characterId = "hoshia" } = {}) {
+    return this.db.prepare(`
+      SELECT id, character_id, content, image_url, mood, activity, source_type, created_at, updated_at
+      FROM hoshia_posts
+      WHERE character_id = ?
+        AND source_type = ?
+        AND substr(created_at, 1, 10) = ?
+      ORDER BY datetime(created_at) DESC, id DESC
+      LIMIT 1
+    `).get(characterId, sourceType, date) || null;
   }
 
   addHoshiaLifeMemory({
@@ -785,6 +905,22 @@ function compactContextMessage(row) {
   };
 }
 
+function compactPostInteraction(row) {
+  return {
+    id: row.id,
+    post_id: row.post_id,
+    user_id: row.user_id || "",
+    nickname: row.nickname || "",
+    type: row.type,
+    content: row.content || "",
+    parent_interaction_id: row.parent_interaction_id || "",
+    reply_status: row.reply_status || "",
+    reply_due_at: row.reply_due_at || "",
+    replied_at: row.replied_at || "",
+    created_at: row.created_at
+  };
+}
+
 function normalizeLifeMemoryRow(row) {
   return {
     ...row,
@@ -852,5 +988,18 @@ function migrateUsersTable(db) {
   }
   if (!columns.has("ai_profile_json")) {
     db.exec("ALTER TABLE users ADD COLUMN ai_profile_json TEXT");
+  }
+}
+
+function migrateHoshiaPostInteractionsTable(db) {
+  const columns = new Set(db.prepare("PRAGMA table_info(hoshia_post_interactions)").all().map((column) => column.name));
+  if (!columns.has("reply_status")) {
+    db.exec("ALTER TABLE hoshia_post_interactions ADD COLUMN reply_status TEXT");
+  }
+  if (!columns.has("reply_due_at")) {
+    db.exec("ALTER TABLE hoshia_post_interactions ADD COLUMN reply_due_at TEXT");
+  }
+  if (!columns.has("replied_at")) {
+    db.exec("ALTER TABLE hoshia_post_interactions ADD COLUMN replied_at TEXT");
   }
 }

@@ -72,6 +72,128 @@ test("life memory service filters sensitive-looking memory content", () => {
   }
 });
 
+test("memory packet falls back to recent viewer post memories for short live-room queries", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-global",
+      character_id: "hoshia",
+      type: "event",
+      source: "post",
+      content: "Hoshia wrote a quiet room update.",
+      importance: 0.95,
+      created_at: "2026-06-10T11:57:00.000Z"
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-comment",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "post_comment",
+      content: "Alice commented on Hoshia's gaming update: practice more after the ranked loss.",
+      importance: 0.4,
+      created_at: "2026-06-10T11:59:00.000Z",
+      expires_at: "2026-07-10T11:59:00.000Z"
+    });
+
+    const packet = service.buildMemoryPacket({
+      session: { user_id: "user-1", nickname: "Alice" },
+      query: "today?",
+      limit: 2
+    });
+
+    assert.equal(packet.some((line) => line.includes("practice more after the ranked loss")), true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("memory packet prioritizes commitments and post replies", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-event",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "chat",
+      content: "Alice talked about today's snack.",
+      importance: 1,
+      created_at: "2026-06-10T11:59:00.000Z"
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-reply",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "commitment",
+      source: "post_reply",
+      content: "Hoshia promised in the post thread to show the next win screenshot.",
+      importance: 0.35,
+      created_at: "2026-06-09T11:00:00.000Z"
+    });
+
+    const packet = service.buildMemoryPacket({
+      session: { user_id: "user-1", nickname: "Alice" },
+      query: "what did you say before?",
+      limit: 2
+    });
+
+    assert.equal(packet[1].includes("next win screenshot"), true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("memory packet filters sensitive rows even if they already exist in storage", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-safe",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "chat",
+      content: "Alice likes late-night gaming talk.",
+      importance: 0.6,
+      created_at: "2026-06-10T11:58:00.000Z"
+    });
+    db.addHoshiaLifeMemory({
+      id: "memory-sensitive",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "chat",
+      content: "Alice pasted token=secret-value from a local config.",
+      importance: 1,
+      created_at: "2026-06-10T11:59:00.000Z"
+    });
+
+    const packet = service.buildMemoryPacket({
+      session: { user_id: "user-1", nickname: "Alice" },
+      query: "gaming",
+      limit: 3
+    });
+
+    assert.equal(packet.some((line) => line.includes("late-night gaming talk")), true);
+    assert.equal(packet.some((line) => line.includes("secret-value")), false);
+    assert.equal(packet.some((line) => line.includes("token=")), false);
+  } finally {
+    cleanup();
+  }
+});
+
 function openTempDb() {
   const dir = mkdtempSync(path.join(tmpdir(), "live-room-life-memory-"));
   const db = openLiveRoomDatabase(path.join(dir, "live-room.sqlite"));

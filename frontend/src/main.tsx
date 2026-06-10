@@ -316,6 +316,9 @@ function App() {
       if (payload.type === "hoshia_state" && payload.state) {
         setHoshiaState(payload.state);
       }
+      if (payload.type === "hoshia_posts_changed") {
+        void refreshHoshiaPosts();
+      }
       if (payload.type === "presence") {
         setRoom((current) => (current ? { ...current, online: payload.online ?? current.online } : current));
       }
