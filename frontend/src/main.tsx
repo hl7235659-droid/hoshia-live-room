@@ -1,14 +1,15 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Palette, Pause, Play, Save, Send, ShieldCheck, Signal, SkipForward, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Pause, Play, Save, Send, ShieldCheck, Signal, SkipForward, Sparkles, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
-import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
+import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
 import { toCharacterState } from "./types";
 import "./styles.css";
 
 const appBase = import.meta.env.BASE_URL || "/";
 const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
+const timelineAvatarUrl = appPath("assets/hoshia-timeline-avatar.png");
 const awakeningBgUrl = appPath("assets/hoshia-awakening-bg.jpg");
 const awakeningCharacterUrl = appPath("assets/hoshia-awakening-character.png");
 const awakeningSoloBgUrl = appPath("assets/hoshia-awakening-solo-bg.jpg");
@@ -50,10 +51,78 @@ const demoMusicState: MusicState = {
   last_error: "",
   can_control: true
 };
+const demoHoshiaState: HoshiaVisualState = {
+  character_id: "hoshia",
+  mood: "calm",
+  activity: "idle",
+  energy: 72,
+  social_need: 48,
+  current_png: "assets/hoshia-character-cutout.png",
+  state_reason: "demo idle stage state",
+  updated_at: new Date().toISOString()
+};
+const demoHoshiaPosts: HoshiaPost[] = [
+  {
+    id: "demo-post-1",
+    character_id: "hoshia",
+    content: "刚刚排位被队友气到啦……我真的只是想安静赢一把，怎么这么难。",
+    image_url: "assets/hoshia/stage-png/gaming_annoyed_02.png",
+    mood: "annoyed",
+    activity: "gaming",
+    source_type: "demo",
+    created_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
+    updated_at: new Date(Date.now() - 1000 * 60 * 26).toISOString(),
+    like_count: 7,
+    comment_count: 2,
+    liked_by_viewer: false,
+    interactions: [
+      {
+        id: "demo-comment-1",
+        post_id: "demo-post-1",
+        user_id: "demo",
+        nickname: "designer",
+        type: "comment",
+        content: "菜就多练。",
+        parent_interaction_id: "",
+        created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString()
+      },
+      {
+        id: "demo-reply-1",
+        post_id: "demo-post-1",
+        user_id: "ai-host",
+        nickname: "Hoshia",
+        type: "reply",
+        content: "这句话我记住了，下次赢了第一个截图给你看。",
+        parent_interaction_id: "demo-comment-1",
+        created_at: new Date(Date.now() - 1000 * 60 * 12).toISOString()
+      }
+    ]
+  },
+  {
+    id: "demo-post-2",
+    character_id: "hoshia",
+    content: "今天训练完有点累，不过坐下来整理星港的时候，突然觉得安静也挺好。",
+    image_url: "assets/hoshia/stage-png/sports_tired_02.png",
+    mood: "tired",
+    activity: "sports",
+    source_type: "demo",
+    created_at: new Date(Date.now() - 1000 * 60 * 92).toISOString(),
+    updated_at: new Date(Date.now() - 1000 * 60 * 92).toISOString(),
+    like_count: 4,
+    comment_count: 0,
+    liked_by_viewer: true,
+    interactions: []
+  }
+];
 
 function appPath(path: string) {
   const base = appBase.endsWith("/") ? appBase : `${appBase}/`;
   return `${base}${path.replace(/^\/+/, "")}`;
+}
+
+async function fetchHoshiaPosts() {
+  const payload = await fetch(appPath("api/hoshia/posts")).then((res) => (res.ok ? res.json() : null));
+  return Array.isArray(payload?.posts) ? payload.posts as HoshiaPost[] : [];
 }
 
 function wsPath(path: string) {
@@ -94,6 +163,7 @@ function App() {
   const [messages, setMessages] = useState<LiveMessage[]>(seedMessages);
   const [musicState, setMusicState] = useState<MusicState>(demoMusicState);
   const [characterState, setCharacterState] = useState<CharacterState>("IDLE");
+  const [hoshiaState, setHoshiaState] = useState<HoshiaVisualState | null>(() => (isStageDemo ? demoHoshiaState : null));
   const [socketStatus, setSocketStatus] = useState(isStageDemo ? "demo" : "locked");
   const [awakeningIntroOpen, setAwakeningIntroOpen] = useState(isAwakeningDemo);
 
@@ -167,7 +237,17 @@ function App() {
         .then((payload) => {
           setRoom(payload.room);
           setCharacterState(toCharacterState(payload.state));
+          if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
           if (payload.messages?.length) setMessages(payload.messages);
+        })
+        .catch(() => undefined);
+    }
+
+    function refreshHoshiaState() {
+      return fetch(appPath("api/hoshia/state"))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((payload) => {
+          if (payload?.state) setHoshiaState(payload.state);
         })
         .catch(() => undefined);
     }
@@ -175,6 +255,7 @@ function App() {
     void refreshRoomState();
     void refreshAudience();
     void refreshMusicState();
+    void refreshHoshiaState();
 
     let ws: WebSocket | null = null;
     let disposed = false;
@@ -220,6 +301,7 @@ function App() {
       if (payload.type === "room_state") {
         setRoom(payload.room);
         setCharacterState(toCharacterState(payload.state));
+        if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
         if (payload.messages?.length) setMessages(payload.messages);
       }
       if (payload.type === "music_state") {
@@ -230,6 +312,9 @@ function App() {
       }
       if (payload.type === "character_state") {
         setCharacterState(toCharacterState(payload.state));
+      }
+      if (payload.type === "hoshia_state" && payload.state) {
+        setHoshiaState(payload.state);
       }
       if (payload.type === "presence") {
         setRoom((current) => (current ? { ...current, online: payload.online ?? current.online } : current));
@@ -263,6 +348,7 @@ function App() {
         void refreshRoomState();
         void refreshAudience();
         void refreshMusicState();
+        void refreshHoshiaState();
       });
       ws.addEventListener("close", () => {
         if (disposed) return;
@@ -316,6 +402,7 @@ function App() {
       room={room}
       messages={messages}
       characterState={characterState}
+      hoshiaState={hoshiaState}
       musicState={musicState}
       onMusicState={setMusicState}
       socketStatus={socketStatus}
@@ -345,6 +432,7 @@ function App() {
         setAudience(null);
         setSocketStatus("locked");
         setCharacterState("IDLE");
+        setHoshiaState(null);
         setAwakeningIntroOpen(false);
       }}
       audience={audience}
@@ -659,6 +747,7 @@ function LiveMobile({
   room,
   messages,
   characterState,
+  hoshiaState,
   musicState,
   onMusicState,
   socketStatus,
@@ -675,6 +764,7 @@ function LiveMobile({
   room: RoomInfo | null;
   messages: LiveMessage[];
   characterState: CharacterState;
+  hoshiaState: HoshiaVisualState | null;
   musicState: MusicState;
   onMusicState: (state: MusicState) => void;
   socketStatus: string;
@@ -688,11 +778,81 @@ function LiveMobile({
   onLeave: () => void;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [hoshiaPosts, setHoshiaPosts] = useState<HoshiaPost[]>(() => (isDemo ? demoHoshiaPosts : []));
+
+  useEffect(() => {
+    if (!timelineOpen || isDemo) return;
+    let disposed = false;
+    fetchHoshiaPosts()
+      .then((posts) => {
+        if (!disposed) setHoshiaPosts(posts);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, [timelineOpen, isDemo]);
+
+  async function refreshPosts() {
+    if (isDemo) return;
+    const posts = await fetchHoshiaPosts();
+    setHoshiaPosts(posts);
+  }
+
+  async function handleLikePost(postId: string) {
+    if (isDemo) {
+      setHoshiaPosts((current) => current.map((post) => post.id === postId ? {
+        ...post,
+        liked_by_viewer: true,
+        like_count: post.liked_by_viewer ? post.like_count : post.like_count + 1
+      } : post));
+      return;
+    }
+    const payload = await fetch(appPath(`api/hoshia/posts/${postId}/like`), { method: "POST" })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("like_failed"))));
+    if (payload?.post) {
+      setHoshiaPosts((current) => current.map((post) => post.id === postId ? payload.post : post));
+    } else {
+      await refreshPosts();
+    }
+  }
+
+  async function handleCommentPost(postId: string, content: string) {
+    if (isDemo) {
+      const interaction = {
+        id: `demo-comment-${Date.now()}`,
+        post_id: postId,
+        user_id: session.user_id,
+        nickname: session.nickname,
+        type: "comment" as const,
+        content,
+        parent_interaction_id: "",
+        created_at: new Date().toISOString()
+      };
+      setHoshiaPosts((current) => current.map((post) => post.id === postId ? {
+        ...post,
+        comment_count: post.comment_count + 1,
+        interactions: [...post.interactions, interaction]
+      } : post));
+      return;
+    }
+    const payload = await fetch(appPath(`api/hoshia/posts/${postId}/comment`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content })
+    }).then((res) => (res.ok ? res.json() : Promise.reject(new Error("comment_failed"))));
+    if (payload?.post) {
+      setHoshiaPosts((current) => current.map((post) => post.id === postId ? payload.post : post));
+    } else {
+      await refreshPosts();
+    }
+  }
 
   return (
     <main className="phone-shell">
       <section className="live-phone">
-        <CharacterStage state={characterState} messages={messages} />
+        <CharacterStage state={characterState} messages={messages} visualState={hoshiaState} />
         <LiveOverlay
           state={characterState}
           session={session}
@@ -700,6 +860,7 @@ function LiveMobile({
           socketStatus={socketStatus}
           audience={audience}
           onOpenAccount={() => setAccountOpen(true)}
+          onOpenTimeline={() => setTimelineOpen(true)}
           onLeave={onLeave}
         />
         <BottomDock
@@ -722,6 +883,16 @@ function LiveMobile({
             onSessionUpdate={onSessionUpdate}
           />
         ) : null}
+        {timelineOpen ? (
+          <HoshiaTimelineOverlay
+            session={session}
+            posts={hoshiaPosts}
+            visualState={hoshiaState}
+            onClose={() => setTimelineOpen(false)}
+            onLike={handleLikePost}
+            onComment={handleCommentPost}
+          />
+        ) : null}
         {awakeningIntroOpen ? (
           <HoshiaAwakeningIntro
             session={session}
@@ -742,6 +913,7 @@ function LiveOverlay({
   socketStatus,
   audience,
   onOpenAccount,
+  onOpenTimeline,
   onLeave
 }: {
   state: CharacterState;
@@ -750,6 +922,7 @@ function LiveOverlay({
   socketStatus: string;
   audience: AudiencePayload | null;
   onOpenAccount: () => void;
+  onOpenTimeline: () => void;
   onLeave: () => void;
 }) {
   const [islandOpen, setIslandOpen] = useState(false);
@@ -857,8 +1030,216 @@ function LiveOverlay({
           <span>{connectionNotice(socketStatus)}</span>
         </div>
       ) : null}
+      <button
+        type="button"
+        className="timeline-open-link"
+        aria-label="Open Hoshia timeline"
+        onClick={onOpenTimeline}
+        title="Hoshia 的动态"
+      >
+        <Sparkles size={18} strokeWidth={2.2} />
+      </button>
     </section>
   );
+}
+
+function HoshiaTimelineOverlay({
+  session,
+  posts,
+  visualState,
+  onClose,
+  onLike,
+  onComment
+}: {
+  session: Session;
+  posts: HoshiaPost[];
+  visualState: HoshiaVisualState | null;
+  onClose: () => void;
+  onLike: (postId: string) => Promise<void>;
+  onComment: (postId: string, content: string) => Promise<void>;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busyPostId, setBusyPostId] = useState("");
+  const energy = visualState?.energy ?? 72;
+  const socialNeed = visualState?.social_need ?? 48;
+
+  async function submitComment(postId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = String(drafts[postId] || "").trim();
+    if (!content || busyPostId) return;
+    setBusyPostId(postId);
+    try {
+      await onComment(postId, content);
+      setDrafts((current) => ({ ...current, [postId]: "" }));
+    } finally {
+      setBusyPostId("");
+    }
+  }
+
+  async function likePost(postId: string) {
+    if (busyPostId) return;
+    setBusyPostId(postId);
+    try {
+      await onLike(postId);
+    } finally {
+      setBusyPostId("");
+    }
+  }
+
+  return (
+    <section className="hoshia-timeline-shell" aria-label="Hoshia dynamic page">
+      <div className="timeline-bg-mark" aria-hidden="true">H</div>
+      <header className="timeline-topbar">
+        <button type="button" aria-label="Back to live room" onClick={onClose}>
+          <ChevronLeft size={20} />
+        </button>
+        <strong>Hoshia 的动态</strong>
+      </header>
+
+      <div className="timeline-scroll">
+        <section className="timeline-profile-card">
+          <div className="timeline-avatar">
+            <img src={timelineAvatarUrl} alt="" />
+          </div>
+          <div>
+            <span className="timeline-eyebrow">soft console</span>
+            <div className="timeline-name-row">
+              <h2>Hoshia</h2>
+              <span className="timeline-live-pill"><Sparkles size={14} /> live</span>
+            </div>
+            <p>今天也在星港里整理状态、动态和一点点嘴硬。</p>
+          </div>
+        </section>
+
+        <section className="timeline-stats-card" aria-label="Hoshia current status">
+          <TimelineMetric label="活动" value={activityLabel(visualState?.activity || "idle")} />
+          <TimelineMetric label="心情" value={moodLabel(visualState?.mood || "calm")} />
+          <TimelineMetric label="能量" value={`${energy}%`} />
+          <TimelineMetric label="陪伴感" value={`${100 - socialNeed}%`} />
+        </section>
+
+        <section className="timeline-feed" aria-label="Hoshia posts">
+          {posts.length ? posts.map((post) => (
+            <article className="timeline-post-card" key={post.id}>
+              <div className="post-watermark" aria-hidden="true">Hoshia</div>
+              <header className="post-head">
+                <div className="post-author">
+                  <img className="post-author-avatar" src={timelineAvatarUrl} alt="" />
+                  <strong>Hoshia</strong>
+                </div>
+                <span>{timelineStatusLabel(post.activity, post.mood)}</span>
+              </header>
+              <p className="post-content">{post.content}</p>
+              {post.image_url ? (
+                <div className="post-image-frame">
+                  <img src={timelineImageUrl(post.image_url)} alt="" />
+                </div>
+              ) : null}
+              <footer className="post-actions">
+                <button
+                  type="button"
+                  className={post.liked_by_viewer ? "liked" : ""}
+                  onClick={() => void likePost(post.id)}
+                  disabled={busyPostId === post.id}
+                >
+                  <Heart size={16} fill={post.liked_by_viewer ? "currentColor" : "none"} />
+                  <span>{post.like_count}</span>
+                </button>
+                <span><MessageCircle size={16} /> {post.comment_count}</span>
+                <time>{formatShortDate(post.created_at)}</time>
+              </footer>
+              {post.interactions.length ? (
+                <div className="post-comments">
+                  {post.interactions.map((interaction) => (
+                    <div className={`post-comment ${interaction.nickname === "Hoshia" ? "hoshia" : ""}`} key={interaction.id}>
+                      <strong>{interaction.nickname || (interaction.user_id === session.user_id ? session.nickname : "viewer")}</strong>
+                      <span>{interaction.content}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <form className="post-comment-form" onSubmit={(event) => void submitComment(post.id, event)}>
+                <input
+                  value={drafts[post.id] || ""}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [post.id]: event.target.value }))}
+                  maxLength={180}
+                  placeholder="写一句给 Hoshia..."
+                />
+                <button type="submit" disabled={!String(drafts[post.id] || "").trim() || busyPostId === post.id}>
+                  <Send size={15} />
+                </button>
+              </form>
+            </article>
+          )) : (
+            <section className="timeline-empty">
+              <Sparkles size={22} />
+              <strong>还没有动态</strong>
+              <p>等 Hoshia 整理好今天的小心情，这里会亮起来。</p>
+            </section>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function TimelineMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function timelineImageUrl(value: string) {
+  if (/^(https?:|data:image\/)/i.test(value)) return value;
+  return appPath(value);
+}
+
+function timelineStatusLabel(activity: string, mood: string) {
+  if (activity === "gaming") return mood === "annoyed" ? "排位生气中" : "电竞中";
+  if (activity === "otaku") return "补番中";
+  if (activity === "sports") return mood === "tired" ? "运动后" : "训练中";
+  if (activity === "sleepy") return "有点困";
+  if (activity === "thinking") return "构思中";
+  if (activity === "emo") return "低电量";
+  if (activity === "happy") return "心情很好";
+  return "今日碎碎念";
+}
+
+function activityLabel(activity: string) {
+  const labels: Record<string, string> = {
+    idle: "待机",
+    gaming: "电竞",
+    sports: "运动",
+    otaku: "补番",
+    sleepy: "困倦",
+    happy: "开心",
+    thinking: "思考",
+    emo: "低落"
+  };
+  return labels[activity] || activity;
+}
+
+function moodLabel(mood: string) {
+  const labels: Record<string, string> = {
+    calm: "平静",
+    curious: "好奇",
+    competitive: "好胜",
+    annoyed: "不服气",
+    energetic: "元气",
+    tired: "累了",
+    excited: "兴奋",
+    sleepy: "困",
+    lonely: "想陪伴",
+    happy: "开心",
+    playful: "想逗你",
+    thinking: "思考",
+    focused: "专注",
+    emo: "低落"
+  };
+  return labels[mood] || mood;
 }
 
 function AudienceBookmark({ audience, room }: { audience: AudiencePayload | null; room: RoomInfo | null }) {
@@ -1881,6 +2262,7 @@ function BottomDock({
   onOpenAccount: () => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [musicOpen, setMusicOpen] = useState(false);
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [text, setText] = useState("");
   const historyCount = Math.min(messages.length, 100);
@@ -1889,7 +2271,19 @@ function BottomDock({
   const visibleDanmakuColor = normalizeColorInput(danmakuColor) || "#FF5F9B";
 
   function toggleHistory() {
-    setHistoryOpen((current) => !current);
+    setHistoryOpen((current) => {
+      const next = !current;
+      if (next) setMusicOpen(false);
+      return next;
+    });
+  }
+
+  function toggleMusic() {
+    setMusicOpen((current) => {
+      const next = !current;
+      if (next) setHistoryOpen(false);
+      return next;
+    });
   }
 
   function send(event: FormEvent) {
@@ -1924,13 +2318,8 @@ function BottomDock({
   const canSend = (socketStatus === "live" || socketStatus === "demo") && Boolean(text.trim());
 
   return (
-    <section className={`bottom-dock ${historyOpen ? "history-open" : ""}`} aria-label="Live chat dock">
-      <MusicRoomPanel
-        musicState={musicState}
-        socketStatus={socketStatus}
-        onMusicState={onMusicState}
-      />
-      <section className={`history-drawer ${historyOpen ? "open" : ""}`} aria-label="Message history">
+    <section className={`bottom-dock ${historyOpen ? "history-open" : ""} ${musicOpen ? "music-open" : ""}`} aria-label="Live chat dock">
+      <section className={`history-drawer ${historyOpen || musicOpen ? "open" : ""} ${musicOpen ? "music-active" : ""}`} aria-label="Message history">
         <div className="history-header">
           <button
             type="button"
@@ -1947,13 +2336,31 @@ function BottomDock({
             }}
           >
             {historyOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-            <span>{historyOpen ? "Hide history" : "History"}</span>
+            <span>History</span>
+          </button>
+          <button
+            type="button"
+            className="music-header-toggle"
+            aria-expanded={musicOpen}
+            onClick={toggleMusic}
+          >
+            <Music size={15} />
+            <span>Music</span>
           </button>
           <span className="history-count" aria-label={`${historyCount} of 100 history messages`}>
             {historyCount}/100
           </span>
         </div>
-        {historyOpen ? <DanmakuHistory messages={messages} onMention={insertMention} /> : null}
+        {musicOpen ? (
+          <MusicRoomPanel
+            musicState={musicState}
+            socketStatus={socketStatus}
+            onMusicState={onMusicState}
+            expanded={musicOpen}
+          />
+        ) : historyOpen ? (
+          <DanmakuHistory messages={messages} onMention={insertMention} />
+        ) : null}
       </section>
       <section className="live-control" aria-label="Live controls">
         <form className="sendbar" onSubmit={send}>
@@ -1968,7 +2375,6 @@ function BottomDock({
                     className="mention-picker-row"
                     onClick={() => insertMention(user.nickname)}
                   >
-                    <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} size="tiny" />
                     <span>@{user.nickname}</span>
                   </button>
                 )) : (
@@ -2032,16 +2438,19 @@ function BottomDock({
 function MusicRoomPanel({
   musicState,
   socketStatus,
-  onMusicState
+  onMusicState,
+  expanded
 }: {
   musicState: MusicState;
   socketStatus: string;
   onMusicState: (state: MusicState) => void;
+  expanded: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [notice, setNotice] = useState("");
   const current = musicState.current;
+  const queuedTracks = current ? [current, ...musicState.queue] : musicState.queue;
   const canUseMusic = musicState.enabled && socketStatus !== "demo";
   const canControl = musicState.can_control && canUseMusic;
   const isPlaying = musicState.status === "playing";
@@ -2082,7 +2491,7 @@ function MusicRoomPanel({
   }
 
   return (
-    <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"}`} aria-label="Music room player">
+    <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"} ${expanded ? "open" : ""}`} aria-label="Music room player">
       <audio ref={audioRef} preload="none" onEnded={() => void control("next")} />
       <div className="music-room-now">
         <div className="music-room-icon" aria-hidden="true">
@@ -2092,6 +2501,8 @@ function MusicRoomPanel({
           <span>{musicState.enabled ? statusText(musicState.status) : "music off"}</span>
           <strong>{current ? trackLabel(current) : "No song playing"}</strong>
         </div>
+      </div>
+      <div className="music-room-actions">
         <button
           type="button"
           className="music-sound-button"
@@ -2103,48 +2514,49 @@ function MusicRoomPanel({
           <span>{audioUnlocked ? "on" : "sound"}</span>
         </button>
       </div>
-      <div className="music-room-controls">
-        {canControl ? (
-          <>
-            <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
-              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-              <span>{isPlaying ? "pause" : "play"}</span>
-            </button>
-            <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
-              <SkipForward size={14} />
-              <span>next</span>
-            </button>
-            <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
-              <Trash2 size={14} />
-              <span>clear</span>
-            </button>
-          </>
-        ) : (
-          <span className="music-room-hint">直接在弹幕里让 Hoshia 点歌、切歌或控制播放。</span>
-        )}
-      </div>
-      {musicState.queue.length ? (
+      <div className="music-room-expanded" aria-hidden={!expanded}>
+        <div className="music-room-controls">
+          {canControl ? (
+            <>
+              <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
+                {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                <span>{isPlaying ? "pause" : "play"}</span>
+              </button>
+              <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
+                <SkipForward size={14} />
+                <span>next</span>
+              </button>
+              <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
+                <Trash2 size={14} />
+                <span>clear</span>
+              </button>
+            </>
+          ) : (
+            <span className="music-room-hint">直接在弹幕里让 Hoshia 点歌、切歌或控制播放。</span>
+          )}
+        </div>
         <div className="music-queue" aria-label="Song queue">
-          {musicState.queue.slice(0, 3).map((track) => (
-            <span key={track.id}>
-              {trackLabel(track)}
-              {canControl ? (
+          {queuedTracks.map((track, index) => (
+            <div className="music-queue-row" key={track.id || `track-${index}`}>
+              <span className="music-queue-index">{String(index + 1).padStart(2, "0")}</span>
+              <strong>{track.title}</strong>
+              <em>{track.artist || "Unknown"}</em>
+              {canControl && index > 0 ? (
                 <button type="button" onClick={() => void control("remove", track.id)} aria-label={`Remove ${track.title}`}>
                   ×
                 </button>
               ) : null}
-            </span>
+            </div>
           ))}
-          {musicState.queue.length > 3 ? <small>+{musicState.queue.length - 3}</small> : null}
+          {!queuedTracks.length ? <div className="music-queue-empty">还没有排队歌曲</div> : null}
         </div>
-      ) : null}
+      </div>
       {(notice || musicState.last_error) ? (
         <p className="music-notice">{notice || friendlyMusicNotice(musicState.last_error)}</p>
       ) : null}
     </section>
   );
 }
-
 async function postMusic(_kind: "control", body: Record<string, unknown>) {
   const endpoint = "api/music/control";
   try {

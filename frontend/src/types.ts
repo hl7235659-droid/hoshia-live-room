@@ -56,6 +56,45 @@ export type MusicState = {
   timestamp?: string;
 };
 
+export type HoshiaVisualState = {
+  character_id: string;
+  mood: string;
+  activity: string;
+  energy: number;
+  social_need: number;
+  current_png: string;
+  visual_description?: string;
+  state_reason: string;
+  updated_at: string;
+};
+
+export type HoshiaPostInteraction = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  nickname: string;
+  type: "comment" | "reply" | "like";
+  content: string;
+  parent_interaction_id: string;
+  created_at: string;
+};
+
+export type HoshiaPost = {
+  id: string;
+  character_id: string;
+  content: string;
+  image_url: string;
+  mood: string;
+  activity: string;
+  source_type: string;
+  created_at: string;
+  updated_at: string;
+  like_count: number;
+  comment_count: number;
+  liked_by_viewer: boolean;
+  interactions: HoshiaPostInteraction[];
+};
+
 export type AiProfile = {
   preferred_name: string;
   reply_style: "friend" | "teasing_friend" | "cool" | "custom";

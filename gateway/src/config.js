@@ -32,6 +32,8 @@ export const config = {
   welcomeGreetingCooldownSeconds: Number(process.env.WELCOME_GREETING_COOLDOWN_SECONDS || 1800),
   welcomeGreetingDelayMs: Number(process.env.WELCOME_GREETING_DELAY_MS || 900),
   proactiveReply: normalizeProactiveReplyConfig(process.env),
+  hoshiaStateTickMinMinutes: Number(process.env.HOSHIA_STATE_TICK_MIN_MINUTES || process.env.HOSHIA_STATE_TICK_MINUTES || 20),
+  hoshiaStateTickMaxMinutes: Number(process.env.HOSHIA_STATE_TICK_MAX_MINUTES || process.env.HOSHIA_STATE_TICK_MINUTES || 60),
   musicEnabled: parseBool(process.env.MUSIC_ENABLED, false),
   musicProvider: enumValue(process.env.MUSIC_PROVIDER || "xiaomusic", ["xiaomusic"], "xiaomusic"),
   musicProviderBaseUrl: process.env.MUSIC_PROVIDER_BASE_URL || "",

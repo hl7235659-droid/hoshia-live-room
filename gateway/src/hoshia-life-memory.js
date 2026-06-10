@@ -1,0 +1,299 @@
+import { nanoid } from "nanoid";
+
+const characterId = "hoshia";
+const sensitivePattern = /(?:\.env|token=|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|cloudflared|trycloudflare|[A-Za-z]:[\\/]|\/home\/ubuntu|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i;
+
+export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) {
+  return {
+    addMemory(input = {}) {
+      const memory = normalizeMemory(input, clock);
+      if (!memory) return null;
+      return db.addHoshiaLifeMemory(memory);
+    },
+
+    recordPost(post) {
+      if (!post) return null;
+      return this.addMemory({
+        type: "event",
+        source: "post",
+        source_id: post.id,
+        content: `Hoshia posted a ${post.activity || "daily"} update: ${post.content}`,
+        importance: 0.62,
+        emotion: post.mood || "",
+        tags: [post.activity, post.mood, post.source_type].filter(Boolean)
+      });
+    },
+
+    recordInteraction({ post, interaction }) {
+      if (!post || !interaction) return null;
+      if (interaction.type === "like") {
+        return this.addMemory({
+          user_id: interaction.user_id,
+          type: "event",
+          source: "post_like",
+          source_id: interaction.id,
+          content: `${interaction.nickname || "A viewer"} liked Hoshia's ${post.activity || "daily"} update.`,
+          importance: 0.28,
+          emotion: "positive",
+          tags: ["like", post.activity, post.mood].filter(Boolean),
+          expires_at: daysFromNow(clock(), 30)
+        });
+      }
+
+      if (interaction.type === "comment") {
+        return this.addMemory({
+          user_id: interaction.user_id,
+          type: "event",
+          source: "post_comment",
+          source_id: interaction.id,
+          content: `${interaction.nickname || "A viewer"} commented on Hoshia's ${post.activity || "daily"} update: ${interaction.content}`,
+          importance: importanceForText(interaction.content, 0.58),
+          emotion: emotionForText(interaction.content),
+          tags: ["comment", post.activity, post.mood].filter(Boolean),
+          expires_at: daysFromNow(clock(), 45)
+        });
+      }
+
+      if (interaction.type === "reply") {
+        return this.addMemory({
+          user_id: interaction.user_id,
+          type: commitmentLike(interaction.content) ? "commitment" : "event",
+          source: "post_reply",
+          source_id: interaction.id,
+          content: `Hoshia replied in a post thread: ${interaction.content}`,
+          importance: importanceForText(interaction.content, 0.66),
+          emotion: emotionForText(interaction.content),
+          tags: ["reply", post.activity, post.mood].filter(Boolean)
+        });
+      }
+      return null;
+    },
+
+    recordChatInteraction({ session, text, messageId }) {
+      const importance = importanceForText(text, 0.34);
+      if (importance < 0.55) return null;
+      return this.addMemory({
+        user_id: session?.user_id || "",
+        type: commitmentLike(text) ? "commitment" : "event",
+        source: "chat",
+        source_id: messageId || "",
+        content: `${session?.nickname || "A viewer"} said in the live room: ${text}`,
+        importance,
+        emotion: emotionForText(text),
+        tags: ["chat", ...topicTags(text)],
+        expires_at: importance >= 0.75 ? null : daysFromNow(clock(), 30)
+      });
+    },
+
+    searchMemories(input = {}) {
+      return db.searchHoshiaLifeMemories({
+        characterId: input.character_id || input.characterId || characterId,
+        userId: input.user_id || input.userId || "",
+        query: input.query || "",
+        sourceFilter: input.source_filter || input.sourceFilter || "",
+        limit: input.limit || 8,
+        now: clock().toISOString()
+      });
+    },
+
+    buildMemoryPacket({ batch = [], query = "", limit = 6 } = {}) {
+      const primary = Array.isArray(batch) ? batch.find((item) => item?.session?.user_id) : null;
+      const userId = primary?.session?.user_id || "";
+      const text = query || (Array.isArray(batch) ? batch.map((item) => item?.text || "").join(" ") : "");
+      const memories = this.searchMemories({ userId, query: text, limit });
+      if (!memories.length) return [];
+      return [
+        "【Hoshia life memory】",
+        ...memories.map((memory) => `- ${memoryLine(memory)}`)
+      ];
+    }
+  };
+}
+
+export function publicPost(row) {
+  return {
+    id: row.id,
+    character_id: row.character_id,
+    content: row.content,
+    image_url: row.image_url || "",
+    mood: row.mood || "",
+    activity: row.activity || "",
+    source_type: row.source_type,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    like_count: Number(row.like_count || 0),
+    comment_count: Number(row.comment_count || 0),
+    liked_by_viewer: Boolean(row.liked_by_viewer),
+    interactions: (row.interactions || [])
+      .filter((item) => item.type !== "like")
+      .map(publicInteraction)
+  };
+}
+
+export function publicInteraction(row) {
+  return {
+    id: row.id,
+    post_id: row.post_id,
+    user_id: row.user_id,
+    nickname: row.nickname || "",
+    type: row.type,
+    content: row.content || "",
+    parent_interaction_id: row.parent_interaction_id || "",
+    created_at: row.created_at
+  };
+}
+
+export function normalizePostInput(body = {}, now = new Date()) {
+  const content = cleanText(body.content, 700);
+  if (!content) return null;
+  return {
+    id: cleanIdentifier(body.id, 80) || `post_${nanoid(12)}`,
+    character_id: characterId,
+    content,
+    image_url: cleanUrl(body.image_url ?? body.imageUrl, 260),
+    mood: cleanIdentifier(body.mood, 48) || "calm",
+    activity: cleanIdentifier(body.activity, 48) || "idle",
+    source_type: cleanIdentifier(body.source_type ?? body.sourceType, 48) || "manual",
+    created_at: cleanDate(body.created_at ?? body.createdAt) || now.toISOString(),
+    updated_at: now.toISOString()
+  };
+}
+
+export function normalizeCommentInput(body = {}, session = {}, now = new Date()) {
+  const content = cleanText(body.content ?? body.text, 500);
+  if (!content) return null;
+  return {
+    id: cleanIdentifier(body.id, 80) || `comment_${nanoid(12)}`,
+    user_id: cleanText(session.user_id, 80) || "anonymous",
+    nickname: cleanText(session.nickname, 32) || "viewer",
+    type: "comment",
+    content,
+    parent_interaction_id: cleanIdentifier(body.parent_interaction_id ?? body.parentInteractionId, 80),
+    created_at: now.toISOString()
+  };
+}
+
+export function likeInteractionInput({ postId, session, now = new Date() }) {
+  return {
+    id: `like_${postId}_${cleanIdentifier(session?.user_id, 80) || "anonymous"}`,
+    user_id: cleanText(session?.user_id, 80) || "anonymous",
+    nickname: cleanText(session?.nickname, 32) || "viewer",
+    type: "like",
+    content: "",
+    parent_interaction_id: "",
+    created_at: now.toISOString()
+  };
+}
+
+function normalizeMemory(input, clock) {
+  const content = cleanText(input.content, 700);
+  if (!content || sensitivePattern.test(content)) return null;
+  return {
+    id: cleanIdentifier(input.id, 80) || `memory_${nanoid(12)}`,
+    character_id: cleanIdentifier(input.character_id ?? input.characterId, 48) || characterId,
+    user_id: cleanText(input.user_id ?? input.userId, 80),
+    type: normalizeMemoryType(input.type),
+    source: cleanIdentifier(input.source, 48) || "system",
+    source_id: cleanIdentifier(input.source_id ?? input.sourceId, 80),
+    content,
+    importance: clampNumber(input.importance, 0, 1, 0.5),
+    emotion: cleanIdentifier(input.emotion, 48),
+    tags: cleanTags(input.tags),
+    created_at: cleanDate(input.created_at ?? input.createdAt) || clock().toISOString(),
+    expires_at: cleanDate(input.expires_at ?? input.expiresAt) || null
+  };
+}
+
+function normalizeMemoryType(value) {
+  const type = cleanIdentifier(value, 48);
+  return ["event", "preference", "relationship", "commitment", "summary"].includes(type) ? type : "event";
+}
+
+function memoryLine(memory) {
+  const when = shortDate(memory.created_at);
+  const user = memory.user_id ? "viewer-related" : "Hoshia";
+  return `${when} ${user} ${memory.type}: ${cleanText(memory.content, 220)}`;
+}
+
+function importanceForText(text, fallback) {
+  const value = String(text || "");
+  let score = fallback;
+  if (/(记住|remember|答应|promise|承诺|说过|截图|下次|喜欢|讨厌)/i.test(value)) score += 0.22;
+  if (/(动态|评论|主页|练|排位|游戏|电竞|项目|直播间|Hoshia)/i.test(value)) score += 0.12;
+  if (value.length >= 80) score += 0.08;
+  return clampNumber(score, 0, 1, fallback);
+}
+
+function commitmentLike(text) {
+  return /(答应|承诺|promise|说过|记住|remember|下次|截图|给你看)/i.test(String(text || ""));
+}
+
+function emotionForText(text) {
+  const value = String(text || "").toLowerCase();
+  if (/(喜欢|可爱|谢谢|开心|love|cute|nice)/i.test(value)) return "positive";
+  if (/(菜|多练|输|气|annoy|tilt|bad)/i.test(value)) return "teasing";
+  if (/(难过|孤独|emo|sad|lonely)/i.test(value)) return "low";
+  return "";
+}
+
+function topicTags(text) {
+  const value = String(text || "").toLowerCase();
+  const tags = [];
+  if (/(游戏|电竞|排位|game|gaming)/i.test(value)) tags.push("gaming");
+  if (/(番|动漫|二次元|anime|manga)/i.test(value)) tags.push("otaku");
+  if (/(运动|训练|跑步|sport|gym)/i.test(value)) tags.push("sports");
+  if (/(动态|评论|主页|post|comment)/i.test(value)) tags.push("posts");
+  return tags;
+}
+
+function cleanTags(tags) {
+  return (Array.isArray(tags) ? tags : [])
+    .map((item) => cleanIdentifier(item, 40))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function cleanUrl(value, maxLength) {
+  const text = cleanText(value, maxLength);
+  if (!text) return "";
+  if (/^(?:\/|https?:\/\/|data:image\/)/i.test(text)) return text;
+  return "";
+}
+
+function cleanDate(value) {
+  const text = cleanText(value, 40);
+  if (!text || Number.isNaN(Date.parse(text))) return "";
+  return new Date(text).toISOString();
+}
+
+function cleanIdentifier(value, maxLength = 48) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]/g, "_")
+    .slice(0, maxLength);
+}
+
+function cleanText(value, maxLength) {
+  return String(value || "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(number, max));
+}
+
+function daysFromNow(date, days) {
+  return new Date(date.getTime() + days * 86400000).toISOString();
+}
+
+function shortDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+  return date.toISOString().slice(0, 10);
+}

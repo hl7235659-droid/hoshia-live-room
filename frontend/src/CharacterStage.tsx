@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import type { CharacterState, LiveMessage } from "./types";
+import type { CharacterState, HoshiaVisualState, LiveMessage } from "./types";
 import { colorForMessage } from "./messageColors";
 
 const publicBase = import.meta.env.BASE_URL || "/";
@@ -73,10 +73,12 @@ export function getAnimatedStageLabel(state: CharacterState) {
 
 export function CharacterStage({
   state,
-  messages
+  messages,
+  visualState
 }: {
   state: CharacterState;
   messages: LiveMessage[];
+  visualState: HoshiaVisualState | null;
 }) {
   const presentation = getStagePresentation(state);
 
@@ -95,6 +97,7 @@ export function CharacterStage({
         state={state}
         expression={presentation.expression}
         motion={presentation.motion}
+        pngUrl={visualState?.current_png || ""}
         modelUrl={live2dModelUrl}
         coreUrl={live2dCoreUrl}
       />
@@ -224,12 +227,14 @@ function Live2DAdapter({
   state,
   expression,
   motion,
+  pngUrl,
   modelUrl,
   coreUrl
 }: {
   state: CharacterState;
   expression: string;
   motion: string;
+  pngUrl: string;
   modelUrl?: string;
   coreUrl: string;
 }) {
@@ -293,26 +298,29 @@ function Live2DAdapter({
       aria-busy={runtimeState === "loading"}
     >
       <div className="live2d-canvas-host" ref={hostRef} aria-hidden={runtimeState !== "ready"} />
-      <PngFallbackLayer state={state} runtimeState={runtimeState} />
+      <PngFallbackLayer state={state} runtimeState={runtimeState} pngUrl={pngUrl} />
     </div>
   );
 }
 
 function PngFallbackLayer({
   state,
-  runtimeState
+  runtimeState,
+  pngUrl
 }: {
   state: CharacterState;
   runtimeState: Live2DRuntimeState;
+  pngUrl: string;
 }) {
   const isHidden = runtimeState === "ready";
+  const resolvedPngUrl = resolveAssetUrl(pngUrl) || hoshiaCharacterUrl;
 
   return (
     <div className={`png-fallback-layer ${isHidden ? "hidden" : ""}`} data-fallback-state={state.toLowerCase()}>
       <span className="fallback-motion-ring" aria-hidden="true" />
       <img
         className="hoshia-character live2d-fallback"
-        src={hoshiaCharacterUrl}
+        src={resolvedPngUrl}
         alt="Hoshia temporary animated character layer"
         draggable={false}
       />
@@ -420,4 +428,13 @@ function ensureScript(src: string) {
     script.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
     document.head.appendChild(script);
   });
+}
+
+function resolveAssetUrl(path: string) {
+  const value = String(path || "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || /^data:/i.test(value) || /^blob:/i.test(value)) return value;
+  if (value.startsWith(appBase)) return value;
+  if (value.startsWith("/")) return `${appBase}${value.slice(1)}`;
+  return `${appBase}${value}`;
 }

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildModuleContext,
+  buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
+  createHoshiaVisualModuleProvider,
+  createHoshiaVisualStateChangedEvent,
   createModuleEventStore,
   createMusicModuleProvider,
   createMusicSongRequestedEvent,
@@ -146,6 +149,56 @@ test("music module can be registered through provider registry", () => {
   assert.equal(contexts.length, 1);
   assert.equal(contexts[0].module_id, "music");
   assert.equal(contexts[0].current_state.some((line) => line.includes("Billie Jean - Michael Jackson")), true);
+});
+
+test("hoshia visual module context exposes public state without raw paths", () => {
+  const service = {
+    publicState() {
+      return {
+        character_id: "hoshia",
+        mood: "competitive",
+        activity: "gaming",
+        energy: 80,
+        social_need: 30,
+        current_png: "/assets/hoshia/stage-png/gaming_competitive_01.png",
+        state_reason: "viewer talked about gaming",
+        updated_at: "2026-06-10T00:00:00.000Z"
+      };
+    }
+  };
+
+  const context = buildHoshiaVisualModuleContext(service, {});
+  assert.equal(context.module_id, "hoshia_visual_state");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("gaming")), true);
+  assert.equal(context.current_state.some((line) => line.includes("controller")), true);
+  assert.equal(context.current_state.some((line) => line.includes("/assets/")), false);
+
+  const contexts = buildModuleContext({
+    providers: [createHoshiaVisualModuleProvider(service)]
+  });
+  assert.equal(contexts[0].module_id, "hoshia_visual_state");
+});
+
+test("hoshia visual state events keep only short safe fields", () => {
+  const event = createHoshiaVisualStateChangedEvent(
+    {
+      activity: "gaming",
+      mood: "competitive",
+      current_png: "/assets/hoshia/stage-png/gaming_competitive_01.png",
+      updated_at: "2026-06-10T00:00:00.000Z"
+    },
+    { user_id: "user-1", nickname: "viewer" },
+    { roomId: "room-1", reason: "viewer talked about gaming" }
+  );
+
+  assert.equal(event.module_id, "hoshia_visual_state");
+  assert.equal(event.event_type, "hoshia_visual_state.changed");
+  assert.deepEqual(event.data, {
+    activity: "gaming",
+    mood: "competitive",
+    reason: "viewer talked about gaming"
+  });
 });
 
 test("module event store keeps recent events and sanitizes sensitive text", () => {

@@ -147,6 +147,118 @@ test("context messages and rolling summaries are persisted", () => {
   }
 });
 
+test("hoshia visual state is persisted and upserted", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    assert.equal(db.getHoshiaState("hoshia"), null);
+
+    const created = db.upsertHoshiaState({
+      character_id: "hoshia",
+      mood: "calm",
+      activity: "idle",
+      energy: 70,
+      social_need: 40,
+      current_png: "/assets/hoshia/stage-png/idle_calm_01.png",
+      state_reason: "initial state",
+      updated_at: "2026-06-10T00:00:00.000Z"
+    });
+    assert.equal(created.current_png, "/assets/hoshia/stage-png/idle_calm_01.png");
+    assert.equal(created.energy, 70);
+
+    const updated = db.upsertHoshiaState({
+      character_id: "hoshia",
+      mood: "competitive",
+      activity: "gaming",
+      energy: 82,
+      social_need: 25,
+      current_png: "/assets/hoshia/stage-png/gaming_competitive_01.png",
+      state_reason: "viewer talked about gaming",
+      updated_at: "2026-06-10T00:10:00.000Z"
+    });
+    assert.equal(updated.activity, "gaming");
+    assert.equal(updated.mood, "competitive");
+    assert.equal(db.getHoshiaState("hoshia").current_png, "/assets/hoshia/stage-png/gaming_competitive_01.png");
+  } finally {
+    cleanup();
+  }
+});
+
+test("hoshia posts interactions and life memories are persisted", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const post = db.createHoshiaPost({
+      id: "post-1",
+      character_id: "hoshia",
+      content: "刚刚排位输了两把，但我觉得问题不在我。",
+      image_url: "/assets/hoshia/stage-png/gaming_annoyed_02.png",
+      mood: "annoyed",
+      activity: "gaming",
+      source_type: "manual",
+      created_at: "2026-06-10T00:00:00.000Z",
+      updated_at: "2026-06-10T00:00:00.000Z"
+    });
+    assert.equal(post.activity, "gaming");
+
+    db.addHoshiaPostInteraction({
+      id: "like-1",
+      post_id: "post-1",
+      user_id: "user-1",
+      nickname: "Alice",
+      type: "like",
+      created_at: "2026-06-10T00:01:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "like-duplicate",
+      post_id: "post-1",
+      user_id: "user-1",
+      nickname: "Alice",
+      type: "like",
+      created_at: "2026-06-10T00:02:00.000Z"
+    });
+    db.addHoshiaPostInteraction({
+      id: "comment-1",
+      post_id: "post-1",
+      user_id: "user-1",
+      nickname: "Alice",
+      type: "comment",
+      content: "菜就多练",
+      created_at: "2026-06-10T00:03:00.000Z"
+    });
+
+    const posts = db.listHoshiaPosts({ characterId: "hoshia", viewerUserId: "user-1" });
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].like_count, 1);
+    assert.equal(posts[0].comment_count, 1);
+    assert.equal(posts[0].liked_by_viewer, true);
+    assert.equal(posts[0].interactions.length, 2);
+
+    db.addHoshiaLifeMemory({
+      id: "memory-1",
+      character_id: "hoshia",
+      user_id: "user-1",
+      type: "event",
+      source: "post_comment",
+      source_id: "comment-1",
+      content: "Alice commented on Hoshia's gaming update: 菜就多练",
+      importance: 0.7,
+      tags: ["gaming", "comment"],
+      created_at: "2026-06-10T00:04:00.000Z"
+    });
+
+    const memories = db.searchHoshiaLifeMemories({
+      characterId: "hoshia",
+      userId: "user-1",
+      query: "今天练了吗 gaming",
+      limit: 5,
+      now: "2026-06-10T00:05:00.000Z"
+    });
+    assert.equal(memories.length, 1);
+    assert.equal(memories[0].source, "post_comment");
+  } finally {
+    cleanup();
+  }
+});
+
 test("user profile and password can be updated", () => {
   const { db, cleanup } = openTempDb();
   try {

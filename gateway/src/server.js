@@ -23,6 +23,26 @@ import { buildRealityContext } from "./reality-context.js";
 import { buildHostLifeContext } from "./host-life-context.js";
 import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import {
+  buildModuleContext,
+  createHoshiaVisualModuleProvider,
+  createHoshiaVisualStateChangedEvent,
+  createMusicModuleProvider,
+  createModuleEventStore,
+  createMusicSongRequestedEvent
+} from "./module-context.js";
+import {
+  createHoshiaVisualStateService,
+  normalizeHoshiaTickWindow,
+  randomHoshiaTickDelayMs
+} from "./hoshia-visual-state.js";
+import {
+  createHoshiaLifeMemoryService,
+  likeInteractionInput,
+  normalizeCommentInput,
+  normalizePostInput,
+  publicPost
+} from "./hoshia-life-memory.js";
+import {
   createProactiveReplyState,
   markUserActivityForProactive,
   nextProactiveDelayMs,
@@ -30,12 +50,6 @@ import {
   shouldRunProactiveReply
 } from "./proactive-reply.js";
 import { MusicService, parseMusicRequestText } from "./music-service.js";
-import {
-  buildModuleContext,
-  createModuleEventStore,
-  createMusicModuleProvider,
-  createMusicSongRequestedEvent
-} from "./module-context.js";
 import {
   buildWelcomeGreetingPrompt,
   fallbackWelcomeGreeting,
@@ -111,9 +125,12 @@ const server = http.createServer(app);
 const store = await createStore();
 const db = openLiveRoomDatabase(config.sqliteDbPath);
 const musicService = new MusicService(config, { store });
+const hoshiaVisualStateService = createHoshiaVisualStateService({ db });
+const hoshiaLifeMemoryService = createHoshiaLifeMemoryService({ db });
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const moduleProviders = [
-  createMusicModuleProvider(musicService)
+  createMusicModuleProvider(musicService),
+  createHoshiaVisualModuleProvider(hoshiaVisualStateService)
 ];
 const sockets = new Map();
 const activeUserConnections = new Map();
@@ -128,6 +145,11 @@ let pendingReplyBatch = [];
 let replyBatchTimer = null;
 let replyBatchRunning = false;
 const proactiveReplyState = createProactiveReplyState();
+const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
+  config.hoshiaStateTickMinMinutes,
+  config.hoshiaStateTickMaxMinutes
+);
+let hoshiaVisualTickTimer = null;
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -311,7 +333,146 @@ app.get("/api/room/state", requireSession, async (_req, res) => {
   res.json({
     room: roomInfo(),
     state: characterState,
+    hoshia_state: hoshiaVisualStateService.publicState(),
     messages: recent
+  });
+});
+
+app.get("/api/hoshia/state", requireSession, async (_req, res) => {
+  res.json({
+    ok: true,
+    state: hoshiaVisualStateService.publicState()
+  });
+});
+
+app.get("/api/hoshia/posts", requireSession, async (req, res) => {
+  res.json({
+    ok: true,
+    posts: db.listHoshiaPosts({
+      characterId: "hoshia",
+      limit: req.query?.limit,
+      viewerUserId: req.session.user_id
+    }).map(publicPost)
+  });
+});
+
+app.post("/api/hoshia/posts", requireSession, async (req, res) => {
+  const now = new Date();
+  const input = normalizePostInput(req.body, now);
+  if (!input) return res.status(400).json({ error: "post_invalid" });
+  const post = db.createHoshiaPost(input);
+  hoshiaLifeMemoryService.recordPost(post);
+  const result = updateHoshiaVisualState({
+    body: {
+      mood: post.mood,
+      activity: post.activity,
+      state_reason: `Hoshia posted a ${post.activity || "daily"} update`
+    },
+    session: req.session,
+    reason: "Hoshia posted an update"
+  });
+  if (result.changed) broadcastHoshiaState(result.state);
+  res.status(201).json({
+    ok: true,
+    post: publicPost({
+      ...post,
+      like_count: 0,
+      comment_count: 0,
+      liked_by_viewer: false,
+      interactions: []
+    })
+  });
+});
+
+app.post("/api/hoshia/posts/:id/like", requireSession, async (req, res) => {
+  const post = db.getHoshiaPost(req.params.id);
+  if (!post) return res.status(404).json({ error: "post_not_found" });
+  const alreadyLiked = db.listHoshiaPostInteractions(post.id)
+    .some((item) => item.type === "like" && item.user_id === req.session.user_id);
+  const interaction = db.addHoshiaPostInteraction({
+    ...likeInteractionInput({
+      postId: post.id,
+      session: req.session,
+      now: new Date()
+    }),
+    post_id: post.id
+  });
+  if (!alreadyLiked) {
+    hoshiaLifeMemoryService.recordInteraction({ post, interaction });
+    const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
+      text: "nice",
+      session: req.session
+    });
+    if (visualUpdate.changed) broadcastHoshiaState(visualUpdate.state);
+  }
+  res.json({
+    ok: true,
+    post: publicPostForViewer(post.id, req.session.user_id)
+  });
+});
+
+app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
+  const post = db.getHoshiaPost(req.params.id);
+  if (!post) return res.status(404).json({ error: "post_not_found" });
+  const input = normalizeCommentInput(req.body, req.session, new Date());
+  if (!input) return res.status(400).json({ error: "comment_invalid" });
+  const interaction = db.addHoshiaPostInteraction({
+    ...input,
+    post_id: post.id
+  });
+  hoshiaLifeMemoryService.recordInteraction({ post, interaction });
+  const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
+    text: input.content,
+    session: req.session
+  });
+  if (visualUpdate.changed) broadcastHoshiaState(visualUpdate.state);
+  res.status(201).json({
+    ok: true,
+    interaction,
+    post: publicPostForViewer(post.id, req.session.user_id)
+  });
+});
+
+app.post("/api/hoshia/state/update", requireSession, async (req, res) => {
+  const result = updateHoshiaVisualState({
+    body: req.body,
+    session: req.session,
+    reason: "manual visual state update"
+  });
+  if (result.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, req.session, {
+      roomId: config.roomId,
+      reason: result.reason,
+      source: "manual"
+    }));
+    broadcastHoshiaState(result.state);
+  }
+  scheduleNextHoshiaVisualTick();
+  res.json({
+    ok: true,
+    changed: result.changed,
+    state: result.state
+  });
+});
+
+app.post("/api/hoshia/state/tick", requireSession, async (req, res) => {
+  const result = tickHoshiaVisualState({
+    reason: String(req.body?.reason || "manual visual tick").slice(0, 80),
+    session: req.session
+  });
+  if (result.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, req.session, {
+      roomId: config.roomId,
+      reason: result.reason,
+      source: "manual_tick"
+    }));
+    broadcastHoshiaState(result.state);
+  }
+  scheduleNextHoshiaVisualTick();
+  res.json({
+    ok: true,
+    changed: result.changed,
+    state: result.state
   });
 });
 
@@ -377,8 +538,14 @@ wss.on("connection", (ws, _req, session) => {
   markUserOnline(session);
   broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
   broadcastAudienceChanged();
-  ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState }));
+  ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState, hoshia_state: hoshiaVisualStateService.publicState() }));
   ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
+  ws.send(JSON.stringify({
+    type: "hoshia_state",
+    room_id: config.roomId,
+    state: hoshiaVisualStateService.publicState(),
+    timestamp: new Date().toISOString()
+  }));
   if (shouldScheduleWelcomeGreeting(session, alreadyOnline)) scheduleWelcomeGreeting(session);
   scheduleProactiveReplyCheck();
 
@@ -416,8 +583,36 @@ const websocketHeartbeat = setInterval(() => {
   }
 }, websocketHeartbeatIntervalMs);
 
+function runScheduledHoshiaVisualTick() {
+  hoshiaVisualTickTimer = null;
+  const result = tickHoshiaVisualState({
+    reason: "scheduled visual state refresh"
+  });
+  if (result.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, null, {
+      roomId: config.roomId,
+      reason: result.reason,
+      source: "scheduled_tick"
+    }));
+    broadcastHoshiaState(result.state);
+  }
+  scheduleNextHoshiaVisualTick();
+}
+
+function scheduleNextHoshiaVisualTick() {
+  if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
+  hoshiaVisualTickTimer = setTimeout(
+    runScheduledHoshiaVisualTick,
+    randomHoshiaTickDelayMs(hoshiaVisualTickWindow)
+  );
+  hoshiaVisualTickTimer.unref?.();
+}
+
+scheduleNextHoshiaVisualTick();
+
 wss.on("close", () => {
   clearInterval(websocketHeartbeat);
+  if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
 });
 
 async function handleDanmaku(session, payload) {
@@ -433,9 +628,27 @@ async function handleDanmaku(session, payload) {
 
   const userMessage = messageEvent("danmaku", "user", text, session);
   await storeMessage(userMessage);
+  hoshiaLifeMemoryService.recordChatInteraction({
+    session,
+    text,
+    messageId: userMessage.id
+  });
   broadcast(userMessage);
   markUserActivityForProactive(proactiveReplyState);
   scheduleProactiveReplyCheck();
+  const visualUpdate = updateHoshiaVisualState({
+    body: { text, session },
+    session,
+    reason: `chat interaction from ${session.nickname}`
+  });
+  if (visualUpdate.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, session, {
+      roomId: config.roomId,
+      reason: visualUpdate.reason,
+      source: "chat"
+    }));
+    broadcastHoshiaState(visualUpdate.state);
+  }
   await setCharacterState(nextCharacterState("user_message", text));
 
   const musicQuery = parseMusicRequestText(text);
@@ -731,7 +944,8 @@ async function handleAiReplyBatch(batch) {
   const batchText = batch.map((item) => item.text).join("\n");
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
   await sleep(450);
-  const prompt = formatLiveRoomBatchPrompt(batch);
+  const lifeMemoryPacket = hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: 6 });
+  const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket);
   const shortTermContext = await buildShortTermAiContext(batch);
   const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
   const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
@@ -1233,7 +1447,7 @@ function roomAiSession(batch) {
   };
 }
 
-function formatLiveRoomBatchPrompt(batch) {
+function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = []) {
   const targets = replyTargets(batch);
   const lines = batch.map((item, index) => {
     const mentionMark = item.mentioned ? " @Hoshia" : "";
@@ -1271,6 +1485,10 @@ function formatLiveRoomBatchPrompt(batch) {
     ] : []),
     ...(hostLifeContextLines.length ? [
       ...hostLifeContextLines
+    ] : []),
+    ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
+      ...lifeMemoryPacket,
+      "这些生活记忆只用于保持同一个 Hoshia 的连续性；不要机械复述，也不要透露数据库或内部字段。"
     ] : []),
     targetInstruction,
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、有直播感，但不要像客服工单回复。",
@@ -1404,6 +1622,50 @@ function broadcastMusicState() {
       ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
     }
   }
+}
+
+function broadcastHoshiaState(state = hoshiaVisualStateService.publicState()) {
+  broadcast({
+    type: "hoshia_state",
+    room_id: config.roomId,
+    state,
+    timestamp: new Date().toISOString()
+  });
+}
+
+function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {
+  if (typeof body.text === "string") {
+    return hoshiaVisualStateService.applyUserInteraction({
+      text: body.text,
+      session
+    });
+  }
+  const payload = {
+    mood: body.mood,
+    activity: body.activity,
+    energy: body.energy,
+    social_need: body.social_need ?? body.socialNeed,
+    state_reason: body.state_reason ?? body.stateReason ?? reason
+  };
+  return hoshiaVisualStateService.update(payload, session);
+}
+
+function tickHoshiaVisualState({ reason = "scheduled visual refresh" } = {}) {
+  return hoshiaVisualStateService.tick({ reason });
+}
+
+function publicPostForViewer(postId, viewerUserId) {
+  return publicPost(db.listHoshiaPosts({
+    characterId: "hoshia",
+    limit: 100,
+    viewerUserId
+  }).find((item) => item.id === postId) || {
+    ...db.getHoshiaPost(postId),
+    like_count: 0,
+    comment_count: 0,
+    liked_by_viewer: false,
+    interactions: db.listHoshiaPostInteractions(postId)
+  });
 }
 
 function sendToSession(userId, payload) {

@@ -1,3 +1,5 @@
+import { visualDescriptionForStagePng } from "./hoshia-visual-state.js";
+
 const DEFAULT_MAX_EVENTS = 80;
 const DEFAULT_RECENT_LIMIT = 24;
 
@@ -85,6 +87,15 @@ export function createMusicModuleProvider(musicService) {
   };
 }
 
+export function createHoshiaVisualModuleProvider(visualStateService) {
+  return {
+    moduleId: "hoshia_visual_state",
+    getCapabilityContext(session) {
+      return buildHoshiaVisualModuleContext(visualStateService, session);
+    }
+  };
+}
+
 export function buildMusicModuleContext(musicService, session) {
   const state = typeof musicService?.publicState === "function"
     ? musicService.publicState(session)
@@ -133,6 +144,44 @@ export function buildMusicModuleContext(musicService, session) {
   });
 }
 
+export function buildHoshiaVisualModuleContext(visualStateService, session) {
+  const state = typeof visualStateService?.publicState === "function"
+    ? visualStateService.publicState(session)
+    : null;
+
+  if (!state) {
+    return sanitizeModuleContext({
+      module_id: "hoshia_visual_state",
+      enabled: false,
+      current_state: ["Hoshia visual state is unavailable."],
+      capabilities: [],
+      limits: ["The stage PNG state could not be loaded."]
+    });
+  }
+
+  return sanitizeModuleContext({
+    module_id: "hoshia_visual_state",
+    enabled: true,
+    current_state: [
+      `Hoshia visual activity: ${cleanText(state.activity, 32)}.`,
+      `Hoshia visual mood: ${cleanText(state.mood, 32)}.`,
+      `Current stage PNG: ${cleanText(assetLabelForPath(state.current_png), 64)}.`,
+      `Self-view description: ${cleanText(state.visual_description || visualDescriptionForStagePng(state.current_png), 180)}.`
+    ],
+    capabilities: [
+      "The room can show a state-driven Hoshia PNG when Live2D is unavailable.",
+      "The visible stage can reflect mood, activity, energy, and social need.",
+      "Hoshia can know her current outfit, pose, expression, props, and stage atmosphere from asset metadata.",
+      "State changes are based on public room activity and scheduled ticks."
+    ],
+    limits: [
+      "Only public-facing visual state is exposed.",
+      "No filesystem paths, tokens, or internal storage details are revealed.",
+      "The module only describes the current stage mood and asset label."
+    ]
+  });
+}
+
 export function createMusicSongRequestedEvent(track, session, {
   roomId = "",
   memoryEligible = false,
@@ -158,6 +207,33 @@ export function createMusicSongRequestedEvent(track, session, {
       title,
       artist,
       source: cleanText(track.source, 40)
+    }
+  });
+}
+
+export function createHoshiaVisualStateChangedEvent(state, session, {
+  roomId = "",
+  reason = "",
+  source = "interaction"
+} = {}) {
+  if (!state) return null;
+  const activity = cleanText(state.activity, 32);
+  const mood = cleanText(state.mood, 32);
+  const summary = cleanText(`Hoshia visual state changed to ${activity}/${mood}`, 240);
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_visual_state",
+    event_type: "hoshia_visual_state.changed",
+    user_id: session?.user_id || "",
+    nickname: cleanText(session?.nickname, 32),
+    summary_hint: summary,
+    memory_eligible: false,
+    retention_days: 7,
+    occurred_at: state.updated_at || new Date().toISOString(),
+    data: {
+      activity,
+      mood,
+      reason: cleanText(reason || source, 64)
     }
   });
 }
@@ -212,11 +288,18 @@ function formatTrackLine(track) {
 
 function sanitizeEventData(data) {
   const allowed = {};
-  for (const key of ["title", "artist", "source"]) {
+  for (const key of ["title", "artist", "source", "activity", "mood", "reason"]) {
     const value = cleanText(data[key], key === "source" ? 40 : 120);
     if (value) allowed[key] = value;
   }
   return allowed;
+}
+
+function assetLabelForPath(path) {
+  const value = cleanText(path, 120);
+  if (!value) return "unknown asset";
+  const match = value.match(/\/([^/]+)\.[a-z0-9]+$/i);
+  return match ? match[1] : value;
 }
 
 function cleanList(value, maxItems, maxLength) {

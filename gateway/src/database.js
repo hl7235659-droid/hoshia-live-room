@@ -60,6 +60,82 @@ export function openLiveRoomDatabase(databasePath) {
       coverage_end_timestamp TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS hoshia_state (
+      character_id TEXT PRIMARY KEY,
+      mood TEXT NOT NULL,
+      activity TEXT NOT NULL,
+      energy INTEGER NOT NULL,
+      social_need INTEGER NOT NULL,
+      current_png TEXT NOT NULL,
+      state_reason TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS hoshia_posts (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      image_url TEXT,
+      mood TEXT,
+      activity TEXT,
+      source_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hoshia_posts_recent
+      ON hoshia_posts(character_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS hoshia_post_interactions (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL REFERENCES hoshia_posts(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      nickname TEXT,
+      type TEXT NOT NULL,
+      content TEXT,
+      parent_interaction_id TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hoshia_post_interactions_post
+      ON hoshia_post_interactions(post_id, created_at ASC, id ASC);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hoshia_post_likes_unique
+      ON hoshia_post_interactions(post_id, user_id, type)
+      WHERE type = 'like';
+
+    CREATE TABLE IF NOT EXISTS hoshia_life_memories (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL,
+      user_id TEXT,
+      type TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_id TEXT,
+      content TEXT NOT NULL,
+      importance REAL NOT NULL DEFAULT 0.5,
+      emotion TEXT,
+      tags_json TEXT,
+      created_at TEXT NOT NULL,
+      last_accessed_at TEXT,
+      expires_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hoshia_life_memories_lookup
+      ON hoshia_life_memories(character_id, user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS user_character_profiles (
+      user_id TEXT NOT NULL,
+      character_id TEXT NOT NULL,
+      familiarity INTEGER NOT NULL DEFAULT 0,
+      trust INTEGER NOT NULL DEFAULT 0,
+      teasing_level INTEGER NOT NULL DEFAULT 0,
+      preferred_topics TEXT,
+      interaction_style TEXT,
+      summary TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, character_id)
+    );
   `);
   migrateUsersTable(db);
   return new LiveRoomDatabase(db);
@@ -352,6 +428,330 @@ export class LiveRoomDatabase {
     return this.getRoomContextSummary(roomId);
   }
 
+  getHoshiaState(characterId = "hoshia") {
+    return this.db.prepare(`
+      SELECT character_id, mood, activity, energy, social_need, current_png, state_reason, updated_at
+      FROM hoshia_state
+      WHERE character_id = ?
+    `).get(characterId) || null;
+  }
+
+  upsertHoshiaState({
+    character_id,
+    mood,
+    activity,
+    energy,
+    social_need,
+    current_png,
+    state_reason,
+    updated_at
+  }) {
+    this.db.prepare(`
+      INSERT INTO hoshia_state (
+        character_id,
+        mood,
+        activity,
+        energy,
+        social_need,
+        current_png,
+        state_reason,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(character_id) DO UPDATE SET
+        mood = excluded.mood,
+        activity = excluded.activity,
+        energy = excluded.energy,
+        social_need = excluded.social_need,
+        current_png = excluded.current_png,
+        state_reason = excluded.state_reason,
+        updated_at = excluded.updated_at
+    `).run(
+      character_id,
+      mood,
+      activity,
+      energy,
+      social_need,
+      current_png,
+      state_reason,
+      updated_at
+    );
+    return this.getHoshiaState(character_id);
+  }
+
+  createHoshiaPost({
+    id,
+    character_id = "hoshia",
+    content,
+    image_url = "",
+    mood = "",
+    activity = "",
+    source_type = "manual",
+    created_at = new Date().toISOString(),
+    updated_at = created_at
+  }) {
+    this.db.prepare(`
+      INSERT INTO hoshia_posts (
+        id,
+        character_id,
+        content,
+        image_url,
+        mood,
+        activity,
+        source_type,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      character_id,
+      content,
+      image_url || null,
+      mood || null,
+      activity || null,
+      source_type,
+      created_at,
+      updated_at
+    );
+    return this.getHoshiaPost(id);
+  }
+
+  getHoshiaPost(postId) {
+    return this.db.prepare(`
+      SELECT id, character_id, content, image_url, mood, activity, source_type, created_at, updated_at
+      FROM hoshia_posts
+      WHERE id = ?
+    `).get(postId) || null;
+  }
+
+  listHoshiaPosts({ characterId = "hoshia", limit = 20, viewerUserId = "" } = {}) {
+    const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 20), 100));
+    const rows = this.db.prepare(`
+      SELECT
+        post.id,
+        post.character_id,
+        post.content,
+        COALESCE(post.image_url, '') AS image_url,
+        COALESCE(post.mood, '') AS mood,
+        COALESCE(post.activity, '') AS activity,
+        post.source_type,
+        post.created_at,
+        post.updated_at,
+        COALESCE(SUM(CASE WHEN interaction.type = 'like' THEN 1 ELSE 0 END), 0) AS like_count,
+        COALESCE(SUM(CASE WHEN interaction.type = 'comment' THEN 1 ELSE 0 END), 0) AS comment_count,
+        COALESCE(MAX(CASE WHEN interaction.type = 'like' AND interaction.user_id = ? THEN 1 ELSE 0 END), 0) AS liked_by_viewer
+      FROM hoshia_posts post
+      LEFT JOIN hoshia_post_interactions interaction ON interaction.post_id = post.id
+      WHERE post.character_id = ?
+      GROUP BY post.id
+      ORDER BY datetime(post.created_at) DESC, post.id DESC
+      LIMIT ?
+    `).all(viewerUserId || "", characterId, safeLimit);
+    return rows.map((row) => ({
+      ...row,
+      like_count: Number(row.like_count || 0),
+      comment_count: Number(row.comment_count || 0),
+      liked_by_viewer: Boolean(row.liked_by_viewer),
+      interactions: this.listHoshiaPostInteractions(row.id)
+    }));
+  }
+
+  addHoshiaPostInteraction({
+    id,
+    post_id,
+    user_id,
+    nickname = "",
+    type,
+    content = "",
+    parent_interaction_id = "",
+    created_at = new Date().toISOString()
+  }) {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO hoshia_post_interactions (
+        id,
+        post_id,
+        user_id,
+        nickname,
+        type,
+        content,
+        parent_interaction_id,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      post_id,
+      user_id,
+      nickname || null,
+      type,
+      content || null,
+      parent_interaction_id || null,
+      created_at
+    );
+    return this.getHoshiaPostInteraction(id) || (type === "like"
+      ? this.db.prepare(`
+        SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, created_at
+        FROM hoshia_post_interactions
+        WHERE post_id = ? AND user_id = ? AND type = 'like'
+        LIMIT 1
+      `).get(post_id, user_id)
+      : null);
+  }
+
+  getHoshiaPostInteraction(id) {
+    return this.db.prepare(`
+      SELECT id, post_id, user_id, nickname, type, content, parent_interaction_id, created_at
+      FROM hoshia_post_interactions
+      WHERE id = ?
+    `).get(id) || null;
+  }
+
+  listHoshiaPostInteractions(postId) {
+    return this.db.prepare(`
+      SELECT id, post_id, user_id, COALESCE(nickname, '') AS nickname, type, COALESCE(content, '') AS content, COALESCE(parent_interaction_id, '') AS parent_interaction_id, created_at
+      FROM hoshia_post_interactions
+      WHERE post_id = ?
+      ORDER BY datetime(created_at) ASC, id ASC
+    `).all(postId);
+  }
+
+  addHoshiaLifeMemory({
+    id,
+    character_id = "hoshia",
+    user_id = "",
+    type = "event",
+    source = "system",
+    source_id = "",
+    content,
+    importance = 0.5,
+    emotion = "",
+    tags = [],
+    created_at = new Date().toISOString(),
+    last_accessed_at = null,
+    expires_at = null
+  }) {
+    this.db.prepare(`
+      INSERT INTO hoshia_life_memories (
+        id,
+        character_id,
+        user_id,
+        type,
+        source,
+        source_id,
+        content,
+        importance,
+        emotion,
+        tags_json,
+        created_at,
+        last_accessed_at,
+        expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      character_id,
+      user_id || null,
+      type,
+      source,
+      source_id || null,
+      content,
+      Math.max(0, Math.min(Number(importance) || 0.5, 1)),
+      emotion || null,
+      JSON.stringify(Array.isArray(tags) ? tags : []),
+      created_at,
+      last_accessed_at,
+      expires_at
+    );
+    return this.getHoshiaLifeMemory(id);
+  }
+
+  getHoshiaLifeMemory(id) {
+    const row = this.db.prepare(`
+      SELECT id, character_id, user_id, type, source, source_id, content, importance, emotion, tags_json, created_at, last_accessed_at, expires_at
+      FROM hoshia_life_memories
+      WHERE id = ?
+    `).get(id);
+    return row ? normalizeLifeMemoryRow(row) : null;
+  }
+
+  searchHoshiaLifeMemories({
+    characterId = "hoshia",
+    userId = "",
+    query = "",
+    sourceFilter = "",
+    limit = 8,
+    now = new Date().toISOString()
+  } = {}) {
+    const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 8), 50));
+    const terms = memorySearchTerms(query);
+    const rows = this.db.prepare(`
+      SELECT id, character_id, user_id, type, source, source_id, content, importance, emotion, tags_json, created_at, last_accessed_at, expires_at
+      FROM hoshia_life_memories
+      WHERE character_id = ?
+        AND (? = '' OR user_id IS NULL OR user_id = ?)
+        AND (? = '' OR source = ?)
+        AND (expires_at IS NULL OR expires_at > ?)
+      ORDER BY importance DESC, datetime(created_at) DESC, id DESC
+      LIMIT 80
+    `).all(characterId, userId || "", userId || "", sourceFilter || "", sourceFilter || "", now);
+    return rows
+      .map(normalizeLifeMemoryRow)
+      .map((memory) => ({ ...memory, match_score: scoreMemory(memory, terms) }))
+      .filter((memory) => !terms.length || memory.match_score > 0)
+      .sort((a, b) => b.match_score - a.match_score || b.importance - a.importance || b.created_at.localeCompare(a.created_at))
+      .slice(0, safeLimit);
+  }
+
+  upsertUserCharacterProfile({
+    user_id,
+    character_id = "hoshia",
+    familiarity = 0,
+    trust = 0,
+    teasing_level = 0,
+    preferred_topics = "",
+    interaction_style = "",
+    summary = "",
+    updated_at = new Date().toISOString()
+  }) {
+    this.db.prepare(`
+      INSERT INTO user_character_profiles (
+        user_id,
+        character_id,
+        familiarity,
+        trust,
+        teasing_level,
+        preferred_topics,
+        interaction_style,
+        summary,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, character_id) DO UPDATE SET
+        familiarity = excluded.familiarity,
+        trust = excluded.trust,
+        teasing_level = excluded.teasing_level,
+        preferred_topics = excluded.preferred_topics,
+        interaction_style = excluded.interaction_style,
+        summary = excluded.summary,
+        updated_at = excluded.updated_at
+    `).run(
+      user_id,
+      character_id,
+      Math.max(0, Math.min(Math.floor(Number(familiarity) || 0), 100)),
+      Math.max(0, Math.min(Math.floor(Number(trust) || 0), 100)),
+      Math.max(0, Math.min(Math.floor(Number(teasing_level) || 0), 100)),
+      preferred_topics || null,
+      interaction_style || null,
+      summary || null,
+      updated_at
+    );
+    return this.getUserCharacterProfile(user_id, character_id);
+  }
+
+  getUserCharacterProfile(userId, characterId = "hoshia") {
+    return this.db.prepare(`
+      SELECT user_id, character_id, familiarity, trust, teasing_level, preferred_topics, interaction_style, summary, updated_at
+      FROM user_character_profiles
+      WHERE user_id = ? AND character_id = ?
+    `).get(userId, characterId) || null;
+  }
+
   pruneRoomMessages(roomId, keep = 500) {
     this.db.prepare(`
       DELETE FROM room_messages
@@ -383,6 +783,45 @@ function compactContextMessage(row) {
     timestamp: row.timestamp,
     created_at: row.created_at
   };
+}
+
+function normalizeLifeMemoryRow(row) {
+  return {
+    ...row,
+    user_id: row.user_id || "",
+    source_id: row.source_id || "",
+    importance: Number(row.importance || 0),
+    emotion: row.emotion || "",
+    tags: parseTags(row.tags_json),
+    last_accessed_at: row.last_accessed_at || "",
+    expires_at: row.expires_at || ""
+  };
+}
+
+function parseTags(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.map((item) => String(item).slice(0, 40)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function memorySearchTerms(query) {
+  return String(query || "")
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：#]+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+    .slice(0, 12);
+}
+
+function scoreMemory(memory, terms) {
+  const base = Number(memory.importance || 0) * 10;
+  if (!terms.length) return base + 1;
+  const haystack = `${memory.content} ${memory.emotion} ${memory.tags.join(" ")}`.toLowerCase();
+  const hits = terms.filter((term) => haystack.includes(term)).length;
+  return hits * 20 + base;
 }
 
 export class DatabaseError extends Error {
