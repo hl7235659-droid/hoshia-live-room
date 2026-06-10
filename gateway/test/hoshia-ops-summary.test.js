@@ -9,7 +9,7 @@ test("ops summary returns current counts and safe state details", () => {
         return {
           day_key: "20260611",
           total: 4,
-          by_source: { daily_state: 1, state_pulse: 3 }
+          by_source: { daily_state: 1, state_pulse: 3, daily_news: 1 }
         };
       },
       countHoshiaRepliesForDay() {
@@ -29,7 +29,16 @@ test("ops summary returns current counts and safe state details", () => {
       updated_at: "2026-06-11T00:00:00.000Z",
       current_png: "/assets/hoshia/stage-png/sleepy_sleepy_01.png"
     },
+    newsStatus: {
+      enabled: true,
+      running: true,
+      stage: "memory_writing",
+      topic_count: 3,
+      recent_titles: ["Open source desktop workflow improves", "Creator tool release notes"],
+      recent_signal: "Light tech topics are fresh"
+    },
     config: {
+      hoshiaNewsEnabled: true,
       hoshiaDailyPostEnabled: true,
       hoshiaDailyPostMin: 1,
       hoshiaDailyPostMax: 5,
@@ -58,6 +67,15 @@ test("ops summary returns current counts and safe state details", () => {
   assert.equal(summary.visual_state.activity, "idle");
   assert.equal(summary.visual_state.current_png, undefined);
   assert.match(summary.state_summary, /idle\/sleepy/);
+  assert.deepEqual(summary.news, {
+    enabled: true,
+    running: true,
+    stage: "memory_writing",
+    topic_count: 3,
+    recent_titles: ["Open source desktop workflow improves", "Creator tool release notes"],
+    recent_signal: "Light tech topics are fresh",
+    news_post_count_today: 1
+  });
   assert.equal(summary.limits.daily_max, 5);
   assert.equal(summary.limits.comment_reply_daily_limit, 20);
 });
@@ -90,4 +108,46 @@ test("ops summary strips sensitive values from state summary output", () => {
   assert.equal(summary.visual_state.visual_description, "");
   assert.equal(summary.visual_state.state_reason, "");
   assert.doesNotMatch(JSON.stringify(summary), /token=|localhost|E:\\\\secret|\.env/i);
+});
+
+test("ops summary news block keeps compatibility and strips sensitive details", () => {
+  const summary = buildHoshiaOpsSummary({
+    db: {
+      countHoshiaPostsForDay() {
+        return { day_key: "20260611", total: 2, by_source: { hoshia_news: 2 } };
+      },
+      countHoshiaRepliesForDay() {
+        return { day_key: "20260611", total: 0 };
+      },
+      countHoshiaCommentReplyStatuses() {
+        return {};
+      }
+    },
+    newsStatus: {
+      enabled: true,
+      running: false,
+      stage: "done",
+      topic_count: 9,
+      recent_titles: [
+        "Safe public title",
+        "https://example.com/private/rss?token=secret",
+        "RSSHub private route /private/feed",
+        "Tavily api_key=secret",
+        "loaded from C:\\secret\\.env",
+        "internal host 192.168.1.20"
+      ],
+      recent_signal: "http://localhost:1200/rsshub token=secret"
+    },
+    config: { hoshiaNewsEnabled: true },
+    now: "2026-06-11T02:00:00.000Z"
+  });
+
+  assert.equal(summary.news.enabled, true);
+  assert.equal(summary.news.running, false);
+  assert.equal(summary.news.stage, "done");
+  assert.equal(summary.news.topic_count, 9);
+  assert.deepEqual(summary.news.recent_titles, ["Safe public title"]);
+  assert.equal(summary.news.recent_signal, "");
+  assert.equal(summary.news.news_post_count_today, 2);
+  assert.doesNotMatch(JSON.stringify(summary.news), /https?:\/\/|token|\.env|C:\\\\|192\.168\.1\.20|rsshub|tavily|localhost/i);
 });

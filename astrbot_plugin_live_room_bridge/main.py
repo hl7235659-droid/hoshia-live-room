@@ -147,7 +147,7 @@ class LiveRoomBridgePlugin(Star):
         if request["method"] == "GET" and request["path"] == "/healthz":
             return HTTPStatus.OK, {"ok": True, "service": "astrbot_plugin_live_room_bridge"}
 
-        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/capabilities/news/refresh", "/live-room/capabilities/news/status", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
+        if request["method"] != "POST" or request["path"] not in {"/live-room/generate", "/live-room/news", "/live-room/capabilities/news/refresh", "/live-room/capabilities/news/status", "/live-room/capabilities/news/topics", "/live-room/context/summarize", "/live-room/memory/debug-recall", "/live-room/music/intent"}:
             return HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"}
 
         if not self.bridge_token:
@@ -166,6 +166,8 @@ class LiveRoomBridgePlugin(Star):
             return await self._handle_news_refresh(payload)
         if request["path"] == "/live-room/capabilities/news/status":
             return HTTPStatus.OK, self._news_refresh_status_payload()
+        if request["path"] == "/live-room/capabilities/news/topics":
+            return await self._handle_news_topics(payload)
         if request["path"] == "/live-room/context/summarize":
             return await self._handle_context_summarize(payload)
         if request["path"] == "/live-room/memory/debug-recall":
@@ -1445,7 +1447,8 @@ Rules:
             prompt=self._build_news_topic_editor_prompt(date, items),
             system_prompt=(
                 "You are Hoshia's live-room topic editor. Return ONLY valid JSON. "
-                "Do not invent facts, copy full articles, expose URLs, credentials, tokens, or internal service details."
+                "Identify meme context and safe live-room hooks, but do not pretend to know memes you cannot infer. "
+                "Do not invent facts, copy full articles, store raw long content, expose URLs, credentials, tokens, or internal service details."
             ),
         )
         data = _extract_json(str(getattr(llm_response, "completion_text", "") or ""))
@@ -1480,8 +1483,13 @@ Rules:
 - Hoshia 可以有鲜明观点，但要区分“大家在聊”和“事实已确认”。
 - 每条都要能自然变成朋友直播间里的开场或接话，不要像新闻播报。
 - Hoshia 的看法要像朋友吐槽/主播锐评，不要像媒体评论员；适合大学生听，不端着。
+- 识别流行梗、二创点、适用语境和 Hoshia 式接法；如果看不出梗，不要硬装懂，可以写“暂时不适合玩梗”。
+- 不要复读热搜标题。每条要提炼成短话题卡，不保存原始长内容、原文链接、内部地址或抓取日志。
 - 高风险话题可以保留，但 risk_note 要提醒不要给医疗、投资、法律、安全等具体建议。
 - conversation_starter 要是自然口语问题。
+- meme_hooks 是可轻轻带一下的梗点/吐槽角度，最多 4 条；reply_hooks 是观众回复后 Hoshia 可接的短句方向，最多 4 条。
+- reaction_style 是 Hoshia 的反应风格，例如“轻吐槽”“装作冷静但破防”“认真提醒一下”；state_signal 是适合用来判断直播间状态的短信号。
+- post_seed 是可以改写成动态/短帖的一句话，不要包含链接或原文引用。
 
 输入热点：
 {chr(10).join(lines)}
@@ -1496,6 +1504,11 @@ Rules:
       "why_it_matters": "为什么适合聊",
       "hoshia_take": "Hoshia 鲜明但不乱断言的看法",
       "conversation_starter": "可以抛给观众的问题",
+      "meme_hooks": ["梗点或吐槽角度"],
+      "reaction_style": "Hoshia 接这个话题时的反应风格",
+      "state_signal": "适合什么直播间气氛/观众状态时使用",
+      "post_seed": "可改写成短帖/动态的一句话",
+      "reply_hooks": ["观众回复后可以怎么接"],
       "risk_note": "边界提醒",
       "tags": ["标签"]
     }}
@@ -1512,6 +1525,7 @@ Rules:
             what = self._clean_news_text(item.get("what_happened"), 260)
             take = self._clean_news_text(item.get("hoshia_take"), 260)
             starter = self._clean_news_text(item.get("conversation_starter"), 180)
+            post_seed = self._clean_news_text(item.get("post_seed"), 180)
             if not title or not what or not take:
                 continue
             category = str(item.get("category", "general")).strip().lower()
@@ -1524,6 +1538,11 @@ Rules:
                 "why_it_matters": self._clean_news_text(item.get("why_it_matters"), 220),
                 "hoshia_take": take,
                 "conversation_starter": starter,
+                "meme_hooks": self._clean_text_list(item.get("meme_hooks", []), limit=4),
+                "reaction_style": self._clean_news_text(item.get("reaction_style"), 120),
+                "state_signal": self._clean_news_text(item.get("state_signal"), 160),
+                "post_seed": post_seed,
+                "reply_hooks": self._clean_text_list(item.get("reply_hooks", []), limit=4),
                 "risk_note": self._clean_news_text(item.get("risk_note"), 180),
                 "tags": self._clean_text_list(item.get("tags", []), limit=6),
             })
@@ -1538,8 +1557,9 @@ Rules:
             if await self._is_duplicate_news_memory(engine, content, session_id):
                 continue
             try:
+                topic_card = self._safe_news_topic_card(topic, date)
                 await engine.add_memory(
-                    content=content[:900],
+                    content=content[:1200],
                     session_id=session_id,
                     persona_id=self.livingmemory_persona_id,
                     importance=0.46,
@@ -1549,6 +1569,7 @@ Rules:
                         "date": date,
                         "category": topic.get("category", "general"),
                         "topics": topic.get("tags", []),
+                        "topic_card": topic_card,
                         "retention_days": self.livingmemory_news_retention_days,
                     },
                 )
@@ -1572,6 +1593,18 @@ Rules:
         lines.append(f"Hoshia 的看法：{topic.get('hoshia_take', '')}")
         if topic.get("conversation_starter"):
             lines.append(f"可以抛给观众：{topic.get('conversation_starter')}")
+        meme_hooks = "；".join(topic.get("meme_hooks", []))
+        if meme_hooks:
+            lines.append(f"梗点/吐槽角度：{meme_hooks}")
+        if topic.get("reaction_style"):
+            lines.append(f"Hoshia 接法：{topic.get('reaction_style')}")
+        if topic.get("state_signal"):
+            lines.append(f"适用状态：{topic.get('state_signal')}")
+        if topic.get("post_seed"):
+            lines.append(f"短帖种子：{topic.get('post_seed')}")
+        reply_hooks = "；".join(topic.get("reply_hooks", []))
+        if reply_hooks:
+            lines.append(f"回复接法：{reply_hooks}")
         if topic.get("risk_note"):
             lines.append(f"边界：{topic.get('risk_note')}")
         tags = "、".join(topic.get("tags", []))
@@ -1599,6 +1632,145 @@ Rules:
             if existing and (candidate == existing or SequenceMatcher(None, candidate[:400], existing[:400]).ratio() >= 0.88):
                 return True
         return False
+
+    async def _handle_news_topics(self, payload: dict[str, Any]):
+        if not self.news_capability_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "news_capability_disabled"}
+        if not self.livingmemory_enabled:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_disabled"}
+        engine = self._livingmemory_engine()
+        if not engine:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "livingmemory_unavailable"}
+
+        room_id = str(payload.get("room_id", self.news_room_id)).strip() or self.news_room_id
+        try:
+            limit = max(1, min(int(payload.get("limit", 8)), 20))
+        except (TypeError, ValueError):
+            limit = 8
+
+        try:
+            await self._cleanup_expired_news_memories(engine, room_id)
+            topics = await self._read_safe_news_topic_cards(engine, room_id, limit)
+            return HTTPStatus.OK, {
+                "ok": True,
+                "capability": "news_topics",
+                "room_id": room_id,
+                "count": len(topics),
+                "topics": topics,
+            }
+        except Exception as exc:
+            logger.warning(f"[live-room-bridge] news topics read failed: {exc}")
+            return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "news_topics_read_failed"}
+
+    async def _read_safe_news_topic_cards(self, engine: Any, room_id: str, limit: int) -> list[dict[str, Any]]:
+        session_id = self._news_session_id(room_id)
+        storage = getattr(getattr(engine, "faiss_db", None), "document_storage", None)
+        candidates: list[dict[str, Any]] = []
+
+        if storage:
+            offset = 0
+            supports_offset = True
+            while len(candidates) < limit * 3:
+                try:
+                    if supports_offset:
+                        docs = await storage.get_documents(
+                            metadata_filters={"session_id": session_id},
+                            limit=100,
+                            offset=offset,
+                        )
+                    else:
+                        docs = await storage.get_documents(
+                            metadata_filters={"session_id": session_id},
+                            limit=100,
+                        )
+                except TypeError:
+                    supports_offset = False
+                    docs = await storage.get_documents(
+                        metadata_filters={"session_id": session_id},
+                        limit=100,
+                    )
+                if not docs:
+                    break
+                for doc in docs:
+                    card = self._safe_news_topic_card_from_memory(doc)
+                    if card:
+                        candidates.append(card)
+                if len(docs) < 100:
+                    break
+                if not supports_offset:
+                    break
+                offset += len(docs)
+        else:
+            memories = await engine.search_memories(
+                query="每日话题 热点 梗 接话",
+                k=max(limit * 2, self.livingmemory_recall_k),
+                session_id=session_id,
+                persona_id=self.livingmemory_persona_id,
+            )
+            for memory in memories or []:
+                card = self._safe_news_topic_card_from_memory(memory)
+                if card:
+                    candidates.append(card)
+
+        candidates.sort(key=lambda item: str(item.get("date", "")), reverse=True)
+        return candidates[:limit]
+
+    def _safe_news_topic_card_from_memory(self, memory: Any) -> dict[str, Any] | None:
+        metadata = self._memory_metadata(memory)
+        if metadata.get("source") != "daily_news" or self._news_memory_expired(metadata):
+            return None
+        raw_card = metadata.get("topic_card")
+        if not isinstance(raw_card, dict):
+            return None
+        card = self._safe_news_topic_card(raw_card, str(metadata.get("date", "")).strip()[:32])
+        return card if card.get("title") and card.get("what_happened") and card.get("hoshia_take") else None
+
+    def _safe_news_topic_card(self, topic: dict[str, Any], date: str = "") -> dict[str, Any]:
+        category = str(topic.get("category", "general")).strip().lower()
+        if category not in {"general", "tech_ai", "entertainment", "business", "life"}:
+            category = "general"
+        return {
+            "date": self._clean_news_card_text(date or topic.get("date"), 32),
+            "title": self._clean_news_card_text(topic.get("title"), 80),
+            "category": category,
+            "what_happened": self._clean_news_card_text(topic.get("what_happened"), 260),
+            "why_it_matters": self._clean_news_card_text(topic.get("why_it_matters"), 220),
+            "hoshia_take": self._clean_news_card_text(topic.get("hoshia_take"), 260),
+            "conversation_starter": self._clean_news_card_text(topic.get("conversation_starter"), 180),
+            "meme_hooks": self._clean_news_card_list(topic.get("meme_hooks", []), limit=4),
+            "reaction_style": self._clean_news_card_text(topic.get("reaction_style"), 120),
+            "state_signal": self._clean_news_card_text(topic.get("state_signal"), 160),
+            "post_seed": self._clean_news_card_text(topic.get("post_seed"), 180),
+            "reply_hooks": self._clean_news_card_list(topic.get("reply_hooks", []), limit=4),
+            "risk_note": self._clean_news_card_text(topic.get("risk_note"), 180),
+            "tags": self._clean_news_card_list(topic.get("tags", []), limit=6),
+        }
+
+    def _clean_news_card_text(self, value: Any, limit: int) -> str:
+        text = self._clean_news_text(value, limit)
+        if not text:
+            return ""
+        unsafe = (
+            r"https?://|www\.|rsshub|tavily|localhost|127\.0\.0\.1|0\.0\.0\.0|"
+            r"\b\d{1,3}(?:\.\d{1,3}){3}\b|[A-Za-z]:\\|(?:^|\s)/(?:home|root|var|etc|tmp|mnt|opt)/"
+        )
+        if re.search(unsafe, text, re.IGNORECASE):
+            return ""
+        return text
+
+    def _clean_news_card_list(self, value: Any, limit: int) -> list[str]:
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            return []
+        items: list[str] = []
+        for item in value:
+            text = self._clean_news_card_text(item, 80)
+            if text:
+                items.append(text)
+            if len(items) >= limit:
+                break
+        return items
 
     async def _handle_context_summarize(self, payload: dict[str, Any]):
         room_id = str(payload.get("room_id", "live-room")).strip() or "live-room"

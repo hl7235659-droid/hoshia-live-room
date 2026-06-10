@@ -7,6 +7,7 @@ import { openLiveRoomDatabase } from "../src/database.js";
 import {
   createHoshiaVisualStateService,
   hoshiaStagePngAssets,
+  normalizeHoshiaNewsSignal,
   normalizeHoshiaTickWindow,
   randomHoshiaTickDelayMs,
   selectAssetForState,
@@ -79,6 +80,55 @@ test("viewer topic does not directly switch activity mood or PNG", () => {
   } finally {
     cleanup();
   }
+});
+
+test("news signal does not directly switch PNG and only affects state on tick", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-10T10:00:00.000Z");
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => now
+    });
+
+    const before = service.publicState();
+    const signal = service.applyNewsSignal({
+      activity_hint: "happy",
+      mood_hint: "playful",
+      energy_delta: 20,
+      social_need_delta: -10,
+      expires_at: "2026-06-10T11:00:00.000Z",
+      reason: "light news topic reaction"
+    });
+    const afterSignal = service.publicState();
+
+    assert.equal(signal.accepted, true);
+    assert.equal(signal.changed, false);
+    assert.equal(afterSignal.activity, before.activity);
+    assert.equal(afterSignal.mood, before.mood);
+    assert.equal(afterSignal.energy, before.energy);
+    assert.equal(afterSignal.current_png, before.current_png);
+
+    const ticked = service.tick({
+      now: new Date("2026-06-10T10:10:00.000Z"),
+      reason: "scheduled visual refresh"
+    });
+
+    assert.equal(ticked.state.activity, "happy");
+    assert.equal(ticked.state.mood, "playful");
+    assert.ok(ticked.state.energy > before.energy);
+    assert.notEqual(ticked.state.current_png, before.current_png);
+  } finally {
+    cleanup();
+  }
+});
+
+test("expired news signal is rejected before it can affect visual state", () => {
+  assert.equal(normalizeHoshiaNewsSignal({
+    activity_hint: "happy",
+    energy_delta: 20,
+    expires_at: "2026-06-10T09:00:00.000Z"
+  }, new Date("2026-06-10T10:00:00.000Z")), null);
 });
 
 test("scheduled tick applies late-night rhythm and unmet social need", () => {

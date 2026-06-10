@@ -119,6 +119,56 @@ export async function summarizeLiveRoomContext(options, payload, fetchImpl = glo
   }
 }
 
+export async function refreshNewsTopics(options, payload = {}, fetchImpl = globalThis.fetch) {
+  const body = await requestAstrBotJson(
+    options,
+    "/live-room/capabilities/news/refresh",
+    {
+      room_id: options.roomId,
+      force: Boolean(payload?.force),
+      reason: String(payload?.reason || "gateway_manual").slice(0, 80)
+    },
+    fetchImpl,
+    "astrbot_news_refresh"
+  );
+  if (!body?.ok) {
+    throw new Error(`astrbot_news_refresh_${body?.error || "failed"}`);
+  }
+  return body;
+}
+
+export async function getNewsRefreshStatus(options, payload = {}, fetchImpl = globalThis.fetch) {
+  return requestAstrBotJson(
+    options,
+    "/live-room/capabilities/news/status",
+    {
+      room_id: options.roomId,
+      include_recent: payload?.includeRecent !== false
+    },
+    fetchImpl,
+    "astrbot_news_status"
+  );
+}
+
+export async function listNewsTopics(options, payload = {}, fetchImpl = globalThis.fetch) {
+  const limit = Math.max(1, Math.min(Number(payload?.limit) || 10, 30));
+  const body = await requestAstrBotJson(
+    options,
+    "/live-room/capabilities/news/topics",
+    {
+      room_id: options.roomId,
+      query: String(payload?.query || "daily news topics").slice(0, 200),
+      limit
+    },
+    fetchImpl,
+    "astrbot_news_topics"
+  );
+  if (!body?.ok) {
+    throw new Error(`astrbot_news_topics_${body?.error || "failed"}`);
+  }
+  return body;
+}
+
 export async function recognizeMusicIntent(session, text, options, fetchImpl = globalThis.fetch, metadata = {}) {
   if (options.aiMode !== "astrbot") return noneMusicIntent("ai_mode_not_astrbot");
   if (!fetchImpl || !options.astrbotBridgeUrl || !options.astrbotBridgeToken) {
@@ -157,6 +207,35 @@ export async function recognizeMusicIntent(session, text, options, fetchImpl = g
       message: error.message
     });
     return noneMusicIntent("music_intent_failed");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestAstrBotJson(options, pathname, body, fetchImpl, errorPrefix) {
+  if (!fetchImpl) throw new Error("fetch_unavailable");
+  if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
+  if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+
+  try {
+    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, pathname), {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`${errorPrefix}_http_${response.status}`);
+    }
+
+    return response.json();
   } finally {
     clearTimeout(timeout);
   }

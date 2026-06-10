@@ -2,11 +2,12 @@ import { dayKeyFor } from "./hoshia-daily-post.js";
 
 const characterId = "hoshia";
 const defaultTimeZone = "Asia/Shanghai";
-const sensitivePattern = /(?:\.env|token=|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|cloudflared|trycloudflare|[A-Za-z]:[\\/]|\/home\/ubuntu|\b\d{1,3}(?:\.\d{1,3}){3}\b|https?:\/\/(?:localhost|127\.0\.0\.1|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.))/i;
+const sensitivePattern = /(?:https?:\/\/|www\.|\.env\b|token\b|api[_-]?key|authorization:|bearer\s+|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|rsshub|tavily|cloudflared|trycloudflare|localhost|[A-Za-z]:[\\/]|\/home\/ubuntu|\/app\/data|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i;
 
 export function buildHoshiaOpsSummary({
   db,
   visualState = null,
+  newsStatus = null,
   config = {},
   now = new Date(),
   timeZone = defaultTimeZone,
@@ -25,6 +26,17 @@ export function buildHoshiaOpsSummary({
     ? db.countHoshiaCommentReplyStatuses({ characterId: targetCharacterId })
     : {};
   const safeState = sanitizeVisualState(visualState);
+  const safeNews = sanitizeNewsStatus({
+    status: newsStatus,
+    config,
+    newsPostCountToday: Number(
+      postCounts.by_source?.daily_news
+      || postCounts.by_source?.hoshia_news
+      || postCounts.by_source?.news
+      || postCounts.by_source?.news_topic
+      || 0
+    )
+  });
 
   return {
     day_key: currentDayKey,
@@ -37,6 +49,7 @@ export function buildHoshiaOpsSummary({
     skipped_comment_count: Number(replyStatusCounts.skipped || 0),
     visual_state: safeState,
     state_summary: stateSummaryFor(safeState),
+    news: safeNews,
     limits: {
       daily_post_enabled: Boolean(config.hoshiaDailyPostEnabled),
       daily_min: Number(config.hoshiaDailyPostMin || 0),
@@ -55,15 +68,36 @@ export function buildHoshiaOpsSummary({
   };
 }
 
-function sanitizeVisualState(input = {}) {
+function sanitizeNewsStatus({ status = {}, config = {}, newsPostCountToday = 0 } = {}) {
+  const raw = status && typeof status === "object" ? status : {};
+  const recentTitles = Array.isArray(raw.recent_titles)
+    ? raw.recent_titles
+    : Array.isArray(raw.recentTitles)
+      ? raw.recentTitles
+      : Array.isArray(raw.topics)
+        ? raw.topics.map((topic) => topic?.title || topic)
+        : [];
   return {
-    mood: safeText(input.mood, 32) || "calm",
-    activity: safeText(input.activity, 32) || "idle",
-    energy: clampNumber(input.energy, 0, 100, 0),
-    social_need: clampNumber(input.social_need, 0, 100, 0),
-    visual_description: safeText(input.visual_description, 220),
-    state_reason: safeText(input.state_reason, 160),
-    updated_at: safeText(input.updated_at, 40)
+    enabled: Boolean(raw.enabled ?? config.hoshiaNewsEnabled),
+    running: Boolean(raw.running),
+    stage: safeIdentifier(raw.stage || "idle", 40) || "idle",
+    topic_count: clampNumber(raw.topic_count ?? raw.topicCount ?? recentTitles.length, 0, 100, 0),
+    recent_titles: cleanTextList(recentTitles, 5, 100),
+    recent_signal: safeText(raw.recent_signal ?? raw.recentSignal, 140),
+    news_post_count_today: clampNumber(newsPostCountToday, 0, 100, 0)
+  };
+}
+
+function sanitizeVisualState(input = {}) {
+  const safeInput = input && typeof input === "object" ? input : {};
+  return {
+    mood: safeText(safeInput.mood, 32) || "calm",
+    activity: safeText(safeInput.activity, 32) || "idle",
+    energy: clampNumber(safeInput.energy, 0, 100, 0),
+    social_need: clampNumber(safeInput.social_need, 0, 100, 0),
+    visual_description: safeText(safeInput.visual_description, 220),
+    state_reason: safeText(safeInput.state_reason, 160),
+    updated_at: safeText(safeInput.updated_at, 40)
   };
 }
 
@@ -76,6 +110,21 @@ function safeText(value, max = 120) {
   const text = String(value || "").trim().replace(/\s+/g, " ");
   if (!text || sensitivePattern.test(text)) return "";
   return text.slice(0, max);
+}
+
+function cleanTextList(value, maxItems, maxLength) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => safeText(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function safeIdentifier(value, max = 40) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_.:-]/g, "_")
+    .slice(0, max);
 }
 
 function clampNumber(value, min, max, fallback) {

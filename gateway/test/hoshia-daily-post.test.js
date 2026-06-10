@@ -6,6 +6,7 @@ import test from "node:test";
 import { openLiveRoomDatabase } from "../src/database.js";
 import {
   buildDailyPostContent,
+  buildNewsTopicPostContent,
   createHoshiaDailyPostCreatedEvent,
   createHoshiaDailyPostService,
   dayKeyFor,
@@ -97,6 +98,99 @@ test("daily tick creates at least one daily_state and caps each day at five post
   } finally {
     cleanup();
   }
+});
+
+test("news_topic counts toward daily max and is limited to one per day", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      dailyMax: 2,
+      visualStateService: visualState({ activity: "happy", mood: "playful", energy: 84, social_need: 28 }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const first = service.tick({ newsTopic: lightNewsTopic("大家都在接同一个梗") });
+    const second = service.tick({ newsTopic: lightNewsTopic("另一个轻松话题") });
+    const third = service.tick();
+
+    assert.equal(first.created, true);
+    assert.equal(first.post.source_type, "news_topic");
+    assert.equal(first.post.id, "news_20260610_1_happy_playful");
+    assert.equal(first.daily_count, 1);
+    assert.match(first.post.content, /大家都在接同一个梗/);
+    assert.doesNotMatch(first.post.content, /新闻播报|报道称|http/i);
+    assert.equal(first.moduleEvent.data.reason, "internal_news_topic_post");
+
+    assert.equal(second.created, false);
+    assert.equal(second.reason, "news_topic_daily_max_reached");
+    assert.equal(second.daily_count, 1);
+
+    assert.equal(third.created, true);
+    assert.equal(third.post.source_type, "state_pulse");
+    assert.equal(third.daily_count, 2);
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test("news_topic respects total daily max, min interval, and invalid topic skips", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    let now = new Date("2026-06-10T12:00:00.000Z");
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      dailyMax: 2,
+      minIntervalMinutes: 60,
+      visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+      clock: () => now
+    });
+
+    const first = service.tick({ newsTopic: lightNewsTopic("轻松话题种子") });
+    now = new Date("2026-06-10T12:30:00.000Z");
+    const intervalSkipped = service.tick({ newsTopic: lightNewsTopic("还没到间隔") });
+    now = new Date("2026-06-10T13:30:00.000Z");
+    const maxSkipped = service.tick({ newsTopic: lightNewsTopic("超过总上限") });
+
+    assert.equal(first.created, true);
+    assert.equal(first.post.source_type, "news_topic");
+    assert.equal(intervalSkipped.created, false);
+    assert.equal(intervalSkipped.reason, "daily_post_min_interval");
+    assert.equal(maxSkipped.created, false);
+    assert.equal(maxSkipped.reason, "news_topic_daily_max_reached");
+  } finally {
+    cleanup();
+  }
+
+  const skipped = createHoshiaDailyPostService({
+    db: fakePostDb(),
+    enabled: true,
+    visualStateService: visualState({ activity: "idle", mood: "calm" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  }).tick({
+    newsTopic: {
+      post_seed: "高风险话题",
+      reaction_style: "吐槽",
+      risk_level: "high"
+    }
+  });
+  assert.equal(skipped.created, false);
+  assert.equal(skipped.reason, "news_topic_invalid");
+});
+
+test("news_topic content uses topic hooks with current visual state", () => {
+  const content = buildNewsTopicPostContent(lightNewsTopic("这个话题像把梗图递到嘴边"), {
+    activity: "otaku",
+    mood: "excited",
+    energy: 76,
+    social_need: 42
+  }, new Date("2026-06-10T12:00:00.000Z"));
+
+  assert.match(content, /二次元雷达|这个话题像把梗图递到嘴边|弹幕接龙/);
+  assert.doesNotMatch(content, /报道称|新闻播报|http/i);
 });
 
 test("dailyMin controls daily_state quota before state_pulse posts", () => {
@@ -279,6 +373,30 @@ function visualState(state) {
         updated_at: "2026-06-10T12:00:00.000Z",
         ...state
       };
+    }
+  };
+}
+
+function lightNewsTopic(seed) {
+  return {
+    post_seed: seed,
+    reaction_style: "吐槽接梗",
+    meme_hooks: ["弹幕接龙"],
+    reply_hooks: ["这句我先记下"],
+    expires_at: "2026-06-10T18:00:00.000Z",
+    risk_level: "low"
+  };
+}
+
+function fakePostDb() {
+  const posts = [];
+  return {
+    createHoshiaPost(post) {
+      posts.unshift(post);
+      return post;
+    },
+    listHoshiaPosts() {
+      return posts;
     }
   };
 }

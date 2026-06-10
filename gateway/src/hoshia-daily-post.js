@@ -4,6 +4,7 @@ import { sanitizeModuleEvent } from "./module-context.js";
 const characterId = "hoshia";
 const dailySourceType = "daily_state";
 const pulseSourceType = "state_pulse";
+const newsTopicSourceType = "news_topic";
 const defaultTimeZone = "Asia/Shanghai";
 const defaultDailyMin = 1;
 const defaultDailyMax = 5;
@@ -29,11 +30,23 @@ export function createHoshiaDailyPostService({
   const safeTimeZone = cleanText(timeZone, 64) || defaultTimeZone;
 
   return {
-    planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType } = {}) {
+    planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType, topic = null } = {}) {
       const currentNow = asDate(now);
       const currentState = normalizeVisualState(state || readVisualState(visualStateService));
       const safeSourceType = normalizeDailySourceType(sourceType);
       const safeSequence = normalizeSequence(sequence);
+      const safeTopic = safeSourceType === newsTopicSourceType ? normalizeNewsTopic(topic, currentNow) : null;
+      if (safeSourceType === newsTopicSourceType && !safeTopic) {
+        return {
+          ok: false,
+          postInput: null,
+          state: currentState,
+          day_key: dayKeyFor(currentNow, safeTimeZone),
+          source_type: safeSourceType,
+          sequence: safeSequence,
+          reason: "news_topic_invalid"
+        };
+      }
       const postInput = normalizePostInput({
         id: postIdFor({
           sourceType: safeSourceType,
@@ -41,7 +54,9 @@ export function createHoshiaDailyPostService({
           sequence: safeSequence,
           state: currentState
         }),
-        content: buildDailyPostContent(currentState, currentNow, safeTimeZone),
+        content: safeSourceType === newsTopicSourceType
+          ? buildNewsTopicPostContent(safeTopic, currentState, currentNow, safeTimeZone)
+          : buildDailyPostContent(currentState, currentNow, safeTimeZone),
         image_url: "",
         mood: currentState.mood,
         activity: currentState.activity,
@@ -55,7 +70,8 @@ export function createHoshiaDailyPostService({
         state: currentState,
         day_key: dayKeyFor(currentNow, safeTimeZone),
         source_type: safeSourceType,
-        sequence: safeSequence
+        sequence: safeSequence,
+        topic: safeTopic
       };
     },
 
@@ -68,7 +84,7 @@ export function createHoshiaDailyPostService({
       });
     },
 
-    tick({ force = false, ignoreLimit = false, now = clock() } = {}) {
+    tick({ force = false, ignoreLimit = false, now = clock(), newsTopic = null, state = null } = {}) {
       const currentNow = asDate(now);
       const dayKey = dayKeyFor(currentNow, safeTimeZone);
       if (!force && !enabled) {
@@ -134,13 +150,45 @@ export function createHoshiaDailyPostService({
         };
       }
 
-      const currentState = normalizeVisualState(readVisualState(visualStateService));
-      const sourceType = existing.length < safeDailyMin ? dailySourceType : pulseSourceType;
+      const currentState = normalizeVisualState(state || readVisualState(visualStateService));
+      const requestedNewsTopic = hasNewsTopicInput(newsTopic);
+      const safeNewsTopic = normalizeNewsTopic(newsTopic, currentNow);
+      const newsTopicCount = countDailyPostsBySource(existing, newsTopicSourceType);
+      if (requestedNewsTopic && !safeNewsTopic) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "news_topic_invalid",
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          post: null,
+          day_key: dayKey
+        };
+      }
+      if (requestedNewsTopic && newsTopicCount >= 1) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "news_topic_daily_max_reached",
+          post: existing.find((post) => post.source_type === newsTopicSourceType) || null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+      const sourceType = safeNewsTopic && newsTopicCount < 1
+        ? newsTopicSourceType
+        : (existing.length < safeDailyMin ? dailySourceType : pulseSourceType);
       const plan = this.planDailyPost({
         now: currentNow,
         state: currentState,
         sequence: existing.length + 1,
-        sourceType
+        sourceType,
+        topic: safeNewsTopic
       });
       if (!plan.postInput) {
         return {
@@ -200,16 +248,26 @@ export function createHoshiaDailyPostCreatedEvent(post, state, {
       activity: currentState.activity,
       mood: currentState.mood,
       source: safeSourceType,
-      reason: safeSourceType === pulseSourceType ? "internal_state_pulse_post" : "internal_state_daily_post"
+      reason: reasonForSourceType(safeSourceType)
     }
   });
 }
 
 export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone) {
   const currentState = normalizeVisualState(state);
-  const rhythm = rhythmFor(asDate(now), timeZone);
+  const rhythm = newsRhythmFor(asDate(now), timeZone);
   const template = templateForState(currentState, rhythm);
   return cleanText(`${template} ${energyLineFor(currentState)}${socialLineFor(currentState)}`, 700);
+}
+
+export function buildNewsTopicPostContent(topic = {}, state = {}, now = new Date(), timeZone = defaultTimeZone) {
+  const safeTopic = normalizeNewsTopic(topic, now);
+  if (!safeTopic) return "";
+  const currentState = normalizeVisualState(state);
+  const rhythm = rhythmFor(asDate(now), timeZone);
+  const hook = pickFirst(safeTopic.meme_hooks) || pickFirst(safeTopic.reply_hooks) || safeTopic.reaction_style;
+  const stateTone = newsTopicStateTone(currentState);
+  return cleanText(`${rhythm}${stateTone}看到这个点：${safeTopic.post_seed}。${reactionLineForNewsTopic(safeTopic, hook)} ${replyLineForNewsTopic(safeTopic)}`, 700);
 }
 
 export function dayKeyFor(value = new Date(), timeZone = defaultTimeZone) {
@@ -253,18 +311,24 @@ function listDailyPostsForDate({ db, now, limit, timeZone }) {
     limit: 100,
     viewerUserId: ""
   })
-    .filter((post) => post.source_type === dailySourceType || post.source_type === pulseSourceType)
+    .filter((post) => post.source_type === dailySourceType || post.source_type === pulseSourceType || post.source_type === newsTopicSourceType)
     .filter((post) => dayKeyFor(post.created_at, timeZone) === targetDay)
     .slice(0, limit);
 }
 
 function postIdFor({ sourceType, dayKey, sequence, state }) {
-  const prefix = sourceType === pulseSourceType ? "pulse" : "daily";
+  const prefix = sourceType === newsTopicSourceType ? "news" : (sourceType === pulseSourceType ? "pulse" : "daily");
   return `${prefix}_${dayKey}_${normalizeSequence(sequence)}_${state.activity}_${state.mood}`;
 }
 
 function normalizeDailySourceType(value) {
-  return value === pulseSourceType ? pulseSourceType : dailySourceType;
+  if (value === pulseSourceType) return pulseSourceType;
+  if (value === newsTopicSourceType) return newsTopicSourceType;
+  return dailySourceType;
+}
+
+function countDailyPostsBySource(posts, sourceType) {
+  return posts.filter((post) => post.source_type === sourceType).length;
 }
 
 function normalizeSequence(value) {
@@ -293,6 +357,94 @@ function hasRecentDailyPost(existing, now, minIntervalMs) {
     .sort((a, b) => b - a)[0];
   if (!Number.isFinite(lastPostAt)) return false;
   return asDate(now).getTime() - lastPostAt < minIntervalMs;
+}
+
+function normalizeNewsTopic(topic = {}, now = new Date()) {
+  if (!topic || typeof topic !== "object") return null;
+  const postSeed = cleanText(topic.post_seed ?? topic.postSeed, 220);
+  if (!postSeed) return null;
+  const expiresAt = cleanText(topic.expires_at ?? topic.expiresAt, 40);
+  if (expiresAt) {
+    const expiresDate = new Date(expiresAt);
+    if (Number.isNaN(expiresDate.getTime()) || expiresDate.getTime() <= asDate(now).getTime()) return null;
+  }
+  if (isHighRiskTopic(topic)) return null;
+
+  const reactionStyle = cleanText(topic.reaction_style ?? topic.reactionStyle, 80);
+  const memeHooks = cleanTextList(topic.meme_hooks ?? topic.memeHooks, 4, 80);
+  const replyHooks = cleanTextList(topic.reply_hooks ?? topic.replyHooks, 4, 80);
+  if (!reactionStyle && memeHooks.length === 0 && replyHooks.length === 0) return null;
+
+  return {
+    post_seed: postSeed,
+    reaction_style: reactionStyle,
+    meme_hooks: memeHooks,
+    reply_hooks: replyHooks,
+    expires_at: expiresAt
+  };
+}
+
+function hasNewsTopicInput(value) {
+  return value && typeof value === "object" && Object.keys(value).length > 0;
+}
+
+function isHighRiskTopic(topic) {
+  const risk = cleanIdentifier(topic.risk_level ?? topic.riskLevel ?? topic.risk ?? topic.safety_risk ?? topic.safetyRisk);
+  if (["high", "critical", "unsafe", "blocked"].includes(risk)) return true;
+  if (topic.high_risk === true || topic.highRisk === true) return true;
+  return false;
+}
+
+function cleanTextList(value, limit, itemLimit) {
+  const items = Array.isArray(value) ? value : String(value || "").split(/[|,，、]/g);
+  return items
+    .map((item) => cleanText(item, itemLimit))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function newsRhythmFor(now, timeZone) {
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: cleanText(timeZone, 64) || defaultTimeZone,
+    hour: "2-digit",
+    hour12: false
+  }).format(asDate(now)));
+  if (hour >= 5 && hour < 11) return "早上";
+  if (hour >= 11 && hour < 18) return "下午";
+  if (hour >= 18 && hour < 23) return "晚上";
+  return "深夜";
+}
+
+function newsTopicStateTone(state) {
+  if (state.activity === "sleepy" || state.energy <= 30) return "困到反应慢半拍，";
+  if (state.activity === "happy" || state.mood === "playful") return "尾巴已经先笑出来了，";
+  if (state.activity === "thinking" || state.mood === "focused") return "认真想了一下，";
+  if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一下，结果还是被戳到了，";
+  if (state.activity === "gaming") return "刚从胜负欲里抬头，";
+  if (state.activity === "otaku") return "二次元雷达动了一下，";
+  return "窝在直播间里，";
+}
+
+function reactionLineForNewsTopic(topic, hook) {
+  const style = topic.reaction_style || "轻轻吐槽";
+  if (hook) return `我的第一反应是“${hook}”，这不比正经播报更适合拿来接梗吗。`;
+  return `我的第一反应偏${style}，先吐槽一句再说。`;
+}
+
+function replyLineForNewsTopic(topic) {
+  const hook = pickFirst(topic.reply_hooks);
+  if (!hook) return "你们看到会想接哪一句？";
+  return `弹幕要是接梗，我先押一句：${hook}`;
+}
+
+function pickFirst(items) {
+  return Array.isArray(items) ? (items.find(Boolean) || "") : "";
+}
+
+function reasonForSourceType(sourceType) {
+  if (sourceType === pulseSourceType) return "internal_state_pulse_post";
+  if (sourceType === newsTopicSourceType) return "internal_news_topic_post";
+  return "internal_state_daily_post";
 }
 
 function normalizeActiveWindow(value) {

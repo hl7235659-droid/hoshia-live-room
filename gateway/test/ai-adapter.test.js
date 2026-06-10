@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateAiReply, recognizeMusicIntent, summarizeLiveRoomContext } from "../src/ai-adapter.js";
+import {
+  generateAiReply,
+  getNewsRefreshStatus,
+  listNewsTopics,
+  recognizeMusicIntent,
+  refreshNewsTopics,
+  summarizeLiveRoomContext
+} from "../src/ai-adapter.js";
 
 const session = {
   user_id: "user-1",
@@ -296,6 +303,64 @@ test("context summary uses dedicated bridge endpoint", async () => {
   );
 
   assert.equal(summary, "Alice is preparing a demo this week.");
+});
+
+test("news adapter refresh uses dedicated bridge endpoint", async () => {
+  const result = await refreshNewsTopics(
+    baseConfig,
+    { force: true, reason: "manual_test" },
+    async (url, options) => {
+      assert.equal(url, "http://astrbot:18081/live-room/capabilities/news/refresh");
+      assert.equal(options.headers.Authorization, "Bearer secret-token");
+      assert.deepEqual(JSON.parse(options.body), {
+        room_id: "live-room-dev",
+        force: true,
+        reason: "manual_test"
+      });
+      return responseJson(202, { ok: true, running: true, stage: "queued", topic_count: 0 });
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.stage, "queued");
+});
+
+test("news adapter status uses dedicated bridge endpoint", async () => {
+  const result = await getNewsRefreshStatus(baseConfig, {}, async (url, options) => {
+    assert.equal(url, "http://astrbot:18081/live-room/capabilities/news/status");
+    assert.equal(options.headers.Authorization, "Bearer secret-token");
+    assert.deepEqual(JSON.parse(options.body), {
+      room_id: "live-room-dev",
+      include_recent: true
+    });
+    return responseJson(200, { ok: false, capability: "news_topics", stage: "idle", running: false });
+  });
+
+  assert.equal(result.capability, "news_topics");
+  assert.equal(result.stage, "idle");
+});
+
+test("news adapter topics uses dedicated bridge endpoint", async () => {
+  const result = await listNewsTopics(
+    baseConfig,
+    { query: "AI", limit: 4 },
+    async (url, options) => {
+      assert.equal(url, "http://astrbot:18081/live-room/capabilities/news/topics");
+      assert.equal(options.headers.Authorization, "Bearer secret-token");
+      assert.deepEqual(JSON.parse(options.body), {
+        room_id: "live-room-dev",
+        query: "AI",
+        limit: 4
+      });
+      return responseJson(200, {
+        ok: true,
+        topics: [{ title: "AI tool update", conversation_starter: "聊聊工具变化？" }]
+      });
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.topics.length, 1);
 });
 
 test("music intent recognition uses dedicated bridge endpoint and strips stream URLs", async () => {

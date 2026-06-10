@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildModuleContext,
+  buildHoshiaNewsModuleContext,
   buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
+  createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
   createModuleEventStore,
@@ -199,6 +201,53 @@ test("hoshia visual state events keep only short safe fields", () => {
     mood: "competitive",
     reason: "viewer talked about gaming"
   });
+});
+
+test("hoshia news module context exposes only safe topic summary fields", () => {
+  const newsService = {
+    publicState() {
+      return {
+        enabled: true,
+        running: true,
+        stage: "llm_editing",
+        topic_count: 7,
+        safe_summary: "Tech and creator topics are ready for casual chat",
+        recent_signal: "Several light tech topics are fresh",
+        recent_titles: [
+          "Open source tool gains a friendly desktop workflow",
+          "https://rsshub.example/private/feed?token=secret",
+          "RSSHub route with Tavily api_key=secret",
+          "loaded from E:\\secret\\.env",
+          "internal source 10.0.0.5"
+        ]
+      };
+    }
+  };
+
+  const context = buildHoshiaNewsModuleContext(newsService, {});
+  const serialized = JSON.stringify(context);
+
+  assert.equal(context.module_id, "hoshia_news");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("topic count: 7")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Open source tool")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("conversation hooks")), true);
+  assert.equal(context.limits.some((line) => line.includes("source citation")), true);
+  assert.doesNotMatch(serialized, /https?:\/\/|token|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
+
+  const contexts = buildModuleContext({
+    providers: [createHoshiaNewsModuleProvider(newsService)]
+  });
+  assert.equal(contexts[0].module_id, "hoshia_news");
+});
+
+test("disabled hoshia news module context keeps capability surface closed", () => {
+  const context = buildHoshiaNewsModuleContext({ enabled: false }, {});
+
+  assert.equal(context.module_id, "hoshia_news");
+  assert.equal(context.enabled, false);
+  assert.deepEqual(context.capabilities, []);
+  assert.equal(context.limits.some((line) => line.includes("private feeds")), true);
 });
 
 test("module event store keeps recent events and sanitizes sensitive text", () => {

@@ -96,6 +96,15 @@ export function createHoshiaVisualModuleProvider(visualStateService) {
   };
 }
 
+export function createHoshiaNewsModuleProvider(newsService) {
+  return {
+    moduleId: "hoshia_news",
+    getCapabilityContext(session) {
+      return buildHoshiaNewsModuleContext(newsService, session);
+    }
+  };
+}
+
 export function buildMusicModuleContext(musicService, session) {
   const state = typeof musicService?.publicState === "function"
     ? musicService.publicState(session)
@@ -178,6 +187,47 @@ export function buildHoshiaVisualModuleContext(visualStateService, session) {
       "Only public-facing visual state is exposed.",
       "No filesystem paths, tokens, or internal storage details are revealed.",
       "The module only describes the current stage mood and asset label."
+    ]
+  });
+}
+
+export function buildHoshiaNewsModuleContext(newsService, session) {
+  const state = publicNewsState(newsService, session);
+  if (!state.enabled) {
+    return sanitizeModuleContext({
+      module_id: "hoshia_news",
+      enabled: false,
+      current_state: ["Hoshia news topics are disabled."],
+      capabilities: [],
+      limits: [
+        "Do not claim access to live news, private feeds, source routes, search results, URLs, credentials, or raw source data."
+      ]
+    });
+  }
+
+  const currentState = [
+    `News topic refresh: ${state.running ? "running" : "idle"}, stage ${state.stage}.`,
+    `Safe topic count: ${state.topic_count}.`
+  ];
+  if (state.safe_summary) currentState.push(`Safe news summary: ${state.safe_summary}.`);
+  if (state.recent_signal) currentState.push(`Recent news signal: ${state.recent_signal}.`);
+  for (const [index, title] of state.recent_titles.slice(0, 5).entries()) {
+    currentState.push(`Recent topic ${index + 1}: ${title}.`);
+  }
+
+  return sanitizeModuleContext({
+    module_id: "hoshia_news",
+    enabled: true,
+    current_state: currentState,
+    capabilities: [
+      "Hoshia can use safe short news topic summaries as casual conversation hooks.",
+      "Hoshia can notice the rough number of available topics and a few recent public titles.",
+      "Hoshia can connect a topic to room chat only when it fits the current conversation."
+    ],
+    limits: [
+      "Use news as light chat material, not as a news broadcast or source citation.",
+      "Do not repeat raw feed text, URLs, provider names, private source routes, search queries, credentials, internal addresses, or file paths.",
+      "Avoid heavy, risky, medical, legal, investment, or highly divisive topics unless the viewer explicitly asks."
     ]
   });
 }
@@ -354,6 +404,41 @@ function sanitizeEventData(data) {
   return allowed;
 }
 
+function publicNewsState(newsService, session) {
+  const raw = typeof newsService?.getStatus === "function"
+    ? newsService.getStatus(session)
+    : typeof newsService?.publicState === "function"
+      ? newsService.publicState(session)
+      : newsService || {};
+  if (raw && typeof raw.then === "function") {
+    return {
+      enabled: false,
+      running: false,
+      stage: "idle",
+      topic_count: 0,
+      recent_titles: [],
+      recent_signal: "",
+      safe_summary: ""
+    };
+  }
+  const recentTitles = Array.isArray(raw.recent_titles)
+    ? raw.recent_titles
+    : Array.isArray(raw.recentTitles)
+      ? raw.recentTitles
+      : Array.isArray(raw.topics)
+        ? raw.topics.map((topic) => topic?.title || topic)
+        : [];
+  return {
+    enabled: Boolean(raw.enabled),
+    running: Boolean(raw.running),
+    stage: cleanIdentifier(raw.stage || "idle", 40) || "idle",
+    topic_count: clampInt(raw.topic_count ?? raw.topicCount ?? recentTitles.length, 0, 100, 0),
+    recent_titles: cleanList(recentTitles, 5, 100),
+    recent_signal: cleanText(raw.recent_signal ?? raw.recentSignal, 140),
+    safe_summary: cleanText(raw.safe_summary ?? raw.safeSummary ?? raw.summary, 160)
+  };
+}
+
 function assetLabelForPath(path) {
   const value = cleanText(path, 120);
   if (!value) return "unknown asset";
@@ -382,7 +467,7 @@ function cleanText(value, maxLength) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
-  if (/(?:\.env|ssh-|BEGIN [A-Z ]*PRIVATE KEY|token=|password=|secret=)/i.test(text)) return "";
+  if (/(?:https?:\/\/|www\.|\.env\b|ssh-|BEGIN [A-Z ]*PRIVATE KEY|token\b|api[_-]?key|authorization:|bearer\s+|password=|secret=|rsshub|tavily|cloudflared|trycloudflare|localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|[A-Za-z]:[\\/]|\/home\/ubuntu|\/app\/data)/i.test(text)) return "";
   return text;
 }
 

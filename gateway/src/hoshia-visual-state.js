@@ -31,6 +31,8 @@ const validMoods = new Set([
 ]);
 
 export function createHoshiaVisualStateService({ db, clock = () => new Date() }) {
+  let pendingNewsSignal = null;
+
   return {
     publicState() {
       return publicVisualState(ensureState(db, clock));
@@ -58,7 +60,9 @@ export function createHoshiaVisualStateService({ db, clock = () => new Date() })
 
     tick({ reason = "scheduled visual refresh", now = clock() } = {}) {
       const current = ensureState(db, () => now);
-      const rhythm = rhythmForState(current, now);
+      const newsSignal = consumePendingNewsSignal(pendingNewsSignal, now);
+      pendingNewsSignal = newsSignal.keep ? newsSignal.signal : null;
+      const rhythm = applyNewsSignalToRhythm(rhythmForState(current, now), newsSignal.signal);
       const nextActivity = activityForRhythm(rhythm, now);
       const nextMood = moodForActivity(nextActivity, rhythm);
       const next = normalizeState({
@@ -76,6 +80,27 @@ export function createHoshiaVisualStateService({ db, clock = () => new Date() })
         changed: hasVisualStateChanged(current, next),
         state: publicVisualState(next),
         reason: next.state_reason
+      };
+    },
+
+    applyNewsSignal(input = {}) {
+      const current = ensureState(db, clock);
+      const signal = normalizeHoshiaNewsSignal(input, clock());
+      if (!signal) {
+        return {
+          accepted: false,
+          changed: false,
+          state: publicVisualState(current),
+          reason: "news_signal_invalid"
+        };
+      }
+      pendingNewsSignal = signal;
+      return {
+        accepted: true,
+        changed: false,
+        state: publicVisualState(current),
+        signal,
+        reason: signal.reason
       };
     },
 
@@ -173,6 +198,29 @@ export function normalizeHoshiaVisualUpdate(body = {}) {
     state_reason: body.state_reason ?? body.stateReason,
     updated_at: new Date().toISOString()
   });
+}
+
+export function normalizeHoshiaNewsSignal(input = {}, now = new Date()) {
+  const expiresAt = cleanText(input.expires_at ?? input.expiresAt, 40);
+  const expiresDate = expiresAt ? new Date(expiresAt) : null;
+  if (expiresAt && Number.isNaN(expiresDate.getTime())) return null;
+  if (expiresDate && expiresDate.getTime() <= asDate(now).getTime()) return null;
+
+  const activityHint = cleanIdentifier(input.activity_hint ?? input.activityHint);
+  const moodHint = cleanIdentifier(input.mood_hint ?? input.moodHint);
+  const reason = cleanStateReason(input.reason) || "news signal nudged visual rhythm";
+  const signal = {
+    activity_hint: validActivities.has(activityHint) ? activityHint : "",
+    mood_hint: validMoods.has(moodHint) ? moodHint : "",
+    energy_delta: clampInt(input.energy_delta ?? input.energyDelta, -20, 20, 0),
+    social_need_delta: clampInt(input.social_need_delta ?? input.socialNeedDelta, -20, 20, 0),
+    expires_at: expiresDate ? expiresDate.toISOString() : "",
+    reason
+  };
+  if (!signal.activity_hint && !signal.mood_hint && signal.energy_delta === 0 && signal.social_need_delta === 0) {
+    return null;
+  }
+  return signal;
 }
 
 export function normalizeHoshiaTickWindow(minValue, maxValue) {
@@ -303,6 +351,40 @@ function rhythmForState(current, now) {
   };
 }
 
+function applyNewsSignalToRhythm(current, signal) {
+  if (!signal) return current;
+  const next = {
+    ...current,
+    energy: clampInt(Number(current.energy) + Math.round(signal.energy_delta * 0.5), 0, 100, 70),
+    social_need: clampInt(Number(current.social_need) + Math.round(signal.social_need_delta * 0.5), 0, 100, 50)
+  };
+  if (signal.activity_hint && canNewsSignalSuggestActivity(signal.activity_hint, next)) {
+    next.activity = signal.activity_hint;
+  }
+  if (signal.mood_hint && hoshiaStagePngAssets.some((item) => item.activity === next.activity && item.mood === signal.mood_hint)) {
+    next.mood = signal.mood_hint;
+  }
+  return next;
+}
+
+function canNewsSignalSuggestActivity(activity, state) {
+  if (activity === "happy") return state.energy >= 72;
+  if (activity === "thinking") return state.energy >= 35;
+  if (activity === "otaku") return state.energy >= 45;
+  if (activity === "gaming" || activity === "sports") return state.energy >= 60;
+  if (activity === "emo") return state.social_need >= 72 || state.energy <= 35;
+  if (activity === "sleepy") return state.energy <= 35;
+  return activity === "idle";
+}
+
+function consumePendingNewsSignal(signal, now) {
+  if (!signal) return { signal: null, keep: false };
+  if (!signal.expires_at) return { signal, keep: false };
+  return new Date(signal.expires_at).getTime() > asDate(now).getTime()
+    ? { signal, keep: false }
+    : { signal: null, keep: false };
+}
+
 function energyDeltaForHour(hour) {
   if (hour >= 23 || hour < 6) return -7;
   if (hour >= 6 && hour < 10) return 3;
@@ -329,6 +411,12 @@ function shanghaiHour(now) {
     hour12: false
   }).format(now));
   return Number.isFinite(hour) ? hour % 24 : 12;
+}
+
+function asDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date();
+  return date;
 }
 
 function hasVisualStateChanged(before, after) {

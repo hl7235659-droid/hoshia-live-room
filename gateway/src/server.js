@@ -26,6 +26,7 @@ import {
   buildModuleContext,
   createHoshiaCommentReplyEvent,
   createHoshiaPostCreatedEvent,
+  createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
   createMusicModuleProvider,
@@ -44,6 +45,7 @@ import {
   normalizePostInput,
   publicPost
 } from "./hoshia-life-memory.js";
+import { createHoshiaNewsService } from "./hoshia-news-service.js";
 import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
 import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
@@ -132,6 +134,7 @@ const db = openLiveRoomDatabase(config.sqliteDbPath);
 const musicService = new MusicService(config, { store });
 const hoshiaVisualStateService = createHoshiaVisualStateService({ db });
 const hoshiaLifeMemoryService = createHoshiaLifeMemoryService({ db });
+const hoshiaNewsService = createHoshiaNewsService(config, { fetchImpl: globalThis.fetch });
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   db,
@@ -163,7 +166,8 @@ const hoshiaDailyPostService = createHoshiaDailyPostService({
 });
 const moduleProviders = [
   createMusicModuleProvider(musicService),
-  createHoshiaVisualModuleProvider(hoshiaVisualStateService)
+  createHoshiaVisualModuleProvider(hoshiaVisualStateService),
+  createHoshiaNewsModuleProvider(hoshiaNewsService)
 ];
 const sockets = new Map();
 const activeUserConnections = new Map();
@@ -383,6 +387,59 @@ app.get("/api/hoshia/ops/summary", requireSession, async (_req, res) => {
   res.json({
     ok: true,
     summary: getHoshiaOpsSummary()
+  });
+});
+
+app.post("/api/hoshia/news/refresh", requireSession, async (req, res) => {
+  const result = await hoshiaNewsService.refresh({
+    force: req.body?.force === true,
+    reason: req.body?.reason || "manual"
+  });
+  const topics = Array.isArray(result.topics) ? result.topics : hoshiaNewsService.getTopics();
+  const signalResult = result.ok ? applyNewsSignalFromTopic(topics[0], req.session, "news_refresh") : null;
+  appendHoshiaNewsEvent({
+    eventType: "hoshia_news.refresh_requested",
+    session: req.session,
+    summaryHint: result.ok
+      ? `Hoshia news refresh completed with ${Number(result.status?.topic_count || topics.length || 0)} safe topics`
+      : `Hoshia news refresh skipped: ${result.reason || "unavailable"}`,
+    data: {
+      status: result.ok ? "ok" : "skipped",
+      reason: result.reason || result.status?.stage || "refresh"
+    }
+  });
+  res.json({
+    ok: Boolean(result.ok),
+    enabled: Boolean(result.enabled),
+    reason: result.reason || "",
+    status: result.status || hoshiaNewsService.getStatus().status || hoshiaNewsService.getStatus(),
+    topics: topics.slice(0, 5),
+    signal: signalResult?.accepted ? signalResult.signal : null,
+    summary: getHoshiaOpsSummary().news
+  });
+});
+
+app.get("/api/hoshia/news/status", requireSession, async (_req, res) => {
+  const result = await hoshiaNewsService.status();
+  res.json({
+    ok: Boolean(result.ok),
+    enabled: Boolean(result.enabled),
+    reason: result.reason || "",
+    status: result.status || hoshiaNewsService.getStatus().status || hoshiaNewsService.getStatus(),
+    summary: getHoshiaOpsSummary().news
+  });
+});
+
+app.get("/api/hoshia/news/topics", requireSession, async (req, res) => {
+  const result = await hoshiaNewsService.topics({
+    limit: req.query?.limit,
+    query: req.query?.query
+  });
+  res.json({
+    ok: Boolean(result.ok),
+    enabled: Boolean(result.enabled),
+    reason: result.reason || "",
+    topics: Array.isArray(result.topics) ? result.topics : []
   });
 });
 
@@ -727,32 +784,57 @@ function runScheduledHoshiaVisualTick() {
   scheduleNextHoshiaVisualTick();
 }
 
-function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled" } = {}) {
-  const result = hoshiaDailyPostService.tick({ force, ignoreLimit });
+function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
+  const selectedNewsTopic = newsTopic || selectCachedNewsTopicForPost();
+  const newsState = selectedNewsTopic
+    ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
+    : null;
+  let result = hoshiaDailyPostService.tick({
+    force,
+    ignoreLimit,
+    newsTopic: selectedNewsTopic,
+    state: newsState
+  });
+  if (selectedNewsTopic && ["news_topic_invalid", "news_topic_daily_max_reached"].includes(result.reason)) {
+    result = hoshiaDailyPostService.tick({ force, ignoreLimit });
+  }
   if (result.post && result.created) {
     hoshiaLifeMemoryService.recordPost(result.post);
     moduleEventStore.append(result.moduleEvent || createHoshiaPostCreatedEvent(result.post, session, {
       roomId: config.roomId,
       reason: result.post.source_type || "daily_state"
     }));
-    const visualUpdate = updateHoshiaVisualState({
-      body: {
-        mood: result.post.mood,
-        activity: result.post.activity,
-        state_reason: result.post.source_type === "state_pulse"
-          ? "Hoshia wrote a state pulse timeline update"
-          : "Hoshia wrote a daily timeline update"
-      },
-      session,
-      reason: "daily timeline post"
-    });
-    if (visualUpdate.changed) {
-      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, session, {
-        roomId: config.roomId,
-        reason: visualUpdate.reason,
-        source: source === "manual" ? "daily_post" : source
-      }));
-      broadcastHoshiaState(visualUpdate.state);
+    if (result.post.source_type === "news_topic") {
+      appendHoshiaNewsEvent({
+        eventType: "hoshia_news.topic_post_created",
+        session,
+        summaryHint: "Hoshia created a timeline post from a safe news topic",
+        data: {
+          source_type: "news_topic",
+          post_id: result.post.id,
+          reason: "news_topic_post"
+        }
+      });
+      applyNewsSignalFromTopic(selectedNewsTopic, session, "news_topic_post");
+    }
+    if (result.post.source_type !== "news_topic") {
+      const visualUpdate = updateHoshiaVisualState({
+        body: {
+          mood: result.post.mood,
+          activity: result.post.activity,
+          state_reason: stateReasonForPostSource(result.post.source_type)
+        },
+        session,
+        reason: "daily timeline post"
+      });
+      if (visualUpdate.changed) {
+        moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, session, {
+          roomId: config.roomId,
+          reason: visualUpdate.reason,
+          source: source === "manual" ? "daily_post" : source
+        }));
+        broadcastHoshiaState(visualUpdate.state);
+      }
     }
     broadcast({
       type: "hoshia_posts_changed",
@@ -768,6 +850,7 @@ function getHoshiaOpsSummary(now = new Date()) {
   return buildHoshiaOpsSummary({
     db,
     visualState: hoshiaVisualStateService.publicState(),
+    newsStatus: hoshiaNewsService.getStatus(),
     config,
     now,
     timeZone: config.realityContextTimezone || "Asia/Shanghai"
@@ -1922,8 +2005,162 @@ function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}
   return hoshiaVisualStateService.update(payload, session);
 }
 
+function appendHoshiaNewsEvent({ eventType, session = null, summaryHint = "", data = {} } = {}) {
+  if (!eventType || !summaryHint) return null;
+  return moduleEventStore.append({
+    room_id: config.roomId,
+    module_id: "hoshia_news",
+    event_type: eventType,
+    user_id: session?.user_id || "",
+    nickname: session?.nickname || "",
+    summary_hint: summaryHint,
+    memory_eligible: false,
+    memory_kind: "hoshia_news_event",
+    retention_days: 7,
+    occurred_at: new Date().toISOString(),
+    data
+  });
+}
+
+function selectCachedNewsTopicForPost() {
+  if (!config.hoshiaNewsEnabled || !config.hoshiaNewsPostEnabled) return null;
+  const limit = Math.max(1, Number(config.hoshiaNewsPostDailyLimit || 1));
+  const summary = getHoshiaOpsSummary();
+  if (Number(summary.news?.news_post_count_today || 0) >= limit) return null;
+  const topic = hoshiaNewsService.featuredTopic?.()
+    || hoshiaNewsService.getTopics().find((item) => item?.post_seed && item?.title && isSafeNewsTopicForPost(item))
+    || null;
+  if (!topic) return null;
+  if (!isFreshNewsTopic(topic)) return null;
+  return topic;
+}
+
+function applyNewsSignalFromTopic(topic, session = null, reason = "news_topic") {
+  const signal = deriveNewsSignalFromTopic(topic, reason);
+  if (!signal) return { accepted: false, reason: "news_signal_invalid", state: hoshiaVisualStateService.publicState() };
+  const result = hoshiaVisualStateService.applyNewsSignal(signal);
+  if (result.accepted) {
+    appendHoshiaNewsEvent({
+      eventType: "hoshia_news.signal_applied",
+      session,
+      summaryHint: `News signal nudged Hoshia toward ${signal.activity_hint || "current"} / ${signal.mood_hint || "current"}`,
+      data: {
+        status: "applied",
+        reason: signal.reason || reason
+      }
+    });
+  }
+  return result;
+}
+
+function deriveNewsSignalFromTopic(topic, reason = "news_topic") {
+  if (!topic || typeof topic !== "object") return null;
+  const seed = [
+    topic.title,
+    topic.state_signal,
+    topic.reaction_style,
+    Array.isArray(topic.meme_hooks) ? topic.meme_hooks.join(" ") : "",
+    Array.isArray(topic.reply_hooks) ? topic.reply_hooks.join(" ") : "",
+    topic.post_seed,
+    topic.category
+  ].filter(Boolean).join(" ").toLowerCase();
+  const activity = inferNewsActivity(seed, topic.category);
+  const mood = inferNewsMood(seed, activity);
+  const signal = {
+    activity_hint: activity,
+    mood_hint: mood,
+    energy_delta: inferNewsEnergyDelta(seed, activity),
+    social_need_delta: inferNewsSocialDelta(seed, activity),
+    expires_at: new Date(Date.now() + Math.max(1, Number(config.hoshiaNewsSignalTtlHours || 6)) * 60 * 60 * 1000).toISOString(),
+    reason: String(topic.state_signal || topic.reaction_style || reason || topic.title || "news topic").slice(0, 160)
+  };
+  if (!signal.activity_hint && !signal.mood_hint && signal.energy_delta === 0 && signal.social_need_delta === 0) {
+    return null;
+  }
+  return signal;
+}
+
+function inferNewsActivity(seed, category) {
+  if (/(游戏|电竞|排位|rank|开黑|队友|fps|moba|手游)/i.test(seed) || /game|esport/i.test(category || "")) return "gaming";
+  if (/(二次元|番剧|动漫|漫画|meme|梗图|接梗|玩梗|联动)/i.test(seed)) return "otaku";
+  if (/(运动|健身|跑步|训练|锻炼|体测)/i.test(seed)) return "sports";
+  if (/(ai|模型|工具|开源|代码|科技|产品|开发)/i.test(seed) || /tech|ai|product/i.test(category || "")) return "thinking";
+  if (/(睡|困|晚|夜|熬夜|深夜|凌晨)/i.test(seed)) return "sleepy";
+  if (/(emo|难过|低落|崩|烦|破防|压力|吵)/i.test(seed)) return "emo";
+  if (/(开心|乐|搞笑|热梗|爆笑|离谱|好玩)/i.test(seed)) return "happy";
+  return "";
+}
+
+function inferNewsMood(seed, activity) {
+  if (/(破防|生气|烦|吵|骂|离谱)/i.test(seed)) return "annoyed";
+  if (/(困|晚|夜|熬夜|累)/i.test(seed)) return "sleepy";
+  if (/(emo|难过|低落|孤独)/i.test(seed)) return "lonely";
+  if (/(梗|笑|乐|搞笑|有趣|离谱)/i.test(seed)) return activity === "otaku" ? "excited" : "playful";
+  if (/(ai|工具|代码|模型|开源|计划)/i.test(seed)) return "focused";
+  if (activity === "gaming") return /(破防|逆风|上分失败|输)/i.test(seed) ? "annoyed" : "competitive";
+  if (activity === "sports") return /(累|疲|喘|恢复)/i.test(seed) ? "tired" : "energetic";
+  if (activity === "sleepy") return "sleepy";
+  if (activity === "emo") return "emo";
+  if (activity === "thinking") return "thinking";
+  return "";
+}
+
+function inferNewsEnergyDelta(seed, activity) {
+  if (/(困|晚|夜|熬夜|累|疲)/i.test(seed)) return -6;
+  if (/(热梗|好笑|开心|爽|破防)/i.test(seed)) return 3;
+  if (activity === "thinking") return -2;
+  if (activity === "gaming") return 1;
+  if (activity === "sports") return 2;
+  return 0;
+}
+
+function inferNewsSocialDelta(seed, activity) {
+  if (/(梗|接话|弹幕|评论|群聊|互动)/i.test(seed)) return 4;
+  if (/(孤独|emo|低落|安静|没人)/i.test(seed)) return 6;
+  if (activity === "sleepy") return 2;
+  if (activity === "thinking") return -1;
+  return 1;
+}
+
+function stateForNewsTopicPost(baseState, topic) {
+  const signal = deriveNewsSignalFromTopic(topic, "news_topic_post");
+  if (!signal) return baseState;
+  return {
+    ...baseState,
+    energy: clampInt(Number(baseState?.energy || 0) + signal.energy_delta, 0, 100, 70),
+    social_need: clampInt(Number(baseState?.social_need || 0) + signal.social_need_delta, 0, 100, 50),
+    activity: signal.activity_hint || baseState?.activity || "idle",
+    mood: signal.mood_hint || baseState?.mood || "calm"
+  };
+}
+
+function isFreshNewsTopic(topic) {
+  if (!topic) return false;
+  const createdAt = Date.parse(topic.created_at || topic.date || "");
+  if (!Number.isFinite(createdAt)) return true;
+  const maxAgeHours = Math.max(1, Number(config.hoshiaNewsTopicMaxAgeHours || 36));
+  return Date.now() - createdAt <= maxAgeHours * 60 * 60 * 1000;
+}
+
+function isSafeNewsTopicForPost(topic) {
+  const risk = String(topic?.risk_level || topic?.riskLevel || topic?.risk || "").toLowerCase();
+  return topic?.high_risk !== true && !["high", "critical", "unsafe", "blocked", "danger"].includes(risk);
+}
+
+function clampInt(value, min, max, fallback) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(number, max));
+}
+
 function tickHoshiaVisualState({ reason = "scheduled visual refresh" } = {}) {
   return hoshiaVisualStateService.tick({ reason });
+}
+
+function stateReasonForPostSource(sourceType) {
+  if (sourceType === "state_pulse") return "Hoshia wrote a state pulse timeline update";
+  if (sourceType === "news_topic") return "Hoshia wrote a news topic timeline update";
+  return "Hoshia wrote a daily timeline update";
 }
 
 function publicPostForViewer(postId, viewerUserId) {

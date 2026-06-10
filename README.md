@@ -92,10 +92,15 @@ Important options:
 - `HOSHIA_DAILY_POST_MIN` / `HOSHIA_DAILY_POST_MAX`: daily automatic post floor and cap; defaults to `1` and `5`.
 - `HOSHIA_STATE_POST_MIN_INTERVAL_MINUTES`: minimum spacing between automatic posts; defaults to `90`.
 - `HOSHIA_STATE_POST_ACTIVE_WINDOW_START` / `HOSHIA_STATE_POST_ACTIVE_WINDOW_END`: local active posting window for automatic posts; defaults to `10:00`-`23:50`.
+- `HOSHIA_NEWS_ENABLED`: enables the gateway-side safe news context switch; defaults to `false`.
+- `HOSHIA_NEWS_POST_ENABLED`: allows news topics to be used for automatic Hoshia timeline posts; defaults to `false`.
+- `HOSHIA_NEWS_POST_DAILY_LIMIT`: maximum news-based Hoshia posts per day; defaults to `1`.
+- `HOSHIA_NEWS_SIGNAL_TTL_HOURS`: how long a recent news signal can be considered fresh; defaults to `6`.
+- `HOSHIA_NEWS_TOPIC_MAX_AGE_HOURS`: maximum age for news topics shown to Hoshia; defaults to `36`.
 - `HOSHIA_ASYNC_COMMENT_REPLY_ENABLED`: enables delayed Hoshia timeline replies; defaults to `true`. Set it to `false` to pause automatic comment replies while keeping posting online.
 - `HOSHIA_COMMENT_REPLY_TICK_LIMIT`: maximum replies processed in one reply tick; defaults to `2`.
 - `HOSHIA_COMMENT_REPLY_DAILY_LIMIT`: maximum delayed timeline replies per day; defaults to `20`.
-- AstrBot bridge news topics are configured in the AstrBot plugin, not in the gateway `.env`: enable `news_capability_enabled`, set `news_source_urls` to private/internal RSSHub feeds, and keep any `tavily_api_key` only in server-side AstrBot config.
+- AstrBot bridge news sources are configured in the AstrBot plugin, not in the gateway `.env`. Keep feed URLs, RSSHub routes, Tavily keys, and provider credentials only in private server-side config. The gateway only exposes short safe summaries, recent titles, topic counts, and whether news can be used as a light conversation hook.
 
 Never commit real `.env` files, tokens, certificates, private keys, room tokens, registration codes, or SQLite database files.
 
@@ -187,10 +192,10 @@ For xiaomusic, keep account cookies, tokens, and plugin credentials only in xiao
 Recommended private admin access:
 
 ```powershell
-ssh -i E:\agent111.pem -L 58090:127.0.0.1:58090 ubuntu@43.133.229.140
+ssh -i <private-key-file> -L <local-port>:127.0.0.1:<remote-port> <user>@<server-host>
 ```
 
-Then open `http://127.0.0.1:58090` locally and configure xiaomusic yourself.
+Then open the forwarded local admin URL in your browser and configure xiaomusic yourself. Do not commit real server hosts, SSH key paths, cookies, or provider tokens.
 
 ## Notes
 
@@ -208,6 +213,7 @@ Then open `http://127.0.0.1:58090` locally and configure xiaomusic yourself.
 - LivingMemory viewer memories can include `recent_state` for relatively stable but temporary user context, such as what someone is busy with recently. These memories default to 30 days and are filtered after expiry.
 - The bridge skips duplicate viewer memories, filters expired daily news memories, and exposes a token-protected internal debug recall endpoint for deployment checks.
 - The bridge can maintain a daily Hoshia topic pool from self-hosted RSSHub feeds, optionally enriched by Tavily. The stored memories are short-lived topic cards with Hoshia's take and conversation starters, not raw articles or search result dumps.
+- Hoshia's news module context is safety-trimmed before it reaches the prompt. It may include enabled/running state, refresh stage, topic count, recent public titles, and a short recent signal, but it must not include URLs, tokens, `.env` content, local paths, internal addresses, RSSHub private routes, Tavily keys, or raw feed/search payloads.
 - Only final runtime assets should be committed. Generated green-screen/chroma images and temporary screenshots are ignored.
 - `tmp/`, `frontend/dist/`, `node_modules/`, logs, and caches are ignored.
 - The layout is intentionally split into Stage, Overlay, and Control so future Live2D, TTS, gifts, and avatar systems can be connected without rewriting the whole page.
