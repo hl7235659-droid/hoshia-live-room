@@ -2930,11 +2930,13 @@ button:disabled {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  color: #2b2b35;
+  color: #edf4ff;
   background:
-    radial-gradient(circle at 18% 8%, rgba(255, 127, 186, 0.18), transparent 28%),
-    radial-gradient(circle at 86% 16%, rgba(255, 255, 255, 0.72), transparent 26%),
-    linear-gradient(180deg, #fff7fb 0%, #fff0f6 46%, #f8f4f7 100%);
+    linear-gradient(180deg, rgba(5, 12, 39, 0.2), rgba(5, 12, 39, 0.34)),
+    var(--timeline-bg, linear-gradient(180deg, #18205a 0%, #1b245f 50%, #0e1033 100%));
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
   overflow: hidden;
   animation: timeline-enter 260ms ease both;
 }
@@ -2948,34 +2950,22 @@ button:disabled {
 
 .hoshia-timeline-shell::before {
   inset: 0;
-  opacity: 0.1;
-  background-image: radial-gradient(circle, rgba(255, 79, 154, 0.28) 0 1px, transparent 1.2px);
-  background-size: 18px 18px;
+  opacity: 1;
+  background:
+    linear-gradient(180deg, rgba(7, 15, 47, 0.16), rgba(7, 15, 47, 0.3)),
+    rgba(255, 255, 255, 0.04);
+  backdrop-filter: none;
 }
 
 .hoshia-timeline-shell::after {
-  right: -42px;
-  top: 130px;
-  width: 168px;
-  height: 168px;
-  border-radius: 48px;
+  inset: 0;
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 79, 154, 0.16) 0 16px, transparent 17px),
-    radial-gradient(circle at 28% 42%, rgba(255, 79, 154, 0.14) 0 16px, transparent 17px),
-    radial-gradient(circle at 72% 42%, rgba(255, 79, 154, 0.14) 0 16px, transparent 17px),
-    radial-gradient(circle at 50% 70%, rgba(255, 79, 154, 0.14) 0 36px, transparent 37px);
-  transform: rotate(-12deg);
+    linear-gradient(180deg, rgba(8, 15, 52, 0.08), rgba(8, 15, 52, 0.18)),
+    radial-gradient(circle at 50% 16%, rgba(129, 172, 255, 0.08), transparent 32%);
 }
 
 .timeline-bg-mark {
-  position: absolute;
-  right: 18px;
-  bottom: 74px;
-  color: rgba(255, 79, 154, 0.05);
-  font-size: 188px;
-  font-weight: 950;
-  line-height: 1;
-  pointer-events: none;
+  display: none;
 }
 
 .timeline-topbar {
@@ -2988,10 +2978,9 @@ button:disabled {
   grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid rgba(255, 79, 154, 0.14);
   background: transparent;
-  box-shadow: none;
   backdrop-filter: none;
+  border-radius: 0;
 }
 
 .timeline-topbar button {
@@ -3001,8 +2990,8 @@ button:disabled {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  color: #ff4f9a;
-  background: rgba(255, 240, 248, 0.6);
+  color: #edf4ff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .timeline-topbar strong {
@@ -3010,6 +2999,7 @@ button:disabled {
   min-width: 0;
   font-size: 16px;
   font-weight: 950;
+  color: #f6fbff;
 }
 
 .timeline-scroll {
@@ -3029,7 +3019,6 @@ button:disabled {
 .timeline-post-card,
 .timeline-empty {
   position: relative;
-  border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -3052,8 +3041,6 @@ button:disabled {
   border-radius: 24px;
   display: grid;
   place-items: center;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 231, 243, 0.52));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
   overflow: hidden;
 }
 
@@ -3065,7 +3052,7 @@ button:disabled {
 }
 
 .timeline-eyebrow {
-  color: #ff4f9a;
+  color: #c7dbff;
   font-size: 11px;
   font-weight: 950;
   text-transform: uppercase;
@@ -3084,6 +3071,7 @@ button:disabled {
   font-size: 26px;
   line-height: 1;
   letter-spacing: 0;
+  color: #f7fbff;
 }
 
 .timeline-live-pill {
@@ -3094,8 +3082,8 @@ button:disabled {
   align-items: center;
   gap: 5px;
   border-radius: 999px;
-  color: #ff4f9a;
-  background: rgba(255, 240, 248, 0.5);
+  color: #f7fbff;
+  background: rgba(255, 255, 255, 0.14);
   font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
@@ -3103,7 +3091,7 @@ button:disabled {
 
 .timeline-profile-card p {
   margin: 0;
-  color: #8b8490;
+  color: rgba(237, 244, 255, 0.78);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -3115,11 +3103,10 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  color: #ff4f9a;
-  background: rgba(255, 240, 248, 0.52);
+  color: #f7fbff;
+  background: rgba(255, 255, 255, 0.14);
   font-size: 12px;
   font-weight: 900;
-  box-shadow: none;
   animation: timeline-pill-breathe 2200ms ease-in-out infinite;
 }
 
@@ -3129,9 +3116,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  border: 1px solid rgba(255, 79, 154, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.24);
 }
 
 .timeline-stats-card div {
@@ -3147,14 +3132,14 @@ button:disabled {
 }
 
 .timeline-stats-card span {
-  color: #8b8490;
+  color: rgba(220, 233, 255, 0.74);
   font-size: 11px;
   font-weight: 850;
 }
 
 .timeline-stats-card strong {
   min-width: 0;
-  color: #2b2b35;
+  color: #f7fbff;
   font-size: 13px;
   font-weight: 950;
   overflow-wrap: anywhere;
@@ -3163,6 +3148,8 @@ button:disabled {
 .timeline-feed {
   display: grid;
   gap: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(214, 231, 255, 0.08);
 }
 
 .timeline-post-card {
@@ -3170,14 +3157,19 @@ button:disabled {
   padding: 16px 4px 18px;
   overflow: hidden;
   animation: none;
-  border-bottom: 1px solid rgba(255, 79, 154, 0.12);
+  border-bottom: 0;
+  border-radius: 0;
+}
+
+.timeline-post-card + .timeline-post-card {
+  border-top: 1px solid rgba(214, 231, 255, 0.08);
 }
 
 .post-watermark {
   position: absolute;
   right: 12px;
   top: 42px;
-  color: rgba(255, 79, 154, 0.04);
+  color: rgba(255, 255, 255, 0.04);
   font-size: 44px;
   font-weight: 950;
   pointer-events: none;
@@ -3196,29 +3188,33 @@ button:disabled {
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
 }
 
 .post-author-avatar {
-  width: 21px;
-  height: 21px;
-  border-radius: 7px;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
   object-fit: cover;
+  object-position: center;
   flex: 0 0 auto;
-  background: rgba(255, 240, 248, 0.58);
+  border: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .post-head strong {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
   font-weight: 950;
+  color: #f7fbff;
 }
 
 .post-content {
   position: relative;
   z-index: 1;
   margin: 14px 0;
-  color: #2b2b35;
+  color: rgba(237, 244, 255, 0.88);
   font-size: 15px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -3240,7 +3236,7 @@ button:disabled {
   width: min(68%, 240px);
   max-height: 260px;
   object-fit: contain;
-  filter: drop-shadow(0 10px 18px rgba(255, 79, 154, 0.12));
+  filter: drop-shadow(0 10px 18px rgba(2, 7, 24, 0.22));
 }
 
 .post-actions {
@@ -3261,7 +3257,7 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #8b8490;
+  color: rgba(220, 233, 255, 0.76);
   background: transparent;
   font-size: 13px;
   font-weight: 900;
@@ -3269,14 +3265,14 @@ button:disabled {
 
 .post-actions time {
   margin-left: auto;
-  color: #8b8490;
+  color: rgba(220, 233, 255, 0.7);
   font-size: 11px;
   font-weight: 750;
   white-space: nowrap;
 }
 
 .post-actions button.liked {
-  color: #ff4f9a;
+  color: #ffd0e6;
   animation: none;
 }
 
@@ -3287,7 +3283,7 @@ button:disabled {
   display: grid;
   gap: 6px;
   padding-left: 12px;
-  border-left: 1px solid rgba(255, 79, 154, 0.16);
+  border-left: 1px solid rgba(214, 231, 255, 0.1);
 }
 
 .post-comment {
@@ -3304,7 +3300,7 @@ button:disabled {
 }
 
 .post-comment strong {
-  color: #ff4f9a;
+  color: #d7e6ff;
   font-size: 12px;
   font-weight: 950;
   flex: 0 0 auto;
@@ -3312,7 +3308,7 @@ button:disabled {
 }
 
 .post-comment span {
-  color: #2b2b35;
+  color: rgba(237, 244, 255, 0.88);
   font-size: 13px;
   line-height: 1.4;
   min-width: 0;
@@ -3325,8 +3321,8 @@ button:disabled {
   margin: -2px 0 2px 42px;
   padding: 2px 7px;
   border-radius: 999px;
-  color: #8b8490;
-  background: rgba(255, 79, 154, 0.08);
+  color: rgba(220, 233, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
   font-size: 11px;
   font-weight: 800;
   line-height: 1.5;
@@ -3338,20 +3334,22 @@ button:disabled {
   margin-top: 10px;
   min-height: 42px;
   padding: 0 0 6px;
-  border-bottom: 0;
+  border: 0;
   border-radius: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 34px;
   gap: 6px;
   background: transparent;
+  backdrop-filter: none;
 }
 
 .post-comment-form input {
   min-width: 0;
   border: 0;
+  border-radius: 0;
   outline: 0;
   padding: 0 6px;
-  color: #2b2b35;
+  color: #f7fbff;
   background: transparent;
   font-size: 13px;
 }
@@ -3361,8 +3359,8 @@ button:disabled {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #ff4f9a, #ff7fba);
+  color: #f7fbff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .post-comment-form button:disabled {
@@ -3375,8 +3373,7 @@ button:disabled {
   display: grid;
   place-items: center;
   text-align: center;
-  color: #8b8490;
-  border-bottom: 1px solid rgba(255, 79, 154, 0.12);
+  color: rgba(237, 244, 255, 0.78);
 }
 
 .timeline-empty svg {
@@ -3424,7 +3421,7 @@ button:disabled {
 
 @keyframes timeline-pill-breathe {
   50% {
-    box-shadow: 0 8px 22px rgba(255, 79, 154, 0.22);
+    opacity: 0.82;
   }
 }
 

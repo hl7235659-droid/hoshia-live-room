@@ -9,7 +9,8 @@ import "./styles.css";
 
 const appBase = import.meta.env.BASE_URL || "/";
 const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
-const timelineAvatarUrl = appPath("assets/hoshia-timeline-avatar.png");
+const timelineAvatarUrl = appPath("assets/hoshia-timeline-avatar-new.jpg");
+const timelineBgUrl = appPath("assets/hoshia-timeline-bg.jpg");
 const awakeningBgUrl = appPath("assets/hoshia-awakening-bg.jpg");
 const awakeningCharacterUrl = appPath("assets/hoshia-awakening-character.png");
 const awakeningSoloBgUrl = appPath("assets/hoshia-awakening-solo-bg.jpg");
@@ -1117,7 +1118,11 @@ function HoshiaTimelineOverlay({
   }
 
   return (
-    <section className="hoshia-timeline-shell" aria-label="Hoshia dynamic page">
+    <section
+      className="hoshia-timeline-shell"
+      aria-label="Hoshia dynamic page"
+      style={{ "--timeline-bg": `url("${timelineBgUrl}")` } as CSSProperties}
+    >
       <div className="timeline-bg-mark" aria-hidden="true">H</div>
       <header className="timeline-topbar">
         <button type="button" aria-label="Back to live room" onClick={onClose}>
