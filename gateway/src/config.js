@@ -20,6 +20,7 @@ export const config = {
   astrbotBridgeToken: process.env.ASTRBOT_BRIDGE_TOKEN || "",
   astrbotTimeoutMs: Number(process.env.ASTRBOT_TIMEOUT_MS || 15000),
   astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true),
+  astrbotStreamingEnabled: parseBool(process.env.ASTRBOT_STREAMING_ENABLED, true),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
   singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),
   shortTermContextMaxMessages: Number(process.env.SHORT_TERM_CONTEXT_MAX_MESSAGES || 100),

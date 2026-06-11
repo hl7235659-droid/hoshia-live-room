@@ -36,32 +36,52 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
   if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
   if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
 
+  const body = astrBotReplyBody(session, text, options, metadata);
+  const shouldStream = options.astrbotStreamingEnabled !== false && typeof metadata.onDelta === "function";
+  if (shouldStream) {
+    try {
+      return await requestAstrBotStream(options, fetchImpl, { ...body, stream: true }, metadata.onDelta);
+    } catch (error) {
+      console.warn("astrbot_stream_failed_falling_back", {
+        type: error.name || "Error",
+        message: error.message
+      });
+    }
+  }
+
+  return requestAstrBotJsonReply(options, fetchImpl, body);
+}
+
+function astrBotReplyBody(session, text, options, metadata = {}) {
+  const body = {
+    session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
+    room_id: options.roomId,
+    user_id: session.user_id,
+    nickname: session.nickname,
+    text,
+    prompt: text,
+    reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
+    messages: Array.isArray(metadata.messages) ? metadata.messages : []
+  };
+  if (metadata.forceReply === true) body.force_reply = true;
+  if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
+  if (metadata.replyRoute) body.reply_route = String(metadata.replyRoute).slice(0, 48);
+  if (metadata.latencyTraceId) body.latency_trace_id = String(metadata.latencyTraceId).slice(0, 80);
+  if (metadata.activeContext && typeof metadata.activeContext === "object") body.active_context = metadata.activeContext;
+  if (metadata.contextPolicy && typeof metadata.contextPolicy === "object") body.context_policy = metadata.contextPolicy;
+  if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
+  if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
+  if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
+  if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
+  if (Array.isArray(metadata.moduleMemoryEvents) && metadata.moduleMemoryEvents.length) body.module_memory_events = metadata.moduleMemoryEvents;
+  return body;
+}
+
+async function requestAstrBotJsonReply(options, fetchImpl, body) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
 
   try {
-    const body = {
-      session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
-      room_id: options.roomId,
-      user_id: session.user_id,
-      nickname: session.nickname,
-      text,
-      prompt: text,
-      reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
-      messages: Array.isArray(metadata.messages) ? metadata.messages : []
-    };
-    if (metadata.forceReply === true) body.force_reply = true;
-    if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
-    if (metadata.replyRoute) body.reply_route = String(metadata.replyRoute).slice(0, 48);
-    if (metadata.latencyTraceId) body.latency_trace_id = String(metadata.latencyTraceId).slice(0, 80);
-    if (metadata.activeContext && typeof metadata.activeContext === "object") body.active_context = metadata.activeContext;
-    if (metadata.contextPolicy && typeof metadata.contextPolicy === "object") body.context_policy = metadata.contextPolicy;
-    if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
-    if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
-    if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
-    if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
-    if (Array.isArray(metadata.moduleMemoryEvents) && metadata.moduleMemoryEvents.length) body.module_memory_events = metadata.moduleMemoryEvents;
-
     const response = await fetchImpl(options.astrbotBridgeUrl, {
       method: "POST",
       headers: {
@@ -84,6 +104,95 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function requestAstrBotStream(options, fetchImpl, body, onDelta) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+
+  try {
+    const response = await fetchImpl(options.astrbotBridgeUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Content-Type": "application/json",
+        "Accept": "application/x-ndjson"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`astrbot_bridge_http_${response.status}`);
+    }
+    const contentType = String(response.headers?.get?.("content-type") || "");
+    if (!contentType.includes("application/x-ndjson")) {
+      const payload = await response.json();
+      if (!payload?.ok) throw new Error(`astrbot_bridge_${payload?.error || "failed"}`);
+      return payload;
+    }
+    return parseAstrBotNdjson(response, onDelta);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function parseAstrBotNdjson(response, onDelta) {
+  if (!response.body?.getReader) throw new Error("astrbot_stream_body_unavailable");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+  let streamed = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const event = parseStreamLine(line);
+        if (!event) continue;
+        if (event.type === "delta") {
+          const text = String(event.text || "");
+          if (text) {
+            streamed = true;
+            onDelta({ text, route: event.route, latencyTraceId: event.latency_trace_id });
+          }
+        } else if (event.type === "done" || event.type === "skipped") {
+          donePayload = event;
+        } else if (event.type === "error") {
+          throw new Error(`astrbot_stream_${event.error || "failed"}`);
+        }
+      }
+    }
+    if (done) break;
+  }
+  buffer += decoder.decode();
+
+  const tail = parseStreamLine(buffer);
+  if (tail?.type === "delta") {
+    const text = String(tail.text || "");
+    if (text) {
+      streamed = true;
+      onDelta({ text, route: tail.route, latencyTraceId: tail.latency_trace_id });
+    }
+  } else if (tail?.type === "done" || tail?.type === "skipped") {
+    donePayload = tail;
+  } else if (tail?.type === "error") {
+    throw new Error(`astrbot_stream_${tail.error || "failed"}`);
+  }
+
+  if (!donePayload) throw new Error("astrbot_stream_missing_done");
+  if (!donePayload.ok) throw new Error(`astrbot_bridge_${donePayload.error || "failed"}`);
+  return { ...donePayload, streamed };
+}
+
+function parseStreamLine(line) {
+  const clean = String(line || "").trim();
+  if (!clean) return null;
+  return JSON.parse(clean);
 }
 
 export async function summarizeLiveRoomContext(options, payload, fetchImpl = globalThis.fetch) {
@@ -373,6 +482,7 @@ function optionalReplyMetadata(reply) {
   if (breakdown) metadata.latency_breakdown = breakdown;
   const route = String(reply?.route || "").trim().slice(0, 48);
   if (route) metadata.route = route;
+  if (reply?.streamed === true) metadata.streamed = true;
   return metadata;
 }
 

@@ -1401,6 +1401,8 @@ async function handleAiReplyBatch(batch) {
     ? moduleEventStore.consumeMemoryEvents({ roomId: config.roomId, limit: 24 })
     : [];
   const contextLoadMs = Math.round(performance.now() - contextStartedAt);
+  let streamedReply = false;
+  let streamDeltaStarted = false;
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
@@ -1415,6 +1417,20 @@ async function handleAiReplyBatch(batch) {
     moduleContext,
     moduleEvents,
     moduleMemoryEvents,
+    onDelta: ({ text: deltaText, route: deltaRoute } = {}) => {
+      if (!streamDeltaStarted) {
+        streamDeltaStarted = true;
+        clearQuickReplyLead(batch);
+      }
+      streamedReply = true;
+      broadcastAiReplyDelta({
+        traceId: latencyTraceId,
+        route: deltaRoute || replyRoute,
+        text: deltaText,
+        deltaMode: "append",
+        stage: "stream"
+      });
+    },
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
       nickname: item.session.nickname,
@@ -1441,12 +1457,14 @@ async function handleAiReplyBatch(batch) {
   });
 
   clearQuickReplyLead(batch);
-  await broadcastProgressiveReplyDeltas({
-    traceId: latencyTraceId,
-    route: reply.route || replyRoute,
-    text: reply.text,
-    hasLead: batch.some((item) => item.quickLeadSent)
-  });
+  if (!reply.streamed && !streamedReply) {
+    await broadcastProgressiveReplyDeltas({
+      traceId: latencyTraceId,
+      route: reply.route || replyRoute,
+      text: reply.text,
+      hasLead: batch.some((item) => item.quickLeadSent)
+    });
+  }
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
     user_id: "ai-host",

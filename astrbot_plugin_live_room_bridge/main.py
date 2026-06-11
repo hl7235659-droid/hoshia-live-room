@@ -58,6 +58,7 @@ class LiveRoomBridgePlugin(Star):
         self.host = str(config.get("host", "0.0.0.0"))
         self.port = int(config.get("port", 18081))
         self.bridge_token = str(config.get("bridge_token", ""))
+        self.streaming_enabled = self._config_bool("streaming_enabled", True)
         self.system_prompt = str(config.get("system_prompt", "")).strip()
         self.judge_provider_name = str(config.get("judge_provider_name", "tencentmaas/deepseek-v4-flash")).strip()
         self.proactive_reply_threshold = float(config.get("proactive_reply_threshold", 0.62))
@@ -118,8 +119,12 @@ class LiveRoomBridgePlugin(Star):
     async def _handle_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         try:
             request = await self._read_request(reader)
-            status, payload = await self._dispatch(request)
-            self._write_json(writer, status, payload)
+            result = await self._dispatch(request)
+            if isinstance(result, dict) and result.get("_live_room_stream"):
+                await self._write_ndjson_stream(writer, result.get("status", HTTPStatus.OK), result.get("events"))
+            else:
+                status, payload = result
+                self._write_json(writer, status, payload)
         except Exception as exc:
             logger.error(f"[live-room-bridge] request failed: {exc}", exc_info=True)
             self._write_json(writer, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "internal_error"})
@@ -193,6 +198,7 @@ class LiveRoomBridgePlugin(Star):
         latency_trace_id = self._safe_identifier(payload.get("latency_trace_id"), 80)
         force_reply = bool(payload.get("force_reply"))
         reply_mode = str(payload.get("reply_mode", "")).strip()[:48]
+        stream_reply = bool(payload.get("stream")) and self.streaming_enabled
         if not text or len(text) > 3000:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid_text"}
 
@@ -227,7 +233,7 @@ class LiveRoomBridgePlugin(Star):
             else:
                 should_reply, judge_payload = await self._judge_proactive_reply(room_id, prompt, messages)
                 if not should_reply:
-                    return HTTPStatus.OK, {
+                    skipped_payload = {
                         "ok": True,
                         "skipped": True,
                         "source": "heartflow_judge",
@@ -242,7 +248,24 @@ class LiveRoomBridgePlugin(Star):
                             "total_ms": int((time.perf_counter() - started) * 1000),
                         },
                     }
+                    if stream_reply:
+                        return self._stream_response(self._single_stream_event("skipped", skipped_payload))
+                    return HTTPStatus.OK, skipped_payload
                 prompt = f"{prompt}\n\nThis is a proactive live-room interjection. Nobody explicitly mentioned you. Reply only if the topic, relationship, or room atmosphere genuinely gives Hoshia a reason to speak. Do not fill silence just to prove she is online or available."
+
+            if stream_reply:
+                return self._stream_response(self._stream_llm_reply(
+                    provider_id=provider_id,
+                    prompt=prompt,
+                    started=started,
+                    memory_recall_ms=memory_recall_ms,
+                    context_load_ms=context_load_ms,
+                    room_id=room_id,
+                    messages=messages,
+                    module_memory_events=module_memory_events,
+                    reply_route=reply_route,
+                    latency_trace_id=latency_trace_id,
+                ))
 
             llm_started = time.perf_counter()
             llm_response = await self.context.llm_generate(
@@ -282,6 +305,211 @@ class LiveRoomBridgePlugin(Star):
         except Exception as exc:
             logger.error(f"[live-room-bridge] llm failed: {exc}", exc_info=True)
             return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "llm_failed"}
+
+    def _stream_response(self, events: Any) -> dict[str, Any]:
+        return {"_live_room_stream": True, "status": HTTPStatus.OK, "events": events}
+
+    async def _single_stream_event(self, event_type: str, payload: dict[str, Any]):
+        event = {"type": event_type, **payload}
+        yield event
+
+    async def _stream_llm_reply(
+        self,
+        *,
+        provider_id: str,
+        prompt: str,
+        started: float,
+        memory_recall_ms: int,
+        context_load_ms: int,
+        room_id: str,
+        messages: Any,
+        module_memory_events: Any,
+        reply_route: str,
+        latency_trace_id: str,
+    ):
+        llm_started = time.perf_counter()
+        first_token_ms: int | None = None
+        chunks: list[str] = []
+        final_text = ""
+        sent_any_delta = False
+        last_stream_text = ""
+        stream_text_is_cumulative = True
+        try:
+            provider = self.context.get_provider_by_id(provider_id)
+            if hasattr(provider, "__await__"):
+                provider = await provider
+            stream_fn = getattr(provider, "text_chat_stream", None) if provider else None
+            if not callable(stream_fn):
+                async for event in self._stream_fallback_llm_reply(
+                    provider_id=provider_id,
+                    prompt=prompt,
+                    started=started,
+                    llm_started=llm_started,
+                    memory_recall_ms=memory_recall_ms,
+                    context_load_ms=context_load_ms,
+                    room_id=room_id,
+                    messages=messages,
+                    module_memory_events=module_memory_events,
+                    reply_route=reply_route,
+                    latency_trace_id=latency_trace_id,
+                    reason="stream_unavailable",
+                ):
+                    yield event
+                return
+
+            async for chunk in stream_fn(
+                prompt=prompt,
+                system_prompt=self.system_prompt or None,
+                contexts=None,
+            ):
+                text = str(getattr(chunk, "completion_text", "") or "")
+                if text:
+                    chunk_marker = getattr(chunk, "is_chunk", None)
+                    if chunk_marker is False and sent_any_delta:
+                        final_text = text
+                        continue
+                    is_cumulative_update = text.startswith(last_stream_text)
+                    if sent_any_delta and not is_cumulative_update:
+                        stream_text_is_cumulative = False
+                    delta_text = text[len(last_stream_text):] if is_cumulative_update else text
+                    if delta_text:
+                        chunks.append(delta_text)
+                        sent_any_delta = True
+                        if first_token_ms is None:
+                            first_token_ms = int((time.perf_counter() - llm_started) * 1000)
+                        yield {
+                            "type": "delta",
+                            "ok": True,
+                            "text": delta_text,
+                            "is_chunk": True,
+                            "route": reply_route,
+                            "latency_trace_id": latency_trace_id,
+                        }
+                    last_stream_text = text
+
+            final_text = final_text or (last_stream_text if stream_text_is_cumulative and last_stream_text else "".join(chunks))
+            final_text = final_text.strip()
+            if not final_text:
+                if sent_any_delta:
+                    yield {"type": "error", "ok": False, "error": "empty_llm_response", "route": reply_route, "latency_trace_id": latency_trace_id}
+                    return
+                async for event in self._stream_fallback_llm_reply(
+                    provider_id=provider_id,
+                    prompt=prompt,
+                    started=started,
+                    llm_started=llm_started,
+                    memory_recall_ms=memory_recall_ms,
+                    context_load_ms=context_load_ms,
+                    room_id=room_id,
+                    messages=messages,
+                    module_memory_events=module_memory_events,
+                    reply_route=reply_route,
+                    latency_trace_id=latency_trace_id,
+                    reason="empty_stream",
+                ):
+                    yield event
+                return
+
+            llm_total_ms = int((time.perf_counter() - llm_started) * 1000)
+            if first_token_ms is None:
+                first_token_ms = llm_total_ms
+            if self.livingmemory_enabled and self.livingmemory_auto_summary_enabled:
+                asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, final_text, module_memory_events))
+            total_ms = int((time.perf_counter() - started) * 1000)
+            breakdown = {
+                "memory_recall_ms": memory_recall_ms,
+                "context_load_ms": context_load_ms,
+                "llm_first_token_ms": first_token_ms,
+                "llm_total_ms": llm_total_ms,
+                "total_ms": total_ms,
+            }
+            logger.info(
+                "[live-room-bridge] reply_latency "
+                f"trace={latency_trace_id or '-'} route={reply_route or '-'} "
+                f"memory_recall_ms={memory_recall_ms} context_load_ms={context_load_ms} "
+                f"llm_first_token_ms={first_token_ms} llm_total_ms={llm_total_ms} total_ms={total_ms}"
+            )
+            yield {
+                "type": "done",
+                "ok": True,
+                "text": final_text,
+                "state": "SPEAKING",
+                "source": "astrbot",
+                "latency_ms": total_ms,
+                "route": reply_route,
+                "latency_trace_id": latency_trace_id,
+                "latency_breakdown": breakdown,
+                "streamed": sent_any_delta,
+            }
+        except Exception as exc:
+            logger.error(f"[live-room-bridge] stream llm failed: {exc}", exc_info=True)
+            if sent_any_delta:
+                yield {"type": "error", "ok": False, "error": "llm_failed", "route": reply_route, "latency_trace_id": latency_trace_id}
+                return
+            async for event in self._stream_fallback_llm_reply(
+                provider_id=provider_id,
+                prompt=prompt,
+                started=started,
+                llm_started=llm_started,
+                memory_recall_ms=memory_recall_ms,
+                context_load_ms=context_load_ms,
+                room_id=room_id,
+                messages=messages,
+                module_memory_events=module_memory_events,
+                reply_route=reply_route,
+                latency_trace_id=latency_trace_id,
+                reason="stream_failed",
+            ):
+                yield event
+
+    async def _stream_fallback_llm_reply(
+        self,
+        *,
+        provider_id: str,
+        prompt: str,
+        started: float,
+        llm_started: float,
+        memory_recall_ms: int,
+        context_load_ms: int,
+        room_id: str,
+        messages: Any,
+        module_memory_events: Any,
+        reply_route: str,
+        latency_trace_id: str,
+        reason: str,
+    ):
+        llm_response = await self.context.llm_generate(
+            chat_provider_id=provider_id,
+            prompt=prompt,
+            system_prompt=self.system_prompt or None,
+        )
+        llm_total_ms = int((time.perf_counter() - llm_started) * 1000)
+        reply_text = str(getattr(llm_response, "completion_text", "") or "").strip()
+        if not reply_text:
+            yield {"type": "error", "ok": False, "error": "empty_llm_response", "route": reply_route, "latency_trace_id": latency_trace_id}
+            return
+        if self.livingmemory_enabled and self.livingmemory_auto_summary_enabled:
+            asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text, module_memory_events))
+        total_ms = int((time.perf_counter() - started) * 1000)
+        yield {
+            "type": "done",
+            "ok": True,
+            "text": reply_text,
+            "state": "SPEAKING",
+            "source": "astrbot",
+            "latency_ms": total_ms,
+            "route": reply_route,
+            "latency_trace_id": latency_trace_id,
+            "latency_breakdown": {
+                "memory_recall_ms": memory_recall_ms,
+                "context_load_ms": context_load_ms,
+                "llm_first_token_ms": llm_total_ms,
+                "llm_total_ms": llm_total_ms,
+                "total_ms": total_ms,
+            },
+            "streamed": False,
+            "stream_fallback_reason": reason,
+        }
 
     def _config_bool(self, key: str, fallback: bool) -> bool:
         value = self.config.get(key, fallback)
@@ -2346,3 +2574,18 @@ Return ONLY valid JSON with this shape:
             "Connection: close\r\n"
             "\r\n"
         .encode("ascii") + body)
+
+    async def _write_ndjson_stream(self, writer: asyncio.StreamWriter, status: HTTPStatus, events: Any):
+        reason = status.phrase
+        writer.write(
+            f"HTTP/1.1 {status.value} {reason}\r\n"
+            "Content-Type: application/x-ndjson; charset=utf-8\r\n"
+            "Cache-Control: no-cache\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        .encode("ascii"))
+        await writer.drain()
+        async for event in events:
+            line = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+            writer.write(line)
+            await writer.drain()

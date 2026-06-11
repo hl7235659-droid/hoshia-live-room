@@ -150,13 +150,19 @@ function appendReplyDelta(current: LiveMessage[], payload: Partial<LiveMessage>)
   const traceId = payload.latency_trace_id;
   if (!traceId) return current;
   return current.map((item) => item.type === "ai_reply_pending" && item.latency_trace_id === traceId
-    ? { ...item, text: payload.delta_mode === "replace" ? `${payload.text || ""}` : `${item.text || ""}${payload.text || ""}` }
+    ? {
+        ...item,
+        text: payload.delta_mode === "replace" || (payload.stage === "stream" && !item.stream_started)
+          ? `${payload.text || ""}`
+          : `${item.text || ""}${payload.text || ""}`,
+        stream_started: item.stream_started || payload.stage === "stream"
+      }
     : item);
 }
 
 function removePendingReply(current: LiveMessage[], traceId: string | undefined) {
   if (!traceId) return current;
-  return current.filter((item) => !(item.type === "ai_reply_pending" && item.latency_trace_id === traceId));
+  return current.filter((item) => !(item.type === "ai_reply_pending" && item.latency_trace_id === traceId && !item.stream_started));
 }
 
 function wsPath(path: string) {

@@ -291,6 +291,77 @@ test("astrbot room batch forwards low-latency routing metadata", async () => {
   });
 });
 
+test("astrbot room batch streams NDJSON deltas before final reply", async () => {
+  const deltas = [];
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice: 你今天干嘛了",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.stream, true);
+      assert.equal(options.headers.Accept, "application/x-ndjson");
+      return responseNdjson([
+        { type: "delta", ok: true, text: "今天啊……", route: "diary_related", latency_trace_id: "reply_stream" },
+        { type: "delta", ok: true, text: "我本来想装作很充实的。", route: "diary_related", latency_trace_id: "reply_stream" },
+        {
+          type: "done",
+          ok: true,
+          text: "今天啊……我本来想装作很充实的。",
+          state: "SPEAKING",
+          source: "astrbot",
+          route: "diary_related",
+          streamed: true,
+          latency_breakdown: {
+            llm_first_token_ms: 320,
+            llm_total_ms: 1800,
+            total_ms: 1900
+          }
+        }
+      ]);
+    },
+    {
+      roomSession: true,
+      replyRoute: "diary_related",
+      latencyTraceId: "reply_stream",
+      onDelta: (event) => deltas.push(event)
+    }
+  );
+
+  assert.deepEqual(deltas.map((item) => item.text), ["今天啊……", "我本来想装作很充实的。"]);
+  assert.equal(reply.streamed, true);
+  assert.equal(reply.text, "今天啊……我本来想装作很充实的。");
+  assert.equal(reply.latency_breakdown.llm_first_token_ms, 320);
+});
+
+test("astrbot stream failure falls back to one-shot JSON reply", async () => {
+  let calls = 0;
+  const reply = await generateAiReply(
+    session,
+    "hello",
+    baseConfig,
+    async (_url, options) => {
+      calls += 1;
+      const body = JSON.parse(options.body);
+      if (calls === 1) {
+        assert.equal(body.stream, true);
+        return responseNdjson(["not json"]);
+      }
+      assert.equal(body.stream, undefined);
+      return responseJson(200, { ok: true, text: "fallback reply", state: "SPEAKING", source: "astrbot" });
+    },
+    {
+      onDelta: () => {
+        throw new Error("delta should not be called");
+      }
+    }
+  );
+
+  assert.equal(calls, 2);
+  assert.equal(reply.text, "fallback reply");
+  assert.equal(reply.streamed, undefined);
+});
+
 test("proactive idle reply mode is forwarded to astrbot bridge", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "Live room" },
@@ -545,4 +616,14 @@ function responseJson(status, payload) {
       return payload;
     }
   };
+}
+
+function responseNdjson(events) {
+  const body = events.map((event) => typeof event === "string" ? event : JSON.stringify(event)).join("\n") + "\n";
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8"
+    }
+  });
 }

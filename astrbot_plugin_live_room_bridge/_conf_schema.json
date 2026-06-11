@@ -4,6 +4,11 @@
     "type": "string",
     "default": ""
   },
+  "streaming_enabled": {
+    "description": "Enable NDJSON streaming replies for /live-room/generate when the gateway requests stream=true.",
+    "type": "bool",
+    "default": true
+  },
   "host": {
     "description": "Bind host inside AstrBot container. Use 0.0.0.0 for Docker-network-only access.",
     "type": "string",
