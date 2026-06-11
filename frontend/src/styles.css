@@ -2165,9 +2165,7 @@ button:disabled {
 }
 
 .music-room-now,
-.music-room-controls,
-.music-queue,
-.music-room-controls button {
+.music-queue {
   display: flex;
   align-items: center;
 }
@@ -2229,7 +2227,7 @@ button:disabled {
   grid-column: 1 / -1;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -2248,31 +2246,6 @@ button:disabled {
   max-height: 100%;
   opacity: 1;
   transform: translateY(0) scaleY(1);
-}
-
-.music-room-controls button {
-  height: 34px;
-  width: auto;
-  padding: 0 9px;
-  gap: 4px;
-  border-radius: 12px;
-  background: #fff17b;
-  color: #172033;
-  font-size: 11px;
-  font-weight: 950;
-}
-
-.music-room-controls {
-  gap: 6px;
-  min-height: 20px;
-  flex-wrap: wrap;
-  padding: 0 10px;
-}
-
-.music-room-controls button {
-  height: 28px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #294b60;
 }
 
 .music-queue {
@@ -2301,7 +2274,7 @@ button:disabled {
 }
 
 .music-queue-row {
-  grid-template-columns: 34px minmax(0, 1fr) minmax(64px, auto) auto;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(64px, auto);
 }
 
 .music-queue-index {
@@ -2326,19 +2299,6 @@ button:disabled {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.music-queue-row button {
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(23, 32, 51, 0.08);
-  color: #294b60;
-  font-size: 12px;
-  line-height: 1;
 }
 
 .music-queue-empty {

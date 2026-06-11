@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Pause, Play, Save, Send, Settings, ShieldCheck, Signal, SkipForward, Sparkles, Trash2, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, Clock, Heart, Image, KeyRound, Lock, LockKeyhole, LogIn, Menu, MessageCircle, Music, Palette, Save, Send, Settings, ShieldCheck, Signal, Sparkles, UserCircle, UserPlus, Users, Volume2, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { colorForMessage } from "./messageColors";
 import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
@@ -784,6 +784,7 @@ function LiveMobile({
   const [accountOpen, setAccountOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [musicPlaybackNotice, setMusicPlaybackNotice] = useState("");
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [hoshiaPosts, setHoshiaPosts] = useState<HoshiaPost[]>(() => (isDemo ? demoHoshiaPosts : []));
 
@@ -874,12 +875,20 @@ function LiveMobile({
           messages={messages}
           musicState={musicState}
           onMusicState={onMusicState}
+          musicPlaybackNotice={musicPlaybackNotice}
           audience={audience}
           socketStatus={socketStatus}
           nickname={session.nickname}
           audioEnabled={audioEnabled}
           onSendStart={onLocalSendStart}
           onDemoSend={onDemoSend}
+        />
+        <GlobalMusicPlayer
+          musicState={musicState}
+          socketStatus={socketStatus}
+          audioEnabled={audioEnabled}
+          onMusicState={onMusicState}
+          onNotice={setMusicPlaybackNotice}
         />
         {accountOpen ? (
           <AccountSettingsModal
@@ -2385,6 +2394,7 @@ function BottomDock({
   messages,
   musicState,
   onMusicState,
+  musicPlaybackNotice,
   audience,
   socketStatus,
   nickname,
@@ -2395,6 +2405,7 @@ function BottomDock({
   messages: LiveMessage[];
   musicState: MusicState;
   onMusicState: (state: MusicState) => void;
+  musicPlaybackNotice: string;
   audience: AudiencePayload | null;
   socketStatus: string;
   nickname: string;
@@ -2495,8 +2506,8 @@ function BottomDock({
           <MusicRoomPanel
             musicState={musicState}
             socketStatus={socketStatus}
-            onMusicState={onMusicState}
             audioEnabled={audioEnabled}
+            playbackNotice={musicPlaybackNotice}
             expanded={musicOpen}
           />
         ) : historyOpen ? (
@@ -2569,53 +2580,24 @@ function BottomDock({
 function MusicRoomPanel({
   musicState,
   socketStatus,
-  onMusicState,
   audioEnabled,
+  playbackNotice,
   expanded
 }: {
   musicState: MusicState;
   socketStatus: string;
-  onMusicState: (state: MusicState) => void;
   audioEnabled: boolean;
+  playbackNotice: string;
   expanded: boolean;
 }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [notice, setNotice] = useState("");
   const current = musicState.current;
   const queuedTracks = current ? [current, ...musicState.queue] : musicState.queue;
   const canUseMusic = musicState.enabled && socketStatus !== "demo";
-  const canControl = musicState.can_control && canUseMusic;
-  const isPlaying = musicState.status === "playing";
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const nextSrc = current?.stream_url ? appPath(current.stream_url) : "";
-    if (!nextSrc) {
-      audio.removeAttribute("src");
-      audio.load();
-      return;
-    }
-    if (audio.getAttribute("src") !== nextSrc) {
-      audio.src = nextSrc;
-      audio.load();
-    }
-    if (!audioEnabled || musicState.status !== "playing") {
-      audio.pause();
-      return;
-    }
-    void audio.play().catch(() => setNotice("Browser blocked playback. Turn sound off and on again after the track loads."));
-  }, [audioEnabled, current?.id, current?.stream_url, musicState.status]);
-
-  async function control(action: string, id?: string) {
-    const payload = await postMusic("control", { action, id });
-    if (payload?.state) onMusicState(payload.state);
-    if (!payload?.ok) setNotice(friendlyMusicNotice(payload?.error));
-  }
+  const playbackStatus = canUseMusic && current && !audioEnabled ? "Sound is off on this device." : "";
+  const notice = playbackNotice || musicState.last_error || playbackStatus;
 
   return (
     <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"} ${expanded ? "open" : ""}`} aria-label="Music room player">
-      <audio ref={audioRef} preload="none" onEnded={() => void control("next")} />
       <div className="music-room-now">
         <div className="music-room-icon" aria-hidden="true">
           <Music size={16} />
@@ -2626,43 +2608,75 @@ function MusicRoomPanel({
         </div>
       </div>
       <div className="music-room-expanded" aria-hidden={!expanded}>
-        {canControl ? (
-          <div className="music-room-controls">
-            <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!current}>
-              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-              <span>{isPlaying ? "pause" : "play"}</span>
-            </button>
-            <button type="button" onClick={() => void control("next")} disabled={!current && !musicState.queue.length}>
-              <SkipForward size={14} />
-              <span>next</span>
-            </button>
-            <button type="button" onClick={() => void control("clear")} disabled={!musicState.queue.length}>
-              <Trash2 size={14} />
-              <span>clear</span>
-            </button>
-          </div>
-        ) : null}
         <div className="music-queue" aria-label="Song queue">
           {queuedTracks.map((track, index) => (
             <div className="music-queue-row" key={track.id || `track-${index}`}>
               <span className="music-queue-index">{String(index + 1).padStart(2, "0")}</span>
               <strong>{track.title}</strong>
               <em>{track.artist || "Unknown"}</em>
-              {canControl && index > 0 ? (
-                <button type="button" onClick={() => void control("remove", track.id)} aria-label={`Remove ${track.title}`}>
-                  ×
-                </button>
-              ) : null}
             </div>
           ))}
           {!queuedTracks.length ? <div className="music-queue-empty">还没有排队歌曲</div> : null}
         </div>
       </div>
-      {(notice || musicState.last_error) ? (
-        <p className="music-notice">{notice || friendlyMusicNotice(musicState.last_error)}</p>
+      {notice ? (
+        <p className="music-notice">{notice === musicState.last_error ? friendlyMusicNotice(notice) : notice}</p>
       ) : null}
     </section>
   );
+}
+
+function GlobalMusicPlayer({
+  musicState,
+  socketStatus,
+  audioEnabled,
+  onMusicState,
+  onNotice
+}: {
+  musicState: MusicState;
+  socketStatus: string;
+  audioEnabled: boolean;
+  onMusicState: (state: MusicState) => void;
+  onNotice: (notice: string) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const current = musicState.current;
+  const canUseMusic = musicState.enabled && socketStatus !== "demo";
+  const shouldPlay = canUseMusic && audioEnabled && musicState.status === "playing" && Boolean(current?.stream_url);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const nextSrc = canUseMusic && current?.stream_url ? appPath(current.stream_url) : "";
+    if (!nextSrc) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      onNotice("");
+      return;
+    }
+    if (audio.getAttribute("src") !== nextSrc) {
+      audio.src = nextSrc;
+      audio.load();
+    }
+    if (!shouldPlay) {
+      audio.pause();
+      if (musicState.status !== "error") onNotice("");
+      return;
+    }
+    void audio.play()
+      .then(() => onNotice(""))
+      .catch(() => onNotice("Browser blocked playback. Turn sound off and on again after the track loads."));
+  }, [canUseMusic, current?.id, current?.stream_url, musicState.status, onNotice, shouldPlay]);
+
+  async function handleEnded() {
+    if (!musicState.can_control || !canUseMusic) return;
+    const payload = await postMusic("control", { action: "next" });
+    if (payload?.state) onMusicState(payload.state);
+    if (!payload?.ok) onNotice(friendlyMusicNotice(payload?.error));
+  }
+
+  return <audio ref={audioRef} preload="none" onEnded={() => void handleEnded()} />;
 }
 async function postMusic(_kind: "control", body: Record<string, unknown>) {
   const endpoint = "api/music/control";
