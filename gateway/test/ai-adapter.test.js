@@ -75,7 +75,7 @@ test("astrbot room batch uses shared room session and reply targets", async () =
         room_id: "live-room-dev",
         user_id: "room",
         nickname: "小房间留言",
-        text: "最近弹幕：\n[1] Alice @Hoshia: hi",
+        text: "Alice: @Hoshia hi",
         prompt: "最近弹幕：\n[1] Alice @Hoshia: hi",
         reply_targets: ["Alice"],
         messages: [
@@ -120,7 +120,7 @@ test("astrbot room batch can force single-viewer direct replies", async () => {
         room_id: "live-room-dev",
         user_id: "room",
         nickname: "小房间留言",
-        text: "最近弹幕：\n[1] Alice: 今天好累",
+        text: "Alice: 今天好累",
         prompt: "最近弹幕：\n[1] Alice: 今天好累",
         reply_targets: [],
         messages: [

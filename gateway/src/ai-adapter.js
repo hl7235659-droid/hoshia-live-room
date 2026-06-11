@@ -77,13 +77,14 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
 }
 
 function astrBotReplyBody(session, text, options, metadata = {}) {
+  const prompt = String(text || "");
   const body = {
     session_id: metadata.roomSession ? `${options.roomId}:room` : `${options.roomId}:${session.user_id}`,
     room_id: options.roomId,
     user_id: session.user_id,
     nickname: session.nickname,
-    text,
-    prompt: text,
+    text: bridgeVisibleText(metadata, prompt),
+    prompt,
     reply_targets: Array.isArray(metadata.replyTargets) ? metadata.replyTargets : [],
     messages: Array.isArray(metadata.messages) ? metadata.messages : []
   };
@@ -99,6 +100,20 @@ function astrBotReplyBody(session, text, options, metadata = {}) {
   if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
   if (Array.isArray(metadata.moduleMemoryEvents) && metadata.moduleMemoryEvents.length) body.module_memory_events = metadata.moduleMemoryEvents;
   return body;
+}
+
+function bridgeVisibleText(metadata = {}, fallback = "") {
+  const messages = Array.isArray(metadata.messages) ? metadata.messages : [];
+  const lines = messages
+    .map((item) => {
+      const nickname = String(item?.nickname || "").trim().slice(0, 32);
+      const text = String(item?.text || "").replace(/\s+/g, " ").trim();
+      if (!text) return "";
+      return nickname ? `${nickname}: ${text}` : text;
+    })
+    .filter(Boolean);
+  const value = lines.length ? lines.join("\n") : String(fallback || "");
+  return value.slice(0, 2800);
 }
 
 async function requestAstrBotJsonReply(options, fetchImpl, body) {

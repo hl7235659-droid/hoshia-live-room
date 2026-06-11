@@ -124,6 +124,36 @@ test("explicit interest preference may become a short preference memory", () => 
   }
 });
 
+test("interest system skips duplicate memory ids instead of throwing", () => {
+  let writes = 0;
+  const lifeMemoryService = {
+    searchMemories() {
+      return [];
+    },
+    addMemory(memory) {
+      writes += 1;
+      if (writes > 1) throw new Error("UNIQUE constraint failed: hoshia_life_memories.id");
+      return memory;
+    }
+  };
+  const system = createHoshiaInterestSystem({
+    lifeMemoryService,
+    clock: () => new Date("2026-06-11T12:00:00.000Z")
+  });
+
+  const input = {
+    batch: [
+      {
+        session: { user_id: "user-1", nickname: "Alice" },
+        text: "anime episode and manga topic"
+      }
+    ]
+  };
+
+  assert.equal(system.recordInteractionSignals(input).length, 1);
+  assert.deepEqual(system.recordInteractionSignals(input), []);
+});
+
 test("interest profile scoring prefers matching themes and adds fatigue", () => {
   const ranked = scoreInterestProfile(hoshiaInterestProfile, {
     memories: [

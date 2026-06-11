@@ -46,7 +46,7 @@ export function createHoshiaInterestSystem({
         560
       );
       if (!content) return null;
-      return lifeMemoryService.addMemory({
+      return addMemoryIfNew(lifeMemoryService, {
         id: `daily_canon_${dayKey}`,
         character_id: characterId,
         type: "summary",
@@ -90,7 +90,7 @@ export function createHoshiaInterestSystem({
           560
         );
         if (!content) continue;
-        const memory = lifeMemoryService.addMemory({
+        const memory = addMemoryIfNew(lifeMemoryService, {
           id: `interest_${sourceId.replace(/[^a-zA-Z0-9_.:-]/g, "_")}`,
           character_id: characterId,
           user_id: signal.user_id,
@@ -274,6 +274,15 @@ function findExistingMemory(lifeMemoryService, { source, sourceId, userId = "", 
     limit: 50,
     now
   }).find((memory) => memory.source_id === sourceId) || null;
+}
+
+function addMemoryIfNew(lifeMemoryService, memory) {
+  try {
+    return lifeMemoryService.addMemory(memory);
+  } catch (error) {
+    if (String(error?.message || "").includes("UNIQUE constraint failed")) return null;
+    throw error;
+  }
 }
 
 function searchMemories(lifeMemoryService, { source, userId = "", limit = 8, now = new Date() } = {}) {
