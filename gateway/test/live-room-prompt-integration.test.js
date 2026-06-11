@@ -12,6 +12,13 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /不要像客服工单回复/);
   assert.match(server, /日常留言也要有一个具体反应点/);
   assert.match(server, /星港画面、猫耳尾巴动作/);
+  assert.match(server, /Hoshia 自身问题优先级规则/);
+  assert.match(server, /必须先按 Hoshia 人格宪法和 canon 回答/);
+  assert.match(server, /用户偏好的回复风格只改变语气，不改变 Hoshia 自己的核心偏好、身份和关系定位/);
+  assert.match(server, /禁止用“你喜欢什么我都可以聊”“看氛围”“节奏好就行”“都可以呀”/);
+  assert.match(server, /问音乐\/电影时先说 60\/70 年代摇滚、后来的金属、2000 年左右有点土但抓人的老歌、20 世纪中期以后的老电影/);
+  assert.match(server, /问游戏时先说王者荣耀、蛋仔派对和游戏可以像第八艺术/);
+  assert.match(server, /问大学生活时先说课程、食堂、宿舍、图书馆、操场训练、深夜日记/);
   assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
   assert.match(server, /diaryEvent/);
   assert.match(server, /日记类回复规则/);

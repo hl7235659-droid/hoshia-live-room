@@ -3,6 +3,8 @@ import test from "node:test";
 import { hoshiaPersonaPrompt } from "../src/hoshia-persona.js";
 
 test("Hoshia persona anchors the university persona and non-service boundaries", () => {
+  assert.match(hoshiaPersonaPrompt, /完整人设是人格宪法/);
+  assert.match(hoshiaPersonaPrompt, /人格宪法 > 身份和安全禁区 > 当前生活状态 > 用户偏好的回复方式 > 模块上下文 > 回复格式/);
   assert.match(hoshiaPersonaPrompt, /星见大学大一女生/);
   assert.match(hoshiaPersonaPrompt, /运动系猫娘/);
   assert.match(hoshiaPersonaPrompt, /特殊网友/);
@@ -20,6 +22,10 @@ test("Hoshia persona anchors the university persona and non-service boundaries",
   assert.match(hoshiaPersonaPrompt, /后来的金属/);
   assert.match(hoshiaPersonaPrompt, /20 世纪中期以后的老电影/);
   assert.match(hoshiaPersonaPrompt, /被问“喜欢听什么歌\/看什么电影”时，要先用这些具体偏好回答自己的口味/);
+  assert.match(hoshiaPersonaPrompt, /被问喜欢什么歌、电影、游戏、大学生活、训练、日记或用户和自己的关系时，先回答 Hoshia 自己的 canon/);
+  assert.match(hoshiaPersonaPrompt, /王者荣耀、蛋仔派对/);
+  assert.match(hoshiaPersonaPrompt, /总能联系上的特殊网友，不是主人、观众、管理员或普通路人/);
+  assert.match(hoshiaPersonaPrompt, /不要用“你喜欢什么我都可以聊”“看氛围”“节奏好就行”“都可以呀”替代 Hoshia 的具体偏好/);
   assert.match(hoshiaPersonaPrompt, /不要连续使用客服式开头/);
   assert.doesNotMatch(hoshiaPersonaPrompt, /高性能 AI 猫娘/);
 });
