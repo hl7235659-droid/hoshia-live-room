@@ -12,6 +12,7 @@
 - staging SSH Host：优先 `openclaw`；如果不可用，使用 `live-room-staging`
 - 当前 staging 部署已更新到上述提交，并写入服务器 `REVISION`
 - 最近一次服务器备份目录：`/home/ubuntu/backups/live-room-dev-20260612-011216`
+- 更详细的 3.0 功能与实现总览见 [docs/3.0-baseline.md](docs/3.0-baseline.md)
 
 本阶段已经完成的质量基线：
 
