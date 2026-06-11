@@ -105,6 +105,7 @@ test("pending reply notices are route-specific text", () => {
 test("quick reply leads provide early spoken text for lightweight routes", () => {
   assert.match(quickReplyLead("diary_related", "你今天干嘛了"), /今天/);
   assert.match(quickReplyLead("emotional", "我今天好累"), /听/);
-  assert.match(quickReplyLead("smalltalk", "你好"), /我在/);
+  assert.equal(quickReplyLead("smalltalk", "hello"), "");
+  assert.equal(quickReplyLead("smalltalk", "lunch?"), "");
   assert.equal(quickReplyLead("project_discussion", "看看项目架构"), "");
 });

@@ -152,6 +152,9 @@ function appendReplyDelta(current: LiveMessage[], payload: Partial<LiveMessage>)
   return current.map((item) => item.type === "ai_reply_pending" && item.latency_trace_id === traceId
     ? {
         ...item,
+        role: payload.stage === "stream" ? payload.role || "ai" : item.role,
+        user_id: payload.stage === "stream" ? payload.user_id || "ai-host" : item.user_id,
+        nickname: payload.stage === "stream" ? payload.nickname || "Hoshia" : item.nickname,
         text: payload.delta_mode === "replace" || (payload.stage === "stream" && !item.stream_started)
           ? `${payload.text || ""}`
           : `${item.text || ""}${payload.text || ""}`,

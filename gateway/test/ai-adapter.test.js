@@ -334,6 +334,43 @@ test("astrbot room batch streams NDJSON deltas before final reply", async () => 
   assert.equal(reply.latency_breakdown.llm_first_token_ms, 320);
 });
 
+test("astrbot stream prefixes a single reply target only once", async () => {
+  const deltas = [];
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice @Hoshia: lunch?",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.reply_targets, ["Alice"]);
+      assert.equal(body.stream, true);
+      return responseNdjson([
+        { type: "delta", ok: true, text: "哈喽呀，", route: "smalltalk", latency_trace_id: "reply_target_stream" },
+        { type: "delta", ok: true, text: "@Alice 我不用吃饭。", route: "smalltalk", latency_trace_id: "reply_target_stream" },
+        {
+          type: "done",
+          ok: true,
+          text: "@Alice 哈喽呀，@Alice 我不用吃饭。",
+          state: "SPEAKING",
+          source: "astrbot",
+          route: "smalltalk",
+          streamed: true
+        }
+      ]);
+    },
+    {
+      roomSession: true,
+      replyTargets: ["Alice"],
+      replyRoute: "smalltalk",
+      latencyTraceId: "reply_target_stream",
+      onDelta: (event) => deltas.push(event)
+    }
+  );
+
+  assert.deepEqual(deltas.map((item) => item.text), ["@Alice 哈喽呀，", "我不用吃饭。"]);
+  assert.equal(reply.text, "@Alice 哈喽呀，我不用吃饭。");
+});
+
 test("astrbot stream failure falls back to one-shot JSON reply", async () => {
   let calls = 0;
   const reply = await generateAiReply(

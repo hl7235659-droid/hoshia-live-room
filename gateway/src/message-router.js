@@ -165,6 +165,7 @@ export function pendingReplyNotice(route) {
 }
 
 export function quickReplyLead(route, text = "") {
+  if (route === "smalltalk") return "";
   const value = String(text || "").trim();
   if (route === "diary_related") return "今天啊……我本来想装作很充实一点的。";
   if (route === "emotional") return "嗯……我先听着，你慢慢说。";

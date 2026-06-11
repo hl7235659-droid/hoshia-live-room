@@ -38,9 +38,17 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
 
   const body = astrBotReplyBody(session, text, options, metadata);
   const shouldStream = options.astrbotStreamingEnabled !== false && typeof metadata.onDelta === "function";
+  const targetNormalizer = createSingleTargetPrefixNormalizer(metadata.replyTargets);
+  const onDelta = shouldStream
+    ? (event) => {
+        const normalizedText = targetNormalizer.normalizeDelta(event?.text || "");
+        if (normalizedText) metadata.onDelta({ ...event, text: normalizedText });
+      }
+    : null;
   if (shouldStream) {
     try {
-      return await requestAstrBotStream(options, fetchImpl, { ...body, stream: true }, metadata.onDelta);
+      const reply = await requestAstrBotStream(options, fetchImpl, { ...body, stream: true }, onDelta);
+      return normalizeSingleTargetReplyText(reply, targetNormalizer);
     } catch (error) {
       console.warn("astrbot_stream_failed_falling_back", {
         type: error.name || "Error",
@@ -49,7 +57,8 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     }
   }
 
-  return requestAstrBotJsonReply(options, fetchImpl, body);
+  const reply = await requestAstrBotJsonReply(options, fetchImpl, body);
+  return normalizeSingleTargetReplyText(reply, targetNormalizer);
 }
 
 function astrBotReplyBody(session, text, options, metadata = {}) {
@@ -193,6 +202,49 @@ function parseStreamLine(line) {
   const clean = String(line || "").trim();
   if (!clean) return null;
   return JSON.parse(clean);
+}
+
+function createSingleTargetPrefixNormalizer(replyTargets = []) {
+  const targets = Array.isArray(replyTargets) ? replyTargets.map((item) => String(item || "").trim()).filter(Boolean) : [];
+  const target = targets.length === 1 ? targets[0].slice(0, 32) : "";
+  const prefix = target ? `@${target}` : "";
+  let emitted = false;
+  const leadingPattern = prefix ? new RegExp(`^\s*@${escapeRegExp(target)}(?:\s+|[\u3001\uff0c,:\uff1a])?`, "i") : null;
+
+  return {
+    hasTarget: Boolean(prefix),
+    normalizeDelta(text = "") {
+      const value = String(text || "");
+      if (!prefix || !value) return value;
+      if (!emitted) {
+        emitted = true;
+        return leadingPattern.test(value) ? value : `${prefix} ${value}`;
+      }
+      return value.replace(leadingPattern, "").replace(/^\s+/, "");
+    },
+    normalizeFinalText(text = "") {
+      const value = String(text || "").trim();
+      if (!prefix || !value) return value;
+      const withoutTargetRepeats = value
+        .replace(new RegExp(`\s*@${escapeRegExp(target)}(?:\s+|[\u3001\uff0c,:\uff1a])?`, "gi"), " ")
+        .replace(/\s+/g, " ")
+        .replace(/([\u3001\uff0c?.!????:])\s+/g, "$1")
+        .trim();
+      return `${prefix} ${withoutTargetRepeats}`.trim();
+    }
+  };
+}
+
+function normalizeSingleTargetReplyText(reply, normalizer) {
+  if (!reply || !normalizer?.hasTarget || reply.skipped) return reply;
+  return {
+    ...reply,
+    text: normalizer.normalizeFinalText(reply.text)
+  };
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function summarizeLiveRoomContext(options, payload, fetchImpl = globalThis.fetch) {
