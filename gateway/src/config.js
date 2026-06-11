@@ -43,7 +43,7 @@ export const config = {
   hoshiaDailyPostMin: Number(process.env.HOSHIA_DAILY_POST_MIN || 1),
   hoshiaDailyPostMax: Number(process.env.HOSHIA_DAILY_POST_MAX || process.env.HOSHIA_DAILY_POST_LIMIT || 5),
   hoshiaStatePostMinIntervalMinutes: Number(process.env.HOSHIA_STATE_POST_MIN_INTERVAL_MINUTES || 90),
-  hoshiaStatePostActiveWindowStart: process.env.HOSHIA_STATE_POST_ACTIVE_WINDOW_START || "10:00",
+  hoshiaStatePostActiveWindowStart: process.env.HOSHIA_STATE_POST_ACTIVE_WINDOW_START || "08:00",
   hoshiaStatePostActiveWindowEnd: process.env.HOSHIA_STATE_POST_ACTIVE_WINDOW_END || "23:50",
   hoshiaNewsEnabled: parseBool(process.env.HOSHIA_NEWS_ENABLED, false),
   hoshiaNewsPostEnabled: parseBool(process.env.HOSHIA_NEWS_POST_ENABLED, false),

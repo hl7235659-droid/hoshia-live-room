@@ -16,6 +16,7 @@ const awakeningCharacterUrl = appPath("assets/hoshia-awakening-character.png");
 const awakeningSoloBgUrl = appPath("assets/hoshia-awakening-solo-bg.jpg");
 const awakeningFinalBgUrl = appPath("assets/hoshia-awakening-final-bg.jpg");
 const introStorageKey = "hoshia:lastRegisteredUsername";
+const maxHistoryMessages = 100;
 const demoParams = new URLSearchParams(window.location.search);
 const isStageDemo = import.meta.env.DEV && demoParams.get("demo") === "stage";
 const isAwakeningDemo = isStageDemo && demoParams.get("intro") === "awake";
@@ -124,6 +125,10 @@ function appPath(path: string) {
 async function fetchHoshiaPosts() {
   const payload = await fetch(appPath("api/hoshia/posts")).then((res) => (res.ok ? res.json() : null));
   return Array.isArray(payload?.posts) ? payload.posts as HoshiaPost[] : [];
+}
+
+function appendRoomMessage(current: LiveMessage[], message: LiveMessage) {
+  return [...current, message].slice(-maxHistoryMessages);
 }
 
 function wsPath(path: string) {
@@ -239,7 +244,7 @@ function App() {
           setRoom(payload.room);
           setCharacterState(toCharacterState(payload.state));
           if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
-          if (payload.messages?.length) setMessages(payload.messages);
+          if (payload.messages?.length) setMessages(payload.messages.slice(-maxHistoryMessages));
         })
         .catch(() => undefined);
     }
@@ -292,18 +297,18 @@ function App() {
     function handleSocketMessage(event: MessageEvent) {
       const payload = JSON.parse(event.data);
       if (["danmaku", "ai_reply", "presence"].includes(payload.type)) {
-        setMessages((current) => [...current.slice(-40), payload]);
+        setMessages((current) => appendRoomMessage(current, payload));
       }
       if (payload.type === "error") {
         setSocketStatus("error");
         setCharacterState("ERROR");
-        setMessages((current) => [...current.slice(-40), localLine("system", "room", friendlyError(payload.error))]);
+        setMessages((current) => appendRoomMessage(current, localLine("system", "room", friendlyError(payload.error))));
       }
       if (payload.type === "room_state") {
         setRoom(payload.room);
         setCharacterState(toCharacterState(payload.state));
         if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
-        if (payload.messages?.length) setMessages(payload.messages);
+        if (payload.messages?.length) setMessages(payload.messages.slice(-maxHistoryMessages));
       }
       if (payload.type === "music_state") {
         setMusicState(payload);
@@ -416,11 +421,11 @@ function App() {
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
       }}
       onDemoSend={isStageDemo ? (text) => {
-        setMessages((current) => [...current.slice(-40), localLine("user", session.nickname, text, { color: session.danmaku_color || undefined })]);
+        setMessages((current) => appendRoomMessage(current, localLine("user", session.nickname, text, { color: session.danmaku_color || undefined })));
         setCharacterState("LISTENING");
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
         window.setTimeout(() => {
-          setMessages((current) => [...current.slice(-40), localLine("ai", "hoshia", demoReply(text))]);
+          setMessages((current) => appendRoomMessage(current, localLine("ai", "hoshia", demoReply(text))));
           setCharacterState("SPEAKING");
         }, 980);
         window.setTimeout(() => setCharacterState("IDLE"), 2400);
@@ -2640,13 +2645,48 @@ function GlobalMusicPlayer({
   onNotice: (notice: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stallTimerRef = useRef<number | undefined>(undefined);
+  const progressTimerRef = useRef<number | undefined>(undefined);
+  const lastProgressRef = useRef({ currentTime: 0, checkedAt: 0 });
+  const reportedTrackRef = useRef("");
   const current = musicState.current;
   const canUseMusic = musicState.enabled && socketStatus !== "demo";
   const shouldPlay = canUseMusic && audioEnabled && musicState.status === "playing" && Boolean(current?.stream_url);
 
+  function clearStallTimer() {
+    if (stallTimerRef.current) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = undefined;
+    }
+  }
+
+  async function reportPlaybackComplete(reason: string) {
+    if (!current?.id || !canUseMusic) return;
+    const reportKey = `${current.id}:${reason}`;
+    if (reportedTrackRef.current === reportKey) return;
+    reportedTrackRef.current = reportKey;
+    clearStallTimer();
+    const payload = await postMusic("playback", { track_id: current.id, reason });
+    if (payload?.state) onMusicState(payload.state);
+    if (!payload?.ok && payload?.error !== "music_target_not_found") {
+      onNotice(friendlyMusicNotice(payload?.error));
+    }
+  }
+
+  function scheduleStallReport(reason: string) {
+    if (!shouldPlay) return;
+    clearStallTimer();
+    stallTimerRef.current = window.setTimeout(() => {
+      void reportPlaybackComplete(reason);
+    }, 25000);
+  }
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    reportedTrackRef.current = "";
+    lastProgressRef.current = { currentTime: 0, checkedAt: Date.now() };
+    clearStallTimer();
     const nextSrc = canUseMusic && current?.stream_url ? appPath(current.stream_url) : "";
     if (!nextSrc) {
       audio.pause();
@@ -2667,19 +2707,59 @@ function GlobalMusicPlayer({
     void audio.play()
       .then(() => onNotice(""))
       .catch(() => onNotice("Browser blocked playback. Turn sound off and on again after the track loads."));
+    return () => {
+      clearStallTimer();
+    };
   }, [canUseMusic, current?.id, current?.stream_url, musicState.status, onNotice, shouldPlay]);
 
-  async function handleEnded() {
-    if (!musicState.can_control || !canUseMusic) return;
-    const payload = await postMusic("control", { action: "next" });
-    if (payload?.state) onMusicState(payload.state);
-    if (!payload?.ok) onNotice(friendlyMusicNotice(payload?.error));
-  }
+  useEffect(() => {
+    if (progressTimerRef.current) {
+      window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = undefined;
+    }
+    if (!shouldPlay) return;
+    progressTimerRef.current = window.setInterval(() => {
+      const audio = audioRef.current;
+      if (!audio || audio.paused || audio.ended) return;
+      const now = Date.now();
+      const last = lastProgressRef.current;
+      if (Math.abs(audio.currentTime - last.currentTime) > 0.2) {
+        lastProgressRef.current = { currentTime: audio.currentTime, checkedAt: now };
+        return;
+      }
+      if (now - last.checkedAt >= 45000) {
+        void reportPlaybackComplete("no_progress");
+      }
+    }, 10000);
+    return () => {
+      if (progressTimerRef.current) {
+        window.clearInterval(progressTimerRef.current);
+        progressTimerRef.current = undefined;
+      }
+    };
+  }, [shouldPlay, current?.id]);
 
-  return <audio ref={audioRef} preload="none" onEnded={() => void handleEnded()} />;
+  return (
+    <audio
+      ref={audioRef}
+      preload="none"
+      onEnded={() => void reportPlaybackComplete("ended")}
+      onError={() => void reportPlaybackComplete("error")}
+      onStalled={() => scheduleStallReport("stalled")}
+      onWaiting={() => scheduleStallReport("waiting")}
+      onPlaying={() => {
+        clearStallTimer();
+        lastProgressRef.current = { currentTime: audioRef.current?.currentTime || 0, checkedAt: Date.now() };
+      }}
+      onTimeUpdate={() => {
+        clearStallTimer();
+        lastProgressRef.current = { currentTime: audioRef.current?.currentTime || 0, checkedAt: Date.now() };
+      }}
+    />
+  );
 }
-async function postMusic(_kind: "control", body: Record<string, unknown>) {
-  const endpoint = "api/music/control";
+async function postMusic(kind: "control" | "playback", body: Record<string, unknown>) {
+  const endpoint = kind === "playback" ? "api/music/playback" : "api/music/control";
   try {
     return await fetch(appPath(endpoint), {
       method: "POST",

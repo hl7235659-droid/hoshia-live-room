@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MusicService, parseMusicRequestText } from "../src/music-service.js";
+import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "../src/music-service.js";
 
 class TestStore {
   constructor() {
@@ -34,12 +34,45 @@ test("music command parser accepts slash, direct, and Hoshia mention forms", () 
   assert.equal(parseMusicRequestText("hello 点歌 晴天"), "");
 });
 
+test("local music control parser recognizes common playback commands", () => {
+  assert.equal(parseLocalMusicControlText("@Hoshia 切歌")?.intent, "next");
+  assert.equal(parseLocalMusicControlText("下一首")?.intent, "next");
+  assert.equal(parseLocalMusicControlText("暂停音乐")?.intent, "pause");
+  assert.equal(parseLocalMusicControlText("继续播放")?.intent, "resume");
+  assert.equal(parseLocalMusicControlText("现在放什么歌")?.intent, "status");
+  assert.equal(parseLocalMusicControlText("今天吃什么"), null);
+});
+
 test("music service rejects disabled mode and non-admin controls", async () => {
   const service = new MusicService({ ...baseConfig, musicEnabled: false }, { store: new TestStore() });
   assert.equal((await service.requestSong("晴天", { user_id: "u1" })).error, "music_disabled");
 
   const enabled = new MusicService(baseConfig, { store: new TestStore() });
   assert.equal(enabled.control("pause", { username: "friend" }).error, "music_forbidden");
+});
+
+test("music playback completion advances only when current track id matches", () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = { id: "track-1", title: "Current", requested_by_id: "u1" };
+  service.queue = [{ id: "track-2", title: "Next", requested_by_id: "u2" }];
+  service.status = "playing";
+
+  assert.equal(service.completeCurrentTrack("wrong-track", { username: "friend" }).error, "music_target_not_found");
+  assert.equal(service.current.title, "Current");
+  assert.equal(service.completeCurrentTrack("track-1", { username: "friend" }).ok, true);
+  assert.equal(service.current.title, "Next");
+  assert.equal(service.status, "playing");
+});
+
+test("music playback completion idles when queue is empty", () => {
+  const service = new MusicService(baseConfig, { store: new TestStore() });
+  service.current = { id: "track-1", title: "Current", requested_by_id: "u1" };
+  service.queue = [];
+  service.status = "playing";
+
+  assert.equal(service.completeCurrentTrack("track-1", { username: "friend" }).ok, true);
+  assert.equal(service.current, null);
+  assert.equal(service.status, "idle");
 });
 
 test("music service allows natural-language playback controls for viewers", async () => {

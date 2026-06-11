@@ -20,6 +20,30 @@ export function parseMusicRequestText(text) {
   return mentioned ? mentioned[1].trim() : "";
 }
 
+export function parseLocalMusicControlText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  const value = raw
+    .replace(/@(?:Hoshia|hoshia|星娅|主播)\s*/gi, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  if (!value) return null;
+
+  if (/(现在|当前|正在).*(放|播|唱|歌|队列)|歌单|队列|播放列表|什么歌/.test(value)) {
+    return localMusicIntent("status", 0.96, "♪ Hoshia 看了一下当前播放和待播队列。");
+  }
+  if (/(下一首|下首|切歌|跳过|换歌|换一首|跳下一首)/.test(value)) {
+    return localMusicIntent("next", 0.97, "♪ Hoshia 已切到下一首。");
+  }
+  if (/(暂停|停一下|先停|停止播放|别放了|关音乐|停音乐|暂停音乐)/.test(value)) {
+    return localMusicIntent("pause", 0.97, "♪ Hoshia 已暂停播放。");
+  }
+  if (/(继续播放|继续放|恢复播放|接着放|播放音乐|放音乐|继续音乐)/.test(value)) {
+    return localMusicIntent("resume", 0.97, "♪ Hoshia 已继续播放。");
+  }
+  return null;
+}
+
 export class MusicService {
   constructor(config, { store }) {
     this.config = config;
@@ -168,6 +192,18 @@ export class MusicService {
       return this.fail("music_control_invalid");
     }
 
+    this.lastError = "";
+    return { ok: true, state: this.publicState(session) };
+  }
+
+  completeCurrentTrack(trackId, session) {
+    if (!this.config.musicEnabled) return this.fail("music_disabled");
+    const id = String(trackId || "").trim();
+    if (!this.current?.id || !id || this.current.id !== id) {
+      return this.fail("music_target_not_found");
+    }
+    this.current = this.queue.shift() || null;
+    this.status = this.current ? "playing" : "idle";
     this.lastError = "";
     return { ok: true, state: this.publicState(session) };
   }
@@ -499,6 +535,19 @@ function isAllowedNaturalControl(action, payload, naturalControl) {
     || payload?.requested_by_self
     || Number(payload?.queueIndex ?? payload?.queue_index ?? payload?.index) >= 1
   );
+}
+
+function localMusicIntent(intent, confidence, replyHint) {
+  return {
+    intent,
+    confidence,
+    query: "",
+    queries: [],
+    count: 1,
+    target: { kind: "" },
+    reply_hint: replyHint,
+    source: "local_music_control"
+  };
 }
 
 function parseXiaomusicSearchChain(value) {

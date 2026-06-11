@@ -56,7 +56,7 @@ import {
   rememberProactiveReply,
   shouldRunProactiveReply
 } from "./proactive-reply.js";
-import { MusicService, parseMusicRequestText } from "./music-service.js";
+import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
 import {
   buildWelcomeGreetingPrompt,
   fallbackWelcomeGreeting,
@@ -682,6 +682,13 @@ app.post("/api/music/control", requireSession, async (req, res) => {
   res.json(result);
 });
 
+app.post("/api/music/playback", requireSession, async (req, res) => {
+  const result = musicService.completeCurrentTrack(req.body?.track_id ?? req.body?.trackId, req.session);
+  broadcastMusicState(req.session);
+  if (!result.ok) return res.status(musicStatusCode(result.error)).json(result);
+  res.json(result);
+});
+
 app.get("/api/music/stream/:trackId", requireSession, async (req, res) => {
   try {
     await musicService.streamTrack(req.params.trackId, req, res);
@@ -718,7 +725,13 @@ wss.on("connection", (ws, _req, session) => {
   markUserOnline(session);
   broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
   broadcastAudienceChanged();
-  ws.send(JSON.stringify({ type: "room_state", room: roomInfo(), state: characterState, hoshia_state: hoshiaVisualStateService.publicState() }));
+  ws.send(JSON.stringify({
+    type: "room_state",
+    room: roomInfo(),
+    state: characterState,
+    hoshia_state: hoshiaVisualStateService.publicState(),
+    messages: db.listRecentRoomMessages(config.roomId, 100)
+  }));
   ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
   ws.send(JSON.stringify({
     type: "hoshia_state",
@@ -1040,8 +1053,14 @@ async function handleMusicRequestFromDanmaku(session, query, originalText = "") 
 }
 
 async function handleNaturalMusicIntentFromDanmaku(session, text) {
-  if (!config.musicEnabled || config.aiMode !== "astrbot") return false;
+  if (!config.musicEnabled) return false;
   const musicState = musicService.publicState(session);
+  const localIntent = parseLocalMusicControlText(text);
+  if (isActionableMusicIntent(localIntent)) {
+    await handleActionableMusicIntent(session, localIntent, musicState, text);
+    return true;
+  }
+  if (config.aiMode !== "astrbot") return false;
   const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
   const intent = await recognizeMusicIntent(session, text, config, globalThis.fetch, {
     musicState,
@@ -1049,13 +1068,18 @@ async function handleNaturalMusicIntentFromDanmaku(session, text) {
   });
   if (!isActionableMusicIntent(intent)) return false;
 
+  await handleActionableMusicIntent(session, intent, musicState, text);
+  return true;
+}
+
+async function handleActionableMusicIntent(session, intent, musicState, originalText = "") {
   if (intent.intent === "request") {
-    await handleMusicRequestFromDanmaku(session, intent.query, text);
+    await handleMusicRequestFromDanmaku(session, intent.query, originalText);
     return true;
   }
 
   if (intent.intent === "request_many") {
-    await handleBulkMusicRequestFromDanmaku(session, intent, text);
+    await handleBulkMusicRequestFromDanmaku(session, intent, originalText || intent.query || "bulk song request");
     return true;
   }
 
@@ -2306,6 +2330,7 @@ function systemEvent(type, text, extra = {}) {
 function musicStatusCode(error) {
   if (error === "music_forbidden") return 403;
   if (error === "music_disabled") return 404;
+  if (error === "music_target_not_found") return 404;
   if (error === "music_query_required" || error === "music_control_invalid") return 400;
   if (error === "music_rate_limited") return 429;
   if (error === "music_queue_full") return 409;
