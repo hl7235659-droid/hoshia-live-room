@@ -560,6 +560,7 @@ class LiveRoomBridgePlugin(Star):
         for key, limit in {
             "current_state": 220,
             "current_activity": 220,
+            "current_diary_event": 240,
             "active_event": 220,
             "recent_user_memory": 220,
             "tone_bias": 160,
@@ -596,6 +597,7 @@ class LiveRoomBridgePlugin(Star):
         labels = {
             "current_state": "Current Hoshia state",
             "current_activity": "Current activity",
+            "current_diary_event": "Current diary event",
             "active_event": "Current user-facing event",
             "recent_user_memory": "Recent user preference signal",
             "tone_bias": "Tone bias",

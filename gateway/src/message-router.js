@@ -132,13 +132,14 @@ export function buildContextPolicy(route, batch = []) {
   return policy;
 }
 
-export function buildActiveContext({ visualState = null, audienceUsers = [], moduleContext = [], moduleEvents = [], batch = [] } = {}) {
+export function buildActiveContext({ visualState = null, audienceUsers = [], moduleContext = [], moduleEvents = [], batch = [], diaryEvent = null } = {}) {
   const latest = Array.isArray(batch) ? batch[batch.length - 1] : null;
   const userMemory = latest?.session?.ai_profile?.memory_enabled
     ? summarizeProfile(latest.session.ai_profile, latest.session.nickname)
     : "";
   const hooks = chatHooksFromModules(moduleContext, moduleEvents);
   const state = visualState || {};
+  const currentDiaryEvent = formatDiaryEventForReply(diaryEvent);
 
   return compactObject({
     current_state: [
@@ -148,6 +149,7 @@ export function buildActiveContext({ visualState = null, audienceUsers = [], mod
       Number.isFinite(Number(state.social_need)) ? `social_need=${Number(state.social_need)}` : ""
     ].filter(Boolean).join("; "),
     current_activity: safeText(state.state_reason || state.visual_description || "", 180),
+    current_diary_event: currentDiaryEvent,
     active_event: latest?.text ? `${safeText(latest.session?.nickname || "viewer", 32)}: ${safeText(latest.text, 120)}` : "",
     recent_user_memory: userMemory,
     chat_hooks: hooks,
@@ -180,6 +182,7 @@ export function formatActiveContextLines(activeContext = {}) {
   const entries = [
     ["Current state", activeContext.current_state],
     ["Current activity", activeContext.current_activity],
+    ["Current diary event", activeContext.current_diary_event],
     ["Active event", activeContext.active_event],
     ["Recent user memory", activeContext.recent_user_memory],
     ["Tone bias", activeContext.tone_bias]
@@ -264,6 +267,58 @@ function chatHooksFromModules(moduleContext = [], moduleEvents = []) {
   const event = moduleEvents.find((item) => item?.summary_hint);
   if (event) hooks.push(safeText(event.summary_hint, 140));
   return hooks.filter(Boolean).slice(0, 3);
+}
+
+function formatDiaryEventForReply(event = null) {
+  if (!event || typeof event !== "object") return "";
+  const type = safeText(event.type, 32);
+  const label = diaryEventLabel(type, event.title);
+  const time = safeText(event.time_range, 16);
+  const detail = diaryEventDetail(type, event.title);
+  const hook = Array.isArray(event.chat_hooks) ? event.chat_hooks.map((item) => safeText(item, 80)).find(Boolean) : "";
+  return [time, label, detail, hook ? `可顺带接一句：${localizedDiaryHook(type, hook)}` : ""]
+    .filter(Boolean)
+    .join("；")
+    .slice(0, 220);
+}
+
+function diaryEventLabel(type = "", title = "") {
+  const text = `${type} ${title}`.toLowerCase();
+  if (/wake|sleep/.test(text)) return "慢慢醒神/犯困";
+  if (/class|work|campus|desk|notes/.test(text)) return "整理桌面和学习事项";
+  if (/lunch/.test(text)) return "午饭后的安静空档";
+  if (/run|sport|training/.test(text)) return "运动或训练后的恢复";
+  if (/anime|otaku|comment|thread|interest/.test(text)) return "看兴趣话题和二次元讨论";
+  if (/game|match|replay/.test(text)) return "复盘游戏里的小决定";
+  if (/song|music/.test(text)) return "听歌调整房间氛围";
+  if (/room|stage|live/.test(text)) return "整理直播间和准备话题";
+  if (/user_related/.test(text)) return "刚和观众聊过几句";
+  if (/private_mood|emo/.test(text)) return "低电量地安静待一会儿";
+  return "今天日记里的一件小事";
+}
+
+function diaryEventDetail(type = "", title = "") {
+  const text = `${type} ${title}`.toLowerCase();
+  if (/room|stage|live/.test(text)) return "她现在更像是在检查房间状态、整理小话题，不是在做很大的事。";
+  if (/anime|otaku|comment|thread|interest/.test(text)) return "她刚被一个兴趣点勾住，脑子里还在想要不要吐槽两句。";
+  if (/game|match|replay/.test(text)) return "她在回想刚才的判断，带一点不服输的劲。";
+  if (/run|sport|training/.test(text)) return "她身体有点累，但心情比之前清爽。";
+  if (/class|work|campus|desk|notes/.test(text)) return "她在处理普通但真实的小安排，注意力还没完全散。";
+  if (/song|music/.test(text)) return "她在用歌单和声音把房间气氛垫起来。";
+  if (/user_related/.test(text)) return "她把观众出现这件事当成今天的一小段痕迹。";
+  if (/wake|sleep|private_mood|emo/.test(text)) return "她现在动作慢一点，适合低声说几句。";
+  return "她可以把它当成正在发生的生活细节来回答。";
+}
+
+function localizedDiaryHook(type = "", hook = "") {
+  const text = `${type} ${hook}`.toLowerCase();
+  if (/viewer|room feels less empty|arrives/.test(text)) return "有人来以后房间没那么空。";
+  if (/song|loop/.test(text)) return "问问对方今晚会循环哪首歌。";
+  if (/character|anime/.test(text)) return "问问对方怎么看角色讨论。";
+  if (/training|rested/.test(text)) return "问问对方今天是训练还是休息。";
+  if (/game|overthinking/.test(text)) return "轻轻吐槽自己又在复盘。";
+  if (/stage|wanted to say|notes/.test(text)) return "说自己刚好整理到一个想聊的小话题。";
+  return safeText(hook, 80);
 }
 
 function toneBiasForState(state = {}, audienceUsers = []) {

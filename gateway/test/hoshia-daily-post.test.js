@@ -274,6 +274,42 @@ test("repeated identical state creates non-conflicting sequence ids", () => {
   }
 });
 
+test("repeated identical state uses diary detail instead of duplicating content", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      enabled: true,
+      visualStateService: visualState({
+        activity: "sleepy",
+        mood: "sleepy",
+        energy: 18,
+        social_need: 70
+      }),
+      clock: () => new Date("2026-06-10T16:00:00.000Z")
+    });
+    const diaryEvent = {
+      type: "room_activity",
+      title: "Stage notes",
+      summary: "She checked the room setup and prepared a few topic notes.",
+      detail_seed: "The notes were half useful and half excuses to keep the room feeling alive.",
+      chat_hooks: ["Mention having one thing she wanted to say."]
+    };
+
+    const first = service.tick({ diaryEvent });
+    const second = service.tick({ diaryEvent });
+
+    assert.equal(first.created, true);
+    assert.equal(second.created, true);
+    assert.notEqual(second.post.content, first.post.content);
+    assert.match(second.post.content, /直播间整理|小日记|状态/);
+    assert.doesNotMatch(second.post.content, /Stage notes|room setup|topic notes|wanted to say/);
+    assert.doesNotMatch(second.post.content, /token=|\/home\/ubuntu|\.env/i);
+  } finally {
+    cleanup();
+  }
+});
+
 test("force bypasses disabled and active window checks but not daily max", () => {
   const { db, cleanup } = openTempDb();
   try {

@@ -825,6 +825,7 @@ function runScheduledHoshiaVisualTick() {
 
 function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
   hoshiaDailyCanonService.ensureTodayPlan();
+  const diaryEvent = hoshiaDailyCanonService.getActiveEvent({ now: new Date(), create: true });
   const selectedNewsTopic = newsTopic || selectCachedNewsTopicForPost();
   const newsState = selectedNewsTopic
     ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
@@ -833,10 +834,11 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
     force,
     ignoreLimit,
     newsTopic: selectedNewsTopic,
-    state: newsState
+    state: newsState,
+    diaryEvent
   });
   if (selectedNewsTopic && ["news_topic_invalid", "news_topic_daily_max_reached"].includes(result.reason)) {
-    result = hoshiaDailyPostService.tick({ force, ignoreLimit });
+    result = hoshiaDailyPostService.tick({ force, ignoreLimit, diaryEvent });
   }
   if (result.post && result.created) {
     hoshiaLifeMemoryService.recordPost(result.post);
@@ -1385,12 +1387,14 @@ async function handleAiReplyBatch(batch) {
   const fullModuleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
   const moduleContext = moduleContextForRoute(fullModuleContext, contextPolicy, batch);
   const moduleEvents = moduleEventsForRoute(fullModuleEvents, contextPolicy);
+  const diaryEvent = hoshiaDailyCanonService.getActiveEvent({ now: new Date(), create: true });
   const activeContext = buildActiveContext({
     visualState: hoshiaVisualStateService.publicState(),
     audienceUsers: audiencePayload().users,
     moduleContext,
     moduleEvents,
-    batch
+    batch,
+    diaryEvent
   });
   const lifeMemoryPacket = contextPolicy.includeLifeMemory
     ? hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: contextPolicy.livingMemoryK || 3 })
@@ -2047,6 +2051,9 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
     ...(activeContextLines.length ? [
       ...activeContextLines,
       "Use active_context as the fast, current-state view. Do not recite it mechanically."
+    ] : []),
+    ...(contextPolicy.route === "diary_related" ? [
+      "Diary-related reply rule: if the viewer asks what Hoshia is doing now, what she did today, or why her timeline says this, answer from Current diary event first. Mention one concrete activity or small event before adding mood, teasing, or a follow-up question. Do not answer only with generic state words such as tired, low energy, quiet, or resting."
     ] : []),
     ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
       ...lifeMemoryPacket,

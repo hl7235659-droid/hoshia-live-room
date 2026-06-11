@@ -10,6 +10,9 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /hostLifeContextLines = buildHostLifeContext/);
   assert.match(server, /Hoshia 是否真的想说/);
   assert.match(server, /不要像客服工单回复/);
+  assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
+  assert.match(server, /diaryEvent/);
+  assert.match(server, /Diary-related reply rule/);
   assert.match(server, /music_ack/);
 });
 
@@ -19,6 +22,8 @@ test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to spea
   assert.match(bridge, /would she genuinely want to speak/);
   assert.match(bridge, /rather than merely fill silence or act available/);
   assert.match(bridge, /Do not fill silence just to prove she is online or available/);
+  assert.match(bridge, /current_diary_event/);
+  assert.match(bridge, /Current diary event/);
 });
 
 test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {

@@ -30,7 +30,7 @@ export function createHoshiaDailyPostService({
   const safeTimeZone = cleanText(timeZone, 64) || defaultTimeZone;
 
   return {
-    planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType, topic = null } = {}) {
+    planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType, topic = null, diaryEvent = null, recentPosts = [] } = {}) {
       const currentNow = asDate(now);
       const currentState = normalizeVisualState(state || readVisualState(visualStateService));
       const safeSourceType = normalizeDailySourceType(sourceType);
@@ -56,7 +56,11 @@ export function createHoshiaDailyPostService({
         }),
         content: safeSourceType === newsTopicSourceType
           ? buildNewsTopicPostContent(safeTopic, currentState, currentNow, safeTimeZone)
-          : buildDailyPostContent(currentState, currentNow, safeTimeZone),
+          : buildDailyPostContent(currentState, currentNow, safeTimeZone, {
+            diaryEvent,
+            recentPosts,
+            sequence: safeSequence
+          }),
         image_url: "",
         mood: currentState.mood,
         activity: currentState.activity,
@@ -84,7 +88,7 @@ export function createHoshiaDailyPostService({
       });
     },
 
-    tick({ force = false, ignoreLimit = false, now = clock(), newsTopic = null, state = null } = {}) {
+    tick({ force = false, ignoreLimit = false, now = clock(), newsTopic = null, state = null, diaryEvent = null } = {}) {
       const currentNow = asDate(now);
       const dayKey = dayKeyFor(currentNow, safeTimeZone);
       if (!force && !enabled) {
@@ -188,7 +192,9 @@ export function createHoshiaDailyPostService({
         state: currentState,
         sequence: existing.length + 1,
         sourceType,
-        topic: safeNewsTopic
+        topic: safeNewsTopic,
+        diaryEvent,
+        recentPosts: existing
       });
       if (!plan.postInput) {
         return {
@@ -253,11 +259,16 @@ export function createHoshiaDailyPostCreatedEvent(post, state, {
   });
 }
 
-export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone) {
+export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone, context = {}) {
   const currentState = normalizeVisualState(state);
   const rhythm = newsRhythmFor(asDate(now), timeZone);
-  const template = templateForState(currentState, rhythm);
-  return cleanText(`${template} ${energyLineFor(currentState)}${socialLineFor(currentState)}`, 700);
+  const repeatCount = repeatedStatePostCount(context.recentPosts, currentState);
+  const template = repeatCount > 0
+    ? alternateTemplateForState(currentState, rhythm, context)
+    : templateForState(currentState, rhythm);
+  const detailLine = diaryEventLine(context.diaryEvent, currentState, repeatCount);
+  const energyLine = repeatCount > 0 ? variedEnergyLineFor(currentState, context.sequence) : energyLineFor(currentState);
+  return cleanText(`${template} ${detailLine || energyLine}${socialLineFor(currentState)}`, 700);
 }
 
 export function buildNewsTopicPostContent(topic = {}, state = {}, now = new Date(), timeZone = defaultTimeZone) {
@@ -513,6 +524,126 @@ function templateForState(state, rhythm) {
   if (state.activity === "thinking") return `今天${rhythm}适合慢慢想事情，先把散掉的想法排成队。`;
   if (state.activity === "emo") return `今天${rhythm}先低功耗待机一下，等状态自己慢慢回温。`;
   return `今天${rhythm}没有安排很大的事，就在直播间和自己的小桌面之间慢慢待着。`;
+}
+
+function repeatedStatePostCount(posts = [], state = {}) {
+  return (Array.isArray(posts) ? posts : []).filter((post) =>
+    post?.activity === state.activity
+    && post?.mood === state.mood
+    && (post?.source_type === dailySourceType || post?.source_type === pulseSourceType)
+  ).length;
+}
+
+function alternateTemplateForState(state, rhythm, context = {}) {
+  const event = normalizeDiaryEvent(context.diaryEvent);
+  const seed = diaryEventLabel(event, state);
+  if (seed) {
+    return `今天${rhythm}状态还是偏向${activityLabel(state.activity)}，但不是只在原地发呆。刚才脑子里还挂着「${seed}」，所以想换个角度记一下。`;
+  }
+  if (state.activity === "sleepy") return `今天${rhythm}困意还在，但这次不是单纯喊累。房间安静下来以后，连想说的话都变得慢半拍。`;
+  if (state.activity === "thinking") return `今天${rhythm}注意力还在收束中，刚刚把一个小念头翻来覆去想了几遍，先记在这里。`;
+  if (state.activity === "otaku") return `今天${rhythm}又被喜欢的东西勾住了一下，明明只是随手看一眼，结果脑内已经开始排队发言了。`;
+  if (state.activity === "gaming") return `今天${rhythm}游戏脑还没完全下线，刚刚复盘了一小段，越想越觉得自己当时可以更稳一点。`;
+  if (state.activity === "sports") return `今天${rhythm}身体的反馈比嘴上诚实，动过以后有点累，但心里反而清爽了一点。`;
+  if (state.activity === "happy") return `今天${rhythm}情绪比刚才松快一点，想把这种小小的亮度也留在动态里。`;
+  if (state.activity === "emo") return `今天${rhythm}情绪还在低处慢慢移动，不过已经不是卡住不动的那种低电量了。`;
+  return `今天${rhythm}还是普通的一段时间，但细节和刚才不太一样，先把这一小格状态留下来。`;
+}
+
+function diaryEventLine(eventInput, state = {}, repeatCount = 0) {
+  const event = normalizeDiaryEvent(eventInput);
+  if (!event) return "";
+  const candidates = diaryEventChineseLines(event, state);
+  const line = candidates[repeatCount % Math.max(1, candidates.length)] || "";
+  if (!line) return "";
+  return `这条和今天的小日记有关：${line} ${energyLineFor(state)}`;
+}
+
+function normalizeDiaryEvent(event = null) {
+  if (!event || typeof event !== "object") return null;
+  const type = cleanIdentifier(event.type, 32);
+  const title = cleanText(event.title, 80);
+  const summary = cleanText(event.summary, 120);
+  const detailSeed = cleanText(event.detail_seed ?? event.detailSeed, 140);
+  const chatHooks = cleanTextList(event.chat_hooks ?? event.chatHooks, 3, 100);
+  if (!type && !title && !summary && !detailSeed && chatHooks.length === 0) return null;
+  return {
+    type,
+    title,
+    summary,
+    detail_seed: detailSeed,
+    chat_hooks: chatHooks
+  };
+}
+
+function diaryEventLabel(event, state = {}) {
+  if (!event) return "";
+  const labels = {
+    campus_life: "学习和桌面上的小事",
+    sport: "运动后的身体反馈",
+    anime_game: "游戏和二次元念头",
+    social: "想和人说话的时刻",
+    private_mood: "安静低电量的小情绪",
+    room_activity: "直播间整理",
+    random_detail: "路过的小细节",
+    interest_intake: "刚刚看过的兴趣话题",
+    user_related: "观众来过的痕迹"
+  };
+  return labels[event.type] || `${activityLabel(state.activity)}状态`;
+}
+
+function diaryEventChineseLines(event, state = {}) {
+  const label = diaryEventLabel(event, state);
+  const base = [
+    `${label}还留在脑子里，所以这条不只是单纯报状态。`,
+    `刚才那段${label}让现在的心情稍微偏了一点点。`,
+    `把${label}当成今天的小标签，先轻轻贴在这里。`
+  ];
+  if (event.type === "user_related") {
+    return [
+      "有人出现过以后，房间就没有刚才那么空。",
+      "观众留下的一点回应，让今天的记录多了一小格温度。",
+      "刚刚的互动还在这里，所以想把这份在线感也记下来。"
+    ];
+  }
+  return base;
+}
+
+function variedEnergyLineFor(state, sequence = 1) {
+  const index = normalizeSequence(sequence) % 3;
+  if (state.energy <= 30) {
+    return [
+      "能量条还是偏低，先把动作放轻一点。",
+      "现在不适合硬撑，适合慢慢回血。",
+      "电量没有满格，所以先用省电模式营业。"
+    ][index];
+  }
+  if (state.energy >= 80) {
+    return [
+      "能量条还很亮，感觉还能多撑一小段。",
+      "现在状态挺满，适合把开心的部分多留一会儿。",
+      "精神值在线，连尾巴都像在帮忙打拍子。"
+    ][index];
+  }
+  return [
+    "能量条保持在刚好能营业的程度。",
+    "现在不算满电，但还能安稳地陪一会儿。",
+    "状态在中间值，适合慢慢说话。"
+  ][index];
+}
+
+function activityLabel(activity) {
+  const labels = {
+    idle: "日常",
+    gaming: "游戏",
+    sports: "运动",
+    otaku: "兴趣",
+    sleepy: "困困",
+    happy: "开心",
+    thinking: "思考",
+    emo: "低电量"
+  };
+  return labels[activity] || "日常";
 }
 
 function rhythmFor(now, timeZone) {

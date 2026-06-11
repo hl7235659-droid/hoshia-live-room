@@ -97,6 +97,30 @@ test("active context is compact and safe for prompt insertion", () => {
   assert.ok(formatActiveContextLines(activeContext).some((line) => line.includes("active_context")));
 });
 
+test("active context exposes current diary event as a concrete reply hook", () => {
+  const activeContext = buildActiveContext({
+    visualState: {
+      mood: "sleepy",
+      activity: "sleepy",
+      energy: 20,
+      social_need: 70
+    },
+    diaryEvent: {
+      time_range: "22:40-23:30",
+      type: "room_activity",
+      title: "Stage notes",
+      chat_hooks: ["Mention having one thing she wanted to say."]
+    },
+    batch: batch("what are you doing now?")
+  });
+  const lines = formatActiveContextLines(activeContext).join("\n");
+
+  assert.match(activeContext.current_diary_event, /22:40-23:30/);
+  assert.match(activeContext.current_diary_event, /直播间|房间状态|话题/);
+  assert.match(lines, /Current diary event/);
+  assert.doesNotMatch(activeContext.current_diary_event, /Stage notes|token=|\/home\/ubuntu|\.env/i);
+});
+
 test("pending reply notices are route-specific text", () => {
   assert.notEqual(pendingReplyNotice("smalltalk"), pendingReplyNotice("emotional"));
   assert.ok(pendingReplyNotice("diary_related").length > 0);
