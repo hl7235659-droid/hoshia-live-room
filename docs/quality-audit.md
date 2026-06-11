@@ -14,5 +14,7 @@ This file tracks quality and security follow-ups that should not be fixed by bli
 ## 2026-06-12
 
 - Rechecked the Live2D audit path after the latest refactor batch.
-- The critical advisory is still isolated to `frontend` via `pixi-live2d-display -> gh-pages`.
-- Keep the dependency fix in a dedicated follow-up batch with browser verification, not mixed into routing or prompt cleanup.
+- The critical advisory was isolated to `frontend` via `pixi-live2d-display -> gh-pages`.
+- Added a frontend npm override so `pixi-live2d-display@0.4.0` resolves `gh-pages` to `6.3.0`.
+- `npm audit --registry=https://registry.npmjs.org --audit-level=moderate` now reports 0 vulnerabilities.
+- Keep browser verification for `/live/?demo=stage` in this batch because Live2D rendering remains optional and falls back to PNG when no model URL is configured.
