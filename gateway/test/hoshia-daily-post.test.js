@@ -302,8 +302,9 @@ test("repeated identical state uses diary detail instead of duplicating content"
     assert.equal(first.created, true);
     assert.equal(second.created, true);
     assert.notEqual(second.post.content, first.post.content);
-    assert.match(second.post.content, /小房间整理|小日记|状态/);
+    assert.match(second.post.content, /直播间|小东西|椅子|回血|便签|桌面|话题/);
     assert.doesNotMatch(second.post.content, /Stage notes|room setup|topic notes|wanted to say/);
+    assert.doesNotMatch(second.post.content, /这条和今天的小日记有关|单纯报状态|状态还是|能量条|小标签|近况/);
     assert.doesNotMatch(second.post.content, /token=|\/home\/ubuntu|\.env/i);
   } finally {
     cleanup();
@@ -391,7 +392,8 @@ test("daily content reflects energy and social need without external topics", ()
     social_need: 90
   }, new Date("2026-06-10T18:00:00.000Z"));
 
-  assert.match(content, /低电量|能量条|有人来/);
+  assert.match(content, /低电量|有人来|灯|台灯/);
+  assert.doesNotMatch(content, /这条和今天的小日记有关|单纯报状态|状态还是|能量条|小标签|近况/);
   assert.doesNotMatch(content, /小红书|微博|B站|新闻|http/i);
   assert.equal(normalizeDailyPostLimit(0), 1);
   assert.equal(normalizeDailyPostLimit(20), 10);

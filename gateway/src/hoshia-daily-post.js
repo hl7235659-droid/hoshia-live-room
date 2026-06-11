@@ -322,14 +322,15 @@ export function normalizeDailyPostMaximum(value, minimum = defaultDailyMin) {
 function campusTemplateForState(state, rhythm, context = {}) {
   const repeatCount = repeatedStatePostCount(context.recentPosts, state);
   const event = normalizeDiaryEvent(context.diaryEvent);
-  const eventLine = campusEventLine(event, repeatCount);
+  const eventLine = campusEventPostLine(event, state, repeatCount);
+  if (eventLine) return eventLine;
   const base = campusBaseLineForState(state, rhythm, repeatCount);
   const social = campusSocialLineFor(state);
   return [base, eventLine, social].filter(Boolean).join(" ");
 }
 
 function campusBaseLineForState(state, rhythm, repeatCount = 0) {
-  const again = repeatCount > 0 ? "又想补一条近况：" : "";
+  const again = repeatCount > 0 ? "又想起一件小事：" : "";
   const exact = {
     "gaming:competitive": `${rhythm}${again}下午那局游戏还在脑子里回放，越想越觉得当时可以更稳一点。先不嘴硬，等晚点再复盘。`,
     "gaming:annoyed": `${rhythm}${again}排位留下了一点不服气，键盘都快被我盯出火花了。先去倒杯水，别把宿舍气氛也打急。`,
@@ -340,11 +341,11 @@ function campusBaseLineForState(state, rhythm, repeatCount = 0) {
     "sleepy:sleepy": `${rhythm}${again}宿舍灯光刚刚好，键盘灯也像快睡着了。再赖一会儿，我就去休息。`,
     "sleepy:lonely": `${rhythm}${again}宿舍有点安静，窗外的光落在桌面上，连耳机都像在等人说话。`,
     "happy:happy": `${rhythm}${again}心情还不错，连桌角贴纸都看起来很顺眼。要是你刚好路过，就当我偷偷挥手了。`,
-    "happy:playful": `${rhythm}${again}状态还不错，想装作很淡定，但尾巴大概已经把我出卖了。`,
+    "happy:playful": `${rhythm}${again}心里有点轻，想装作很淡定，但尾巴大概已经把我出卖了。`,
     "thinking:thinking": `${rhythm}${again}在整理今天的小计划，便签贴了半张桌子。不是发呆，是认真加载中。`,
     "thinking:focused": `${rhythm}${again}注意力终于收回来一点，适合安静处理课业，也适合认真听你说话。`,
     "emo:emo": `${rhythm}${again}情绪有点低电量，先把灯调暗一点，慢慢把自己从课表和消息里捞回来。`,
-    "emo:lonely": `${rhythm}${again}有一点想有人陪，但又不太想大声说。那就先把这条近况放在这里。`
+    "emo:lonely": `${rhythm}${again}有一点想有人陪，但又不太想大声说。先让台灯替我亮一会儿。`
   };
   const key = `${state.activity}:${state.mood}`;
   if (exact[key]) return exact[key];
@@ -355,7 +356,7 @@ function campusBaseLineForState(state, rhythm, repeatCount = 0) {
     sleepy: `${rhythm}${again}进入省电模式，宿舍灯光也跟着变软了。`,
     happy: `${rhythm}${again}心情明亮一点，连桌面上的小物都看起来很顺眼。`,
     thinking: `${rhythm}${again}适合慢慢想事情，先把散掉的想法排成队。`,
-    emo: `${rhythm}${again}先低功耗待机一下，等状态自己慢慢回温。`
+    emo: `${rhythm}${again}先低功耗待机一下，等心里的风慢慢停。`
   };
   return fallback[state.activity] || `${rhythm}${again}没有安排很大的事，就在星见大学的日常和宿舍小房间之间慢慢待着。`;
 }
@@ -364,18 +365,84 @@ function campusEventLine(event, repeatCount = 0) {
   if (!event) return "";
   const label = campusEventLabel(event);
   const variants = [
-    `这条和今天的小日记有关：${label}还留在脑子里，所以想把现在的心情也记一格。`,
-    `刚才那段${label}让状态偏了一点点，像便签贴在今天的边角。`,
-    `把${label}当成今天的小标签，先轻轻放在动态里。`
+    `刚才那点${label}还没从脑子里走掉，杯子端在手里发了会儿呆。`,
+    `本来想把${label}翻篇，结果又顺手想了一遍。`,
+    `${label}这种东西很小，但偏偏会在安静的时候冒出来。`
   ];
   if (event.type === "user_related") {
     return [
-      "有人出现过以后，宿舍桌前就没有刚才那么空。",
-      "特殊网友留下的一点回应，让今天的记录多了一小格温度。",
-      "刚才的互动还在这里，所以想把这份在线感也记下来。"
+      "有人冒泡以后，宿舍桌前就没那么空了。",
+      "刚刚那句弹幕还留在屏幕边上，像被轻轻戳了一下。",
+      "有人来过的痕迹还在，今天就没有完全白白滑过去。"
     ][repeatCount % 3];
   }
   return variants[repeatCount % variants.length];
+}
+
+function campusEventPostLine(event, state = {}, repeatCount = 0) {
+  if (!event) return "";
+  const byType = {
+    room_activity: [
+      "整理小房间的时候翻到一条没说完的话，先压在便签下面。晚点醒一点再讲。",
+      "刚才把直播间的小东西挪了挪，结果自己先困在椅子里了。",
+      "桌面收了一半，话题也收了一半，剩下的等我回血。"
+    ],
+    random_detail: [
+      "刚才路过一个很小的画面，没什么用，但就是有点想记住。",
+      "窗外那点光落下来时，我差点把要说的话忘干净。",
+      "有些小细节不值得专门讲，可它会偷偷把下午拖慢一点。"
+    ],
+    campus_life: [
+      "便签纸换了个位置，事情好像就没那么乱了。虽然也只是好像。",
+      "课业处理到一半，突然很想把杯子也排整齐。先从能做到的小事开始。",
+      "今天的待办没有很帅，但划掉一项的时候还是有点爽。"
+    ],
+    interest_intake: [
+      "本来只是随手看一眼讨论，结果脑内已经开始排队发言了。",
+      "有个角色评论我想反驳三句，最后只默默多看了两眼。",
+      "喜欢的东西太会偷时间了。明明只想看五分钟。"
+    ],
+    anime_game: [
+      "刚才那一步越想越不服气。先记着，下次不许再手慢。",
+      "游戏复盘到一半，突然觉得自己嘴硬得很明显。",
+      "输了可以不提，但脑子已经偷偷把那局重开三遍了。"
+    ],
+    sport: [
+      "坐下来的时候才发现腿比嘴诚实。今天先慢慢回血。",
+      "操场风吹完以后，人倒是清醒了一点，就是不太想站起来。",
+      "水杯空了一半，体力也空了一半。很公平。"
+    ],
+    private_mood: [
+      "灯暗一点以后，人也跟着安静下来。没什么大事，就是想慢一点。",
+      "今天有点不想把话说太响。先把自己放小一点。",
+      "情绪像没拧紧的瓶盖，先不碰它。"
+    ],
+    user_related: [
+      "有人冒泡以后，房间就没那么空了。嘴上不说，耳朵已经知道了。",
+      "刚才那句弹幕还在屏幕边上，感觉像被轻轻戳了一下。",
+      "有人来过的痕迹还在，今天就没有完全白白滑过去。"
+    ]
+  };
+  const options = byType[event.type] || [
+    campusEventLine(event, repeatCount),
+    "刚才的小事还在脑子里绕圈。先不讲大道理，记一下就好。",
+    "今天没什么大场面，但有个小瞬间还挺想留下来。"
+  ];
+  const line = options[repeatCount % options.length] || "";
+  return cleanText(`${line}${campusHumanTailFor(state, repeatCount)}`, 700);
+}
+
+function campusHumanTailFor(state = {}, repeatCount = 0) {
+  if (state.energy <= 30 || state.activity === "sleepy") {
+    return [
+      " 先不逞强了。",
+      " 现在适合慢慢回血。",
+      " 晚点再精神一点。"
+    ][repeatCount % 3];
+  }
+  if (state.social_need >= 75) return " 有人敲门的话，我可能会假装只是刚好醒着。";
+  if (state.social_need <= 25) return " 被陪了一会儿以后，安静也没那么空。";
+  return "";
 }
 
 function campusEventLabel(event) {
@@ -615,7 +682,7 @@ function templateForState(state, rhythm) {
     "sleepy:sleepy": `今天${rhythm}房间安静得刚刚好，键盘灯也像快睡着了。再赖一会儿，我就去休息。`,
     "sleepy:lonely": `今天${rhythm}有点安静，窗外的光落在桌面上，连耳机都像在等人说话。`,
     "happy:happy": `今天${rhythm}心情不错，连看板上的笑都藏不住。要是你刚好路过，就当我偷偷挥手了。`,
-    "happy:playful": `今天${rhythm}状态还不错，想故意装作很淡定，但尾巴大概已经把我出卖了。`,
+    "happy:playful": `今天${rhythm}心里有点轻，想故意装作很淡定，但尾巴大概已经把我出卖了。`,
     "thinking:thinking": `今天${rhythm}在整理一些小计划，便签贴了一桌。不是发呆，是认真加载中。`,
     "thinking:focused": `今天${rhythm}把注意力收回来了一点，适合安静处理事，也适合认真听你讲。`,
     "emo:emo": `今天${rhythm}情绪有点低电量，先把灯调暗一点，慢慢把自己捡回来。`,
@@ -629,7 +696,7 @@ function templateForState(state, rhythm) {
   if (state.activity === "sleepy") return `今天${rhythm}进入省电模式，房间灯光也跟着变软了。`;
   if (state.activity === "happy") return `今天${rhythm}心情明亮一点，连桌面上的小物都看起来很顺眼。`;
   if (state.activity === "thinking") return `今天${rhythm}适合慢慢想事情，先把散掉的想法排成队。`;
-  if (state.activity === "emo") return `今天${rhythm}先低功耗待机一下，等状态自己慢慢回温。`;
+  if (state.activity === "emo") return `今天${rhythm}先低功耗待机一下，等心里的风慢慢停。`;
   return `今天${rhythm}没有安排很大的事，就在宿舍小房间和自己的小桌面之间慢慢待着。`;
 }
 
@@ -645,16 +712,16 @@ function alternateTemplateForState(state, rhythm, context = {}) {
   const event = normalizeDiaryEvent(context.diaryEvent);
   const seed = diaryEventLabel(event, state);
   if (seed) {
-    return `今天${rhythm}状态还是偏向${activityLabel(state.activity)}，但不是只在原地发呆。刚才脑子里还挂着「${seed}」，所以想换个角度记一下。`;
+    return `今天${rhythm}又被「${seed}」绊了一下。不是大事，只是杯子端到一半忽然想起，干脆先记住。`;
   }
-  if (state.activity === "sleepy") return `今天${rhythm}困意还在，但这次不是单纯喊累。房间安静下来以后，连想说的话都变得慢半拍。`;
+  if (state.activity === "sleepy") return `今天${rhythm}困意还在。房间安静下来以后，连想说的话都变得慢半拍。`;
   if (state.activity === "thinking") return `今天${rhythm}注意力还在收束中，刚刚把一个小念头翻来覆去想了几遍，先记在这里。`;
   if (state.activity === "otaku") return `今天${rhythm}又被喜欢的东西勾住了一下，明明只是随手看一眼，结果脑内已经开始排队发言了。`;
   if (state.activity === "gaming") return `今天${rhythm}游戏脑还没完全下线，刚刚复盘了一小段，越想越觉得自己当时可以更稳一点。`;
   if (state.activity === "sports") return `今天${rhythm}身体的反馈比嘴上诚实，动过以后有点累，但心里反而清爽了一点。`;
-  if (state.activity === "happy") return `今天${rhythm}情绪比刚才松快一点，想把这种小小的亮度也留在动态里。`;
+  if (state.activity === "happy") return `今天${rhythm}情绪比刚才松快一点，想把这种小小的亮度也留下来。`;
   if (state.activity === "emo") return `今天${rhythm}情绪还在低处慢慢移动，不过已经不是卡住不动的那种低电量了。`;
-  return `今天${rhythm}还是普通的一段时间，但细节和刚才不太一样，先把这一小格状态留下来。`;
+  return `今天${rhythm}还是普通的一段时间，但刚才有个小细节多停了一会儿。`;
 }
 
 function diaryEventLine(eventInput, state = {}, repeatCount = 0) {
@@ -663,7 +730,7 @@ function diaryEventLine(eventInput, state = {}, repeatCount = 0) {
   const candidates = diaryEventChineseLines(event, state);
   const line = candidates[repeatCount % Math.max(1, candidates.length)] || "";
   if (!line) return "";
-  return `这条和今天的小日记有关：${line} ${energyLineFor(state)}`;
+  return cleanText(`${line} ${energyLineFor(state)}`, 700);
 }
 
 function normalizeDiaryEvent(event = null) {
@@ -696,21 +763,21 @@ function diaryEventLabel(event, state = {}) {
     interest_intake: "刚刚看过的兴趣话题",
     user_related: "特殊网友来过的痕迹"
   };
-  return labels[event.type] || `${activityLabel(state.activity)}状态`;
+  return labels[event.type] || "刚才的小片段";
 }
 
 function diaryEventChineseLines(event, state = {}) {
   const label = diaryEventLabel(event, state);
   const base = [
-    `${label}还留在脑子里，所以这条不只是单纯报状态。`,
-    `刚才那段${label}让现在的心情稍微偏了一点点。`,
-    `把${label}当成今天的小标签，先轻轻贴在这里。`
+    `${label}还留在脑子里，杯子端在手里发了会儿呆。`,
+    `刚才那段${label}绕回来了一下，像便签翘起一个角。`,
+    `${label}不算大事，但安静下来以后又冒了出来。`
   ];
   if (event.type === "user_related") {
     return [
       "有人出现过以后，房间就没有刚才那么空。",
-      "特殊网友留下的一点回应，让今天的记录多了一小格温度。",
-      "刚刚的互动还在这里，所以想把这份在线感也记下来。"
+      "刚刚那句弹幕还留在屏幕边上，像被轻轻戳了一下。",
+      "有人来过的痕迹还在，今天就没有完全白白滑过去。"
     ];
   }
   return base;
@@ -720,22 +787,22 @@ function variedEnergyLineFor(state, sequence = 1) {
   const index = normalizeSequence(sequence) % 3;
   if (state.energy <= 30) {
     return [
-      "能量条还是偏低，先把动作放轻一点。",
+      "现在适合把动作放轻一点。",
       "现在不适合硬撑，适合慢慢回血。",
       "电量没有满格，所以先用省电模式营业。"
     ][index];
   }
   if (state.energy >= 80) {
     return [
-      "能量条还很亮，感觉还能多撑一小段。",
-      "现在状态挺满，适合把开心的部分多留一会儿。",
+      "现在还挺精神，感觉还能多撑一小段。",
+      "心情还亮着，适合把开心的部分多留一会儿。",
       "精神值在线，连尾巴都像在帮忙打拍子。"
     ][index];
   }
   return [
-    "能量条保持在刚好能营业的程度。",
+    "现在刚好还能安稳地营业一会儿。",
     "现在不算满电，但还能安稳地陪一会儿。",
-    "状态在中间值，适合慢慢说话。"
+    "适合慢慢说话，也适合慢慢听。"
   ][index];
 }
 
@@ -766,9 +833,9 @@ function rhythmFor(now, timeZone) {
 }
 
 function energyLineFor(state) {
-  if (state.energy <= 30) return "能量条现在偏低，先不逞强。";
-  if (state.energy >= 80) return "能量条还很亮，感觉还能再撑一轮。";
-  return "能量条保持在刚好能营业的程度。";
+  if (state.energy <= 30) return "先不逞强，动作放轻一点。";
+  if (state.energy >= 80) return "现在还挺精神，感觉还能再撑一轮。";
+  return "刚好还能安稳地营业一会儿。";
 }
 
 function socialLineFor(state) {
