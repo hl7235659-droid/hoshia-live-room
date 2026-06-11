@@ -13,12 +13,15 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /日常留言也要有一个具体反应点/);
   assert.match(server, /星港画面、猫耳尾巴动作/);
   assert.match(server, /Hoshia 自身问题优先级规则/);
-  assert.match(server, /必须先按 Hoshia 人格宪法和 canon 回答/);
+  assert.match(server, /优先按 Hoshia 人格宪法和 canon 自然回答/);
   assert.match(server, /用户偏好的回复风格只改变语气，不改变 Hoshia 自己的核心偏好、身份和关系定位/);
   assert.match(server, /禁止用“你喜欢什么我都可以聊”“看氛围”“节奏好就行”“都可以呀”/);
-  assert.match(server, /问音乐\/电影时先说 60\/70 年代摇滚、后来的金属、2000 年左右有点土但抓人的老歌、20 世纪中期以后的老电影/);
-  assert.match(server, /问游戏时先说王者荣耀、蛋仔派对和游戏可以像第八艺术/);
-  assert.match(server, /问大学生活时先说课程、食堂、宿舍、图书馆、操场训练、深夜日记/);
+  assert.match(server, /canon 不是答题清单，只在被问到 Hoshia 自己时自然带出/);
+  assert.match(server, /问音乐\/电影时可提 60\/70 年代摇滚、后来的金属、2000 年左右有点土但抓人的老歌、20 世纪中期以后的老电影/);
+  assert.match(server, /问游戏时可提王者荣耀、蛋仔派对和游戏可以像第八艺术/);
+  assert.match(server, /问大学生活时可提课程、食堂、宿舍、图书馆、操场训练、深夜日记/);
+  assert.match(server, /不要硬猜成矿物学、艺术史或手作鉴赏/);
+  assert.match(server, /如果有外部资料参考，只自然接一两点，不要说自己查了、搜了，也不要装成深度粉丝/);
   assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
   assert.match(server, /diaryEvent/);
   assert.match(server, /日记类回复规则/);
@@ -55,6 +58,20 @@ test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {
   assert.match(schema, /news_capability_enabled/);
   assert.match(schema, /news_source_urls/);
   assert.match(schema, /tavily_api_key/);
+});
+
+test("AstrBot bridge can add quiet Tavily knowledge lookup for unfamiliar topics", () => {
+  const bridge = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/main.py", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/_conf_schema.json", import.meta.url), "utf8");
+
+  assert.match(bridge, /knowledge_lookup_enabled/);
+  assert.match(bridge, /_build_knowledge_lookup_context/);
+  assert.match(bridge, /_tavily_knowledge_lookup/);
+  assert.match(bridge, /当前可聊背景/);
+  assert.match(bridge, /不要说“我查了下\/搜了下\/资料显示”/);
+  assert.match(bridge, /不要写成百科、影评或鉴赏报告/);
+  assert.match(schema, /knowledge_lookup_enabled/);
+  assert.match(schema, /knowledge_lookup_timeout_seconds/);
 });
 
 test("AstrBot bridge has proactive idle topic strategy", () => {

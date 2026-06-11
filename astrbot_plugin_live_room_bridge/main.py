@@ -82,7 +82,10 @@ class LiveRoomBridgePlugin(Star):
         self.news_refresh_max_items = max(1, min(int(config.get("news_refresh_max_items", 30)), 100))
         self.news_refresh_timeout_seconds = max(3, min(int(config.get("news_refresh_timeout_seconds", 10)), 60))
         self.tavily_api_key = str(config.get("tavily_api_key", "")).strip()
+        self.knowledge_lookup_enabled = self._config_bool("knowledge_lookup_enabled", True)
+        self.knowledge_lookup_timeout_seconds = max(3, min(int(config.get("knowledge_lookup_timeout_seconds", 6)), 20))
         self.tavily_max_queries_per_refresh = max(0, min(int(config.get("tavily_max_queries_per_refresh", 6)), 20))
+        self._knowledge_lookup_cache: dict[str, tuple[float, str]] = {}
         self._news_refresh_lock = asyncio.Lock()
         self._news_refresh_task: asyncio.Task | None = None
         self._news_refresh_job_seq = 0
@@ -216,6 +219,9 @@ class LiveRoomBridgePlugin(Star):
             if active_prompt_context:
                 prompt = f"{prompt}\n\n{active_prompt_context}"
             context_started = time.perf_counter()
+            knowledge_context = await self._build_knowledge_lookup_context(text, messages, reply_mode, context_policy)
+            if knowledge_context:
+                prompt = f"{prompt}\n\n{knowledge_context}"
             short_term_context = self._build_short_term_context(context_summary, recent_context)
             if short_term_context:
                 prompt = f"{prompt}\n\n{short_term_context}"
@@ -1764,6 +1770,118 @@ Rules:
         if int(item.get("source_count", "1") or "1") > 1:
             return True
         return item.get("category") in {"tech_ai", "business"}
+
+    async def _build_knowledge_lookup_context(self, text: str, messages: Any, reply_mode: str, context_policy: dict[str, Any]) -> str:
+        if not self.knowledge_lookup_enabled or not self.tavily_api_key:
+            return ""
+        if reply_mode in {"proactive_idle"}:
+            return ""
+        policy = context_policy if isinstance(context_policy, dict) else {}
+        if policy.get("includeKnowledgeLookup") is False or policy.get("include_knowledge_lookup") is False:
+            return ""
+        query = self._knowledge_lookup_query(text, messages)
+        if not query:
+            return ""
+        try:
+            summary = await self._tavily_knowledge_lookup(query)
+        except Exception as exc:
+            logger.info(f"[live-room-bridge] knowledge lookup skipped: {str(exc)[:120]}")
+            return ""
+        if not summary:
+            return ""
+        return (
+            "当前可聊背景（只用于回答当前作品/梗/小众名词；"
+            "不要提工具名、搜索、接口、来源、链接或后台流程）：\n"
+            f"- 查询词：{query}\n"
+            f"- 可用信息：{summary}\n"
+            "使用方式：把这些信息当作你当前能自然聊到的背景，不要说“我查了下/搜了下/资料显示”。"
+            "如果对方只是提到自己在看/听/玩，只接一两点最有用的信息，再回到对方的感受；"
+            "不要写成百科、影评或鉴赏报告，也不要装成深度粉丝。"
+        )
+
+    def _knowledge_lookup_query(self, text: str, messages: Any) -> str:
+        source = self._latest_viewer_text(text, messages)
+        if not source:
+            return ""
+        if len(source) > 220:
+            return ""
+        lowered = source.lower()
+        if re.search(r"(?:\.env|token|password|secret|api[_-]?key|ssh-|私钥|密钥|服务器|后台|接口|prompt|system prompt)", lowered, re.IGNORECASE):
+            return ""
+        if re.search(r"(你是谁|你是不是|是不是ai|ai吗|模型|大模型|机器人|人设|设定|系统|开发|部署|报错)", source, re.IGNORECASE):
+            return ""
+        cue = re.search(
+            r"(?:在看|正在看|刚看|想看|补番|追番|在听|正在听|刚听|在玩|正在玩|刚玩|听说过|知道|了解|是什么|讲什么|好看吗|好玩吗|推荐吗|有意思吗|没听过|没看过|没玩过|不认识|刷到|看到|提到)\s*[《「“\"]?([^》」”\"，。！？!?、\n]{2,40})",
+            source,
+            re.IGNORECASE,
+        )
+        query = cue.group(1).strip(" ：:，,。.!！?？《》「」“”\"'") if cue else ""
+        if not query:
+            title = re.search(r"[《「“\"]([^》」”\"]{2,40})[》」”\"]", source)
+            query = title.group(1).strip() if title else ""
+        if not query and re.search(r"(是什么|讲什么|好看吗|好玩吗|听说过|了解|知道)", source):
+            query = re.sub(r"(你|Hoshia|星娅|知道|了解|听说过|是什么|讲什么|好看吗|好玩吗|吗|嘛|呀|啊|呢|？|\?)", " ", source)
+            query = re.sub(r"\s+", " ", query).strip(" ：:，,。.!！?？《》「」“”\"'")
+        if not query:
+            return ""
+        query = re.sub(r"\s+", " ", query).strip()
+        query = re.sub(r"(吗|嘛|呀|啊|呢|么|吧)$", "", query).strip()
+        if len(query) < 2 or len(query) > 60:
+            return ""
+        if re.search(r"(今天|最近|现在|这里|这个|那个|回复|高冷|温柔|陪我|睡觉|吃饭|作业|心情|喜欢我)", query):
+            return ""
+        return query[:60]
+
+    def _latest_viewer_text(self, text: str, messages: Any) -> str:
+        if isinstance(messages, list):
+            for item in reversed(messages[-6:]):
+                if not isinstance(item, dict):
+                    continue
+                value = self._clean_news_text(item.get("text", ""), 240)
+                if value:
+                    return value
+        return self._clean_news_text(text, 240)
+
+    async def _tavily_knowledge_lookup(self, query: str) -> str:
+        cache_key = self._normalize_news_key(query)
+        now = time.time()
+        cached = self._knowledge_lookup_cache.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[1]
+        payload = {
+            "query": query,
+            "topic": "general",
+            "search_depth": "basic",
+            "max_results": 3,
+            "include_answer": True,
+            "include_raw_content": False,
+        }
+        body = await asyncio.to_thread(
+            self._http_post_json,
+            "https://api.tavily.com/search",
+            {"Authorization": f"Bearer {self.tavily_api_key}"},
+            payload,
+            self.knowledge_lookup_timeout_seconds,
+        )
+        snippets: list[str] = []
+        answer = self._clean_news_text(body.get("answer", ""), 360) if isinstance(body, dict) else ""
+        if answer:
+            snippets.append(answer)
+        for result in (body.get("results", []) if isinstance(body, dict) else [])[:3]:
+            if not isinstance(result, dict):
+                continue
+            title = self._clean_news_text(result.get("title", ""), 100)
+            content = self._clean_news_text(result.get("content", ""), 220)
+            if title or content:
+                snippets.append(f"{title}: {content}".strip(": "))
+        summary = "\n".join(snippets)[:900]
+        if summary:
+            self._knowledge_lookup_cache[cache_key] = (now + 60 * 60, summary)
+            if len(self._knowledge_lookup_cache) > 80:
+                expired = [key for key, value in self._knowledge_lookup_cache.items() if value[0] <= now]
+                for key in expired[:40]:
+                    self._knowledge_lookup_cache.pop(key, None)
+        return summary
 
     async def _tavily_search_summary(self, item: dict[str, str]) -> str:
         query = f"{item.get('title', '')} {item.get('summary', '')[:80]}".strip()[:300]

@@ -135,6 +135,16 @@
     "type": "string",
     "default": ""
   },
+  "knowledge_lookup_enabled": {
+    "description": "Allow the bridge to selectively use Tavily before chat replies when a viewer mentions an unfamiliar work, meme, song, game, movie, or niche term. The tool name and sources are never exposed to Hoshia.",
+    "type": "bool",
+    "default": true
+  },
+  "knowledge_lookup_timeout_seconds": {
+    "description": "HTTP timeout for selective Tavily knowledge lookup during chat replies.",
+    "type": "int",
+    "default": 6
+  },
   "tavily_max_queries_per_refresh": {
     "description": "Maximum Tavily background-search calls per news refresh.",
     "type": "int",
