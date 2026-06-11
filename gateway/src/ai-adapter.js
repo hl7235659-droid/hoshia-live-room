@@ -379,7 +379,7 @@ function optionalReplyMetadata(reply) {
 function normalizeLatencyBreakdown(value) {
   if (!value || typeof value !== "object") return undefined;
   const output = {};
-  for (const key of ["router_ms", "context_load_ms", "memory_recall_ms", "llm_first_token_ms", "llm_total_ms", "tts_ms", "gateway_total_ms", "total_ms"]) {
+  for (const key of ["router_ms", "context_load_ms", "gateway_context_load_ms", "bridge_context_load_ms", "memory_recall_ms", "llm_first_token_ms", "llm_total_ms", "tts_ms", "gateway_total_ms", "total_ms"]) {
     const number = Number(value[key]);
     if (Number.isFinite(number) && number >= 0) output[key] = Math.round(number);
   }

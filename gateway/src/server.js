@@ -1429,13 +1429,12 @@ async function handleAiReplyBatch(batch) {
   }, {
     source: reply.source,
     latency_ms: reply.latency_ms,
-    latency_breakdown: {
-      ...(reply.latency_breakdown || {}),
-      router_ms: routerMs,
-      context_load_ms: contextLoadMs,
-      gateway_total_ms: Math.round(performance.now() - gatewayStartedAt),
-      total_ms: Math.round(performance.now() - gatewayStartedAt)
-    },
+    latency_breakdown: buildGatewayLatencyBreakdown({
+      replyBreakdown: reply.latency_breakdown,
+      routerMs,
+      contextLoadMs,
+      gatewayStartedAt
+    }),
     latency_trace_id: latencyTraceId,
     route: reply.route || replyRoute
   });
@@ -2106,6 +2105,21 @@ function broadcastAiReplyDone({ traceId, route, skipped = false } = {}) {
     route: route || "smalltalk",
     skipped: Boolean(skipped)
   });
+}
+
+function buildGatewayLatencyBreakdown({ replyBreakdown = {}, routerMs = 0, contextLoadMs = 0, gatewayStartedAt = performance.now() } = {}) {
+  const bridgeContextLoadMs = Number(replyBreakdown?.context_load_ms);
+  const gatewayContextLoadMs = Math.max(0, Math.round(Number(contextLoadMs) || 0));
+  const gatewayTotalMs = Math.max(0, Math.round(performance.now() - gatewayStartedAt));
+  return {
+    ...(replyBreakdown || {}),
+    router_ms: Math.max(0, Math.round(Number(routerMs) || 0)),
+    gateway_context_load_ms: gatewayContextLoadMs,
+    ...(Number.isFinite(bridgeContextLoadMs) ? { bridge_context_load_ms: Math.max(0, Math.round(bridgeContextLoadMs)) } : {}),
+    context_load_ms: gatewayContextLoadMs + (Number.isFinite(bridgeContextLoadMs) ? Math.max(0, Math.round(bridgeContextLoadMs)) : 0),
+    gateway_total_ms: gatewayTotalMs,
+    total_ms: gatewayTotalMs
+  };
 }
 
 function broadcastMusicState() {
