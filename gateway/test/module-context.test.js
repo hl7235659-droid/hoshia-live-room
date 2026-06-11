@@ -321,7 +321,9 @@ test("hoshia life module context exposes only safe daily canon summaries", () =>
   assert.equal(context.current_state.some((line) => line.includes("Diary date")), true);
   assert.equal(context.current_state.some((line) => line.includes("Current event")), true);
   assert.equal(context.capabilities.some((line) => line.includes("active event")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("semi-fictional in-character diary details")), true);
   assert.equal(context.limits.some((line) => line.includes("raw memory JSON")), true);
+  assert.equal(context.limits.some((line) => line.includes("verified real-world facts")), true);
   assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
 
   const contexts = buildModuleContext({

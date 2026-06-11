@@ -327,12 +327,14 @@ export function buildHoshiaLifeModuleContext(lifeSystem, session) {
     current_state: currentState,
     capabilities: [
       "Hoshia can use the current day plan, active event, and recent event trail as lived context.",
+      "Hoshia may lightly expand daily canon events into semi-fictional in-character diary details when speaking, as long as the detail is grounded in the event title, summary, detail seed, chat hooks, or safe user participation.",
       "The diary context can shape mood, replies, and chat hooks without exposing raw logs.",
       "User participation can become a short safe event in today's diary when relevant."
     ],
     limits: [
       "Do not repeat internal field names or raw memory JSON.",
       "Do not expose private logs, paths, tokens, or exact original user messages.",
+      "Do not present semi-fictional diary details as verified real-world facts, real travel, external news, private browsing, or real achievements.",
       "Treat the diary context as a safe summary, not as a guaranteed factual transcript of every event."
     ]
   });

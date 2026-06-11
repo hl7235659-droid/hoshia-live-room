@@ -15,6 +15,7 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
   assert.match(server, /diaryEvent/);
   assert.match(server, /Diary-related reply rule/);
+  assert.match(server, /lightly expand daily canon into a small in-character diary detail/);
   assert.match(server, /music_ack/);
 });
 
@@ -56,6 +57,18 @@ test("AstrBot bridge has proactive idle topic strategy", () => {
   assert.match(bridge, /reply_mode == "proactive_idle"/);
   assert.match(bridge, /_build_proactive_idle_instruction/);
   assert.match(bridge, /one concrete, easy-to-answer topic point/);
-  assert.match(bridge, /daily news topic memories/);
+  assert.match(bridge, /Prefer daily diary context from hoshia_life_system first/);
+  assert.match(bridge, /must not present them as verified real-world travel/);
+  assert.match(bridge, /only says the room is quiet/);
   assert.match(bridge, /today light live-room chat topic/);
+});
+
+test("gateway proactive idle prompt prioritizes diary hooks over generic silence", () => {
+  const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+
+  assert.match(server, /Available proactive topic hooks, in priority order/);
+  assert.match(server, /Daily diary: \$\{line\}/);
+  assert.match(server, /Prefer the first available daily diary hook from hoshia_life_system/);
+  assert.match(server, /Do not send a line that only says the room is quiet/);
+  assert.match(server, /If there is no concrete diary, news, music, or recent-chat hook/);
 });

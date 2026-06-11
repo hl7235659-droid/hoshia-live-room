@@ -1686,6 +1686,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     return `[${index + 1}] ${speaker}: ${item.text}`;
   });
   const previousLines = proactiveReplyState.recentTexts.map((text, index) => `${index + 1}. ${text}`);
+  const topicHooks = proactiveTopicHooks({ moduleContext, moduleEvents, recentMessages });
 
   return [
     hoshiaPersonaPrompt,
@@ -1703,16 +1704,85 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
       "Recent real room messages:",
       ...recentLines
     ] : ["Recent real room messages: none"]),
+    ...(topicHooks.length ? [
+      "Available proactive topic hooks, in priority order:",
+      ...topicHooks.map((hook, index) => `${index + 1}. ${hook}`)
+    ] : [
+      "Available proactive topic hooks: none. If there is no concrete diary, news, music, or recent-chat hook, do not fill the room with a generic silence line."
+    ]),
     "Task:",
     "- Write one natural proactive Hoshia line for the live room.",
-    "- It must include one clear, easy-to-answer topic point.",
+    "- Prefer the first available daily diary hook from hoshia_life_system. Use news, music, recent chat, or time atmosphere only after diary hooks are unavailable or clearly less fitting.",
+    "- It must include one clear, easy-to-answer topic point grounded in a concrete event, such as stage notes, replaying a game decision, looping a song, a class/work detail, or an interest thread.",
+    "- Hoshia may lightly expand a daily canon event into a small in-character diary detail, but must not present it as verified real-world travel, external news, private browsing, or a real achievement.",
     "- Include one distinctive Hoshia texture: starport imagery, cat-ear/tail body language, a light self-aware tease, or a current-state reaction.",
     "- You may softly ask what the viewer is doing, but never only ask that; attach a concrete topic hook.",
-    "- Treat recent chat, music state, daily news topics, viewer memory, and current time atmosphere as equal candidate materials; choose the one most likely to invite a reply now.",
+    "- Do not send a line that only says the room is quiet, asks the viewer to sit in the starport, or says Hoshia is here without a concrete event point.",
     "- If using news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy or high-risk topics.",
     "- Do not say you detected silence, do not scold viewers, do not ask customer-service style questions.",
     "- Reply in Chinese, 1-2 short sentences, at most 90 Chinese characters. Output only Hoshia's line."
   ].join("\n");
+}
+
+function proactiveTopicHooks({ moduleContext = [], moduleEvents = [], recentMessages = [] } = {}) {
+  const hooks = [];
+  const modules = Array.isArray(moduleContext) ? moduleContext : [];
+  const events = Array.isArray(moduleEvents) ? moduleEvents : [];
+  const life = modules.find((item) => item?.module_id === "hoshia_life_system" && item.enabled);
+  if (life) {
+    const lifeLines = cleanProactiveHookLines(life.current_state)
+      .filter((line) => /Current event|Recent event|Focus hooks|Diary summary/i.test(line));
+    for (const line of lifeLines.slice(0, 4)) hooks.push(`Daily diary: ${line}`);
+  }
+
+  const news = modules.find((item) => item?.module_id === "hoshia_news" && item.enabled);
+  if (news) {
+    const newsLines = cleanProactiveHookLines(news.current_state)
+      .filter((line) => /Recent topic|Safe news summary|Recent news signal/i.test(line));
+    for (const line of newsLines.slice(0, 2)) hooks.push(`Safe news: ${line}`);
+  }
+
+  const music = modules.find((item) => item?.module_id === "music" && item.enabled);
+  if (music) {
+    for (const line of cleanProactiveHookLines(music.current_state).slice(0, 2)) hooks.push(`Music: ${line}`);
+  }
+
+  for (const event of events.slice(0, 4)) {
+    const hint = cleanProactiveText(event?.summary_hint, 160);
+    if (hint) hooks.push(`Recent module event: ${hint}`);
+  }
+
+  for (const message of (Array.isArray(recentMessages) ? recentMessages : []).slice(-3)) {
+    if (message?.role === "ai") continue;
+    const text = cleanProactiveText(message?.text, 120);
+    if (text) hooks.push(`Recent chat: ${text}`);
+  }
+
+  return uniqueProactiveHooks(hooks).slice(0, 8);
+}
+
+function cleanProactiveHookLines(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((line) => cleanProactiveText(line, 180))
+    .filter(Boolean);
+}
+
+function cleanProactiveText(value, maxLength = 180) {
+  return String(value ?? "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function uniqueProactiveHooks(hooks = []) {
+  const seen = new Set();
+  return hooks.filter((hook) => {
+    const key = hook.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function firstActiveSession() {
@@ -2054,7 +2124,7 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
       "Use active_context as the fast, current-state view. Do not recite it mechanically."
     ] : []),
     ...(contextPolicy.route === "diary_related" ? [
-      "Diary-related reply rule: if the viewer asks what Hoshia is doing now, what she did today, or why her timeline says this, answer from Current diary event first. Mention one concrete activity or small event before adding mood, teasing, or a follow-up question. Do not answer only with generic state words such as tired, low energy, quiet, or resting."
+      "Diary-related reply rule: if the viewer asks what Hoshia is doing now, what she did today, or why her timeline says this, answer from Current diary event first. Mention one concrete activity or small event before adding mood, teasing, or a follow-up question. You may lightly expand daily canon into a small in-character diary detail, but do not present it as verified real-world travel, external news, private browsing, or a real achievement. Do not answer only with generic state words such as tired, low energy, quiet, or resting."
     ] : []),
     ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
       ...lifeMemoryPacket,
