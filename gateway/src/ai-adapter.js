@@ -52,6 +52,10 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     };
     if (metadata.forceReply === true) body.force_reply = true;
     if (metadata.replyMode) body.reply_mode = String(metadata.replyMode);
+    if (metadata.replyRoute) body.reply_route = String(metadata.replyRoute).slice(0, 48);
+    if (metadata.latencyTraceId) body.latency_trace_id = String(metadata.latencyTraceId).slice(0, 80);
+    if (metadata.activeContext && typeof metadata.activeContext === "object") body.active_context = metadata.activeContext;
+    if (metadata.contextPolicy && typeof metadata.contextPolicy === "object") body.context_policy = metadata.contextPolicy;
     if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
     if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
     if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
@@ -345,7 +349,8 @@ function normalizeReply(reply, fallbackSource) {
       skipped: true,
       source: String(reply?.source || "heartflow_judge"),
       judge: reply?.judge,
-      latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined
+      latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined,
+      ...optionalReplyMetadata(reply)
     };
   }
 
@@ -357,8 +362,28 @@ function normalizeReply(reply, fallbackSource) {
     text: text.slice(0, 2000),
     state: safeStates.has(state) && isValidState(state) ? state : "SPEAKING",
     source: String(reply?.source || fallbackSource),
-    latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined
+    latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined,
+    ...optionalReplyMetadata(reply)
   };
+}
+
+function optionalReplyMetadata(reply) {
+  const metadata = {};
+  const breakdown = normalizeLatencyBreakdown(reply?.latency_breakdown);
+  if (breakdown) metadata.latency_breakdown = breakdown;
+  const route = String(reply?.route || "").trim().slice(0, 48);
+  if (route) metadata.route = route;
+  return metadata;
+}
+
+function normalizeLatencyBreakdown(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const output = {};
+  for (const key of ["router_ms", "context_load_ms", "memory_recall_ms", "llm_first_token_ms", "llm_total_ms", "tts_ms", "gateway_total_ms", "total_ms"]) {
+    const number = Number(value[key]);
+    if (Number.isFinite(number) && number >= 0) output[key] = Math.round(number);
+  }
+  return Object.keys(output).length ? output : undefined;
 }
 
 export function mockAiReply(text, nickname) {

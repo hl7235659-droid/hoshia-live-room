@@ -105,6 +105,15 @@ export function createHoshiaNewsModuleProvider(newsService) {
   };
 }
 
+export function createHoshiaInterestModuleProvider(interestSystem) {
+  return {
+    moduleId: "hoshia_interest_system",
+    getCapabilityContext(session) {
+      return buildHoshiaInterestModuleContext(interestSystem, session);
+    }
+  };
+}
+
 export function buildMusicModuleContext(musicService, session) {
   const state = typeof musicService?.publicState === "function"
     ? musicService.publicState(session)
@@ -228,6 +237,45 @@ export function buildHoshiaNewsModuleContext(newsService, session) {
       "Use news as light chat material, not as a news broadcast or source citation.",
       "Do not repeat raw feed text, URLs, provider names, private source routes, search queries, credentials, internal addresses, or file paths.",
       "Avoid heavy, risky, medical, legal, investment, or highly divisive topics unless the viewer explicitly asks."
+    ]
+  });
+}
+
+export function buildHoshiaInterestModuleContext(interestSystem, session) {
+  const state = typeof interestSystem?.buildContext === "function"
+    ? interestSystem.buildContext(session)
+    : null;
+
+  if (!state?.enabled) {
+    return sanitizeModuleContext({
+      module_id: "hoshia_interest_system",
+      enabled: false,
+      current_state: ["Hoshia interest and daily canon context is unavailable."],
+      capabilities: [],
+      limits: [
+        "Do not invent private browsing, hidden data, or long-term preferences without safe context."
+      ]
+    });
+  }
+
+  const currentState = [
+    ...(Array.isArray(state.current_state) ? state.current_state : [])
+  ];
+
+  return sanitizeModuleContext({
+    module_id: "hoshia_interest_system",
+    enabled: true,
+    current_state: currentState,
+    capabilities: [
+      "Hoshia can use daily canon as lived context for mood, activity, timeline posts, and chat hooks.",
+      "Hoshia can prefer high-priority interests while still answering low-interest topics when asked.",
+      "Shared viewer interests may temporarily raise chat priority without storing raw event logs."
+    ],
+    limits: [
+      "Use interest context as subjective reaction material, not as a news broadcast.",
+      "Do not claim to have read real sources unless a safe topic summary is provided by another module.",
+      "Do not expose internal field names, raw chat logs, URLs, credentials, paths, provider names, or configuration.",
+      "Do not turn one isolated user action into a permanent preference unless memory context explicitly supports it."
     ]
   });
 }

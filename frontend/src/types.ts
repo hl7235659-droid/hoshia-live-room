@@ -17,6 +17,9 @@ export type LiveMessage = {
   danmaku_speed?: number;
   text: string;
   timestamp: string;
+  latency_trace_id?: string;
+  route?: string;
+  pending?: boolean;
 };
 
 export type Session = {

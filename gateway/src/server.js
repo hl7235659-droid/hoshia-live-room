@@ -25,6 +25,7 @@ import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import {
   buildModuleContext,
   createHoshiaCommentReplyEvent,
+  createHoshiaInterestModuleProvider,
   createHoshiaPostCreatedEvent,
   createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
@@ -48,6 +49,7 @@ import {
 import { createHoshiaNewsService } from "./hoshia-news-service.js";
 import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
+import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
 import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
 import {
   createProactiveReplyState,
@@ -64,6 +66,13 @@ import {
   welcomeCooldownKey,
   welcomeInflightKey
 } from "./welcome-greeting.js";
+import {
+  buildActiveContext,
+  buildContextPolicy,
+  classifyMessageRoute,
+  formatActiveContextLines,
+  pendingReplyNotice
+} from "./message-router.js";
 
 class MemoryStore {
   constructor() {
@@ -135,6 +144,10 @@ const musicService = new MusicService(config, { store });
 const hoshiaVisualStateService = createHoshiaVisualStateService({ db });
 const hoshiaLifeMemoryService = createHoshiaLifeMemoryService({ db });
 const hoshiaNewsService = createHoshiaNewsService(config, { fetchImpl: globalThis.fetch });
+const hoshiaInterestSystem = createHoshiaInterestSystem({
+  lifeMemoryService: hoshiaLifeMemoryService,
+  timeZone: config.realityContextTimezone || "Asia/Shanghai"
+});
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   db,
@@ -167,6 +180,7 @@ const hoshiaDailyPostService = createHoshiaDailyPostService({
 const moduleProviders = [
   createMusicModuleProvider(musicService),
   createHoshiaVisualModuleProvider(hoshiaVisualStateService),
+  createHoshiaInterestModuleProvider(hoshiaInterestSystem),
   createHoshiaNewsModuleProvider(hoshiaNewsService)
 ];
 const sockets = new Map();
@@ -813,6 +827,10 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
   }
   if (result.post && result.created) {
     hoshiaLifeMemoryService.recordPost(result.post);
+    hoshiaInterestSystem.recordDailyPost(result.post, {
+      session,
+      now: result.post.created_at || new Date()
+    });
     moduleEventStore.append(result.moduleEvent || createHoshiaPostCreatedEvent(result.post, session, {
       roomId: config.roomId,
       reason: result.post.source_type || "daily_state"
@@ -1322,20 +1340,44 @@ async function flushAiReplyBatch() {
 }
 
 async function handleAiReplyBatch(batch) {
+  const gatewayStartedAt = performance.now();
+  const routeStartedAt = performance.now();
+  const replyRoute = classifyMessageRoute(batch);
+  const contextPolicy = buildContextPolicy(replyRoute, batch);
+  const routerMs = Math.round(performance.now() - routeStartedAt);
+  const latencyTraceId = `reply_${nanoid(10)}`;
   const batchText = batch.map((item) => item.text).join("\n");
+  broadcastAiReplyPending({ traceId: latencyTraceId, route: replyRoute, batch });
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
-  await sleep(450);
-  const lifeMemoryPacket = hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: 6 });
-  const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket);
-  const shortTermContext = await buildShortTermAiContext(batch);
+  if (!contextPolicy.fastLane) await sleep(250);
+  const contextStartedAt = performance.now();
   const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
-  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
-  const moduleMemoryEvents = moduleEventStore.consumeMemoryEvents({ roomId: config.roomId, limit: 24 });
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
+  const activeContext = buildActiveContext({
+    visualState: hoshiaVisualStateService.publicState(),
+    audienceUsers: audiencePayload().users,
+    moduleContext,
+    moduleEvents,
+    batch
+  });
+  const lifeMemoryPacket = contextPolicy.includeLifeMemory
+    ? hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: contextPolicy.livingMemoryK || 3 })
+    : [];
+  const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket, { activeContext, contextPolicy, moduleContext, moduleEvents });
+  const shortTermContext = await buildShortTermAiContext(batch, contextPolicy);
+  const moduleMemoryEvents = contextPolicy.consumeModuleMemoryEvents
+    ? moduleEventStore.consumeMemoryEvents({ roomId: config.roomId, limit: 24 })
+    : [];
+  const contextLoadMs = Math.round(performance.now() - contextStartedAt);
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
     forceReply: batch.some((item) => item.forceReply),
     replyMode: batch.some((item) => item.forceReply) ? "single_user_direct" : "",
+    replyRoute,
+    activeContext,
+    contextPolicy,
+    latencyTraceId,
     recentContext: shortTermContext.recentContext,
     contextSummary: shortTermContext.contextSummary,
     moduleContext,
@@ -1352,6 +1394,7 @@ async function handleAiReplyBatch(batch) {
   });
   if (reply.skipped) {
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
+    broadcastAiReplyDone({ traceId: latencyTraceId, route: replyRoute, skipped: true });
     await setCharacterState("IDLE");
     scheduleProactiveReplyCheck();
     return;
@@ -1359,16 +1402,30 @@ async function handleAiReplyBatch(batch) {
   if (moduleMemoryEvents.length && reply.source !== "astrbot") {
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
   }
+  hoshiaInterestSystem.recordInteractionSignals({
+    batch,
+    moduleMemoryEvents: reply.source === "astrbot" ? moduleMemoryEvents : []
+  });
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
     user_id: "ai-host",
     nickname: "Hoshia"
   }, {
     source: reply.source,
-    latency_ms: reply.latency_ms
+    latency_ms: reply.latency_ms,
+    latency_breakdown: {
+      ...(reply.latency_breakdown || {}),
+      router_ms: routerMs,
+      context_load_ms: contextLoadMs,
+      gateway_total_ms: Math.round(performance.now() - gatewayStartedAt),
+      total_ms: Math.round(performance.now() - gatewayStartedAt)
+    },
+    latency_trace_id: latencyTraceId,
+    route: reply.route || replyRoute
   });
   await storeMessage(aiMessage);
   broadcast(aiMessage);
+  broadcastAiReplyDone({ traceId: latencyTraceId, route: reply.route || replyRoute });
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
   scheduleProactiveReplyCheck();
@@ -1682,16 +1739,20 @@ async function handleWelcomeGreeting(session) {
   }
 }
 
-async function buildShortTermAiContext(batch) {
-  await refreshRoomContextSummary(config.roomId);
-  const maxMessages = positiveInt(config.shortTermContextMaxMessages, 100, 20, 500);
+async function buildShortTermAiContext(batch, contextPolicy = {}) {
+  if (contextPolicy.refreshSummarySync) {
+    await refreshRoomContextSummary(config.roomId);
+  } else if (contextPolicy.includeContextSummary) {
+    void refreshRoomContextSummary(config.roomId);
+  }
+  const maxMessages = positiveInt(contextPolicy.recentContextLimit || config.shortTermContextMaxMessages, 100, 1, 500);
   const fetchLimit = Math.min(Math.max(maxMessages * 2, maxMessages), 1000);
   const messages = db.listRecentContextMessages(config.roomId, fetchLimit);
   const focusedMessages = selectContextMessagesForBatch(messages, batch, maxMessages);
   const summary = db.getRoomContextSummary(config.roomId);
   return {
     recentContext: focusedMessages.map(contextPayloadMessage),
-    contextSummary: summary?.summary_text || ""
+    contextSummary: contextPolicy.includeContextSummary ? summary?.summary_text || "" : ""
   };
 }
 
@@ -1828,7 +1889,7 @@ function roomAiSession(batch) {
   };
 }
 
-function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = []) {
+function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext = {}, contextPolicy = {}, moduleContext = null, moduleEvents = null } = {}) {
   const targets = replyTargets(batch);
   const lines = batch.map((item, index) => {
     const mentionMark = item.mentioned ? " @Hoshia" : "";
@@ -1842,17 +1903,18 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = []) {
     audienceUsers: audiencePayload().users,
     activeConnections: activeUserConnections
   });
-  const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
-  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+  const safeModuleContext = Array.isArray(moduleContext) ? moduleContext : buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
+  const safeModuleEvents = Array.isArray(moduleEvents) ? moduleEvents : moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit || 24 });
   const hostLifeContextLines = buildHostLifeContext({
     config,
     room: roomInfo(),
     batch,
     audienceUsers: audiencePayload().users,
     activeConnections: activeUserConnections,
-    moduleContext,
-    moduleEvents
+    moduleContext: safeModuleContext,
+    moduleEvents: safeModuleEvents
   });
+  const activeContextLines = formatActiveContextLines(activeContext);
 
   const targetInstruction = targets.length
     ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
@@ -1866,6 +1928,10 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = []) {
     ] : []),
     ...(hostLifeContextLines.length ? [
       ...hostLifeContextLines
+    ] : []),
+    ...(activeContextLines.length ? [
+      ...activeContextLines,
+      "Use active_context as the fast, current-state view. Do not recite it mechanically."
     ] : []),
     ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
       ...lifeMemoryPacket,
@@ -1995,6 +2061,35 @@ function broadcast(payload) {
   for (const ws of sockets.keys()) {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
   }
+}
+
+function broadcastAiReplyPending({ traceId, route, batch = [] } = {}) {
+  const latest = Array.isArray(batch) ? batch[batch.length - 1] : null;
+  broadcast({
+    type: "ai_reply_pending",
+    id: `pending_${traceId || nanoid(8)}`,
+    room_id: config.roomId,
+    role: "ai",
+    user_id: "ai-host",
+    nickname: "Hoshia",
+    text: pendingReplyNotice(route),
+    timestamp: new Date().toISOString(),
+    latency_trace_id: traceId || "",
+    route: route || "smalltalk",
+    reply_targets: replyTargets(batch),
+    source_message_id: latest?.id || ""
+  });
+}
+
+function broadcastAiReplyDone({ traceId, route, skipped = false } = {}) {
+  broadcast({
+    type: "ai_reply_done",
+    room_id: config.roomId,
+    timestamp: new Date().toISOString(),
+    latency_trace_id: traceId || "",
+    route: route || "smalltalk",
+    skipped: Boolean(skipped)
+  });
 }
 
 function broadcastMusicState() {

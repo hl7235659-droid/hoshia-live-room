@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildModuleContext,
+  buildHoshiaInterestModuleContext,
   buildHoshiaNewsModuleContext,
   buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
+  createHoshiaInterestModuleProvider,
   createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
@@ -239,6 +241,40 @@ test("hoshia news module context exposes only safe topic summary fields", () => 
     providers: [createHoshiaNewsModuleProvider(newsService)]
   });
   assert.equal(contexts[0].module_id, "hoshia_news");
+});
+
+test("hoshia interest module context exposes daily canon and shared topic hooks safely", () => {
+  const interestSystem = {
+    buildContext(session) {
+      return {
+        enabled: true,
+        current_state: [
+          "Today canon: Hoshia had a quiet but slightly competitive day.",
+          `Top active interests: anime (1.20), esports (1.10).`,
+          "Shared viewer topic: Alice mentioned a new episode and a match."
+        ],
+        ranked_interests: [],
+        daily_canon: { source: "daily_canon", content: "Today canon summary" },
+        shared_topics: [{ source: "interest_system", content: "Shared topic" }],
+        session
+      };
+    }
+  };
+
+  const context = buildHoshiaInterestModuleContext(interestSystem, { user_id: "user-1" });
+  const serialized = JSON.stringify(context);
+
+  assert.equal(context.module_id, "hoshia_interest_system");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("Today canon")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("daily canon")), true);
+  assert.equal(context.limits.some((line) => line.includes("raw chat logs")), true);
+  assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
+
+  const contexts = buildModuleContext({
+    providers: [createHoshiaInterestModuleProvider(interestSystem)]
+  });
+  assert.equal(contexts[0].module_id, "hoshia_interest_system");
 });
 
 test("disabled hoshia news module context keeps capability surface closed", () => {

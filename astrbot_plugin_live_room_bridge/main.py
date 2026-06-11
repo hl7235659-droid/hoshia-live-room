@@ -187,6 +187,10 @@ class LiveRoomBridgePlugin(Star):
         module_context = self._clean_module_context(payload.get("module_context", []))
         module_events = self._clean_module_events(payload.get("module_events", []))
         module_memory_events = self._clean_module_events(payload.get("module_memory_events", []))
+        active_context = self._clean_active_context(payload.get("active_context", {}))
+        context_policy = self._clean_context_policy(payload.get("context_policy", {}))
+        reply_route = self._safe_identifier(payload.get("reply_route") or context_policy.get("route") or "", 48)
+        latency_trace_id = self._safe_identifier(payload.get("latency_trace_id"), 80)
         force_reply = bool(payload.get("force_reply"))
         reply_mode = str(payload.get("reply_mode", "")).strip()[:48]
         if not text or len(text) > 3000:
@@ -197,15 +201,22 @@ class LiveRoomBridgePlugin(Star):
         try:
             provider_id = await self.context.get_current_chat_provider_id(session_id)
             prompt = prompt_override or (f"{nickname}: {text}" if nickname else text)
-            memory_context = await self._build_livingmemory_context(room_id, messages, module_memory_events, reply_mode)
+            memory_started = time.perf_counter()
+            memory_context = await self._build_livingmemory_context(room_id, messages, module_memory_events, reply_mode, context_policy)
+            memory_recall_ms = int((time.perf_counter() - memory_started) * 1000)
             if memory_context:
                 prompt = f"{prompt}\n\n{memory_context}"
+            active_prompt_context = self._format_active_context(active_context)
+            if active_prompt_context:
+                prompt = f"{prompt}\n\n{active_prompt_context}"
+            context_started = time.perf_counter()
             short_term_context = self._build_short_term_context(context_summary, recent_context)
             if short_term_context:
                 prompt = f"{prompt}\n\n{short_term_context}"
             module_prompt_context = self._format_module_prompt_context(module_context, module_events)
             if module_prompt_context:
                 prompt = f"{prompt}\n\n{module_prompt_context}"
+            context_load_ms = int((time.perf_counter() - context_started) * 1000)
 
             if reply_mode == "proactive_idle":
                 prompt = f"{prompt}\n\n{self._build_proactive_idle_instruction()}"
@@ -222,25 +233,51 @@ class LiveRoomBridgePlugin(Star):
                         "source": "heartflow_judge",
                         "judge": judge_payload,
                         "latency_ms": int((time.perf_counter() - started) * 1000),
+                        "route": reply_route,
+                        "latency_trace_id": latency_trace_id,
+                        "latency_breakdown": {
+                            "memory_recall_ms": memory_recall_ms,
+                            "context_load_ms": context_load_ms,
+                            "llm_total_ms": 0,
+                            "total_ms": int((time.perf_counter() - started) * 1000),
+                        },
                     }
                 prompt = f"{prompt}\n\nThis is a proactive live-room interjection. Nobody explicitly mentioned you. Reply only if the topic, relationship, or room atmosphere genuinely gives Hoshia a reason to speak. Do not fill silence just to prove she is online or available."
 
+            llm_started = time.perf_counter()
             llm_response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
                 prompt=prompt,
                 system_prompt=self.system_prompt or None,
             )
+            llm_total_ms = int((time.perf_counter() - llm_started) * 1000)
             reply_text = str(getattr(llm_response, "completion_text", "") or "").strip()
             if not reply_text:
                 return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": "empty_llm_response"}
             if self.livingmemory_enabled and self.livingmemory_auto_summary_enabled:
                 asyncio.create_task(self._summarize_and_store_viewer_memories(provider_id, room_id, messages, reply_text, module_memory_events))
+            total_ms = int((time.perf_counter() - started) * 1000)
+            logger.info(
+                "[live-room-bridge] reply_latency "
+                f"trace={latency_trace_id or '-'} route={reply_route or '-'} "
+                f"memory_recall_ms={memory_recall_ms} context_load_ms={context_load_ms} "
+                f"llm_total_ms={llm_total_ms} total_ms={total_ms}"
+            )
             return HTTPStatus.OK, {
                 "ok": True,
                 "text": reply_text,
                 "state": "SPEAKING",
                 "source": "astrbot",
-                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "latency_ms": total_ms,
+                "route": reply_route,
+                "latency_trace_id": latency_trace_id,
+                "latency_breakdown": {
+                    "memory_recall_ms": memory_recall_ms,
+                    "context_load_ms": context_load_ms,
+                    "llm_first_token_ms": llm_total_ms,
+                    "llm_total_ms": llm_total_ms,
+                    "total_ms": total_ms,
+                },
             }
         except Exception as exc:
             logger.error(f"[live-room-bridge] llm failed: {exc}", exc_info=True)
@@ -286,6 +323,72 @@ class LiveRoomBridgePlugin(Star):
         return (
             "Short-term conversation context for this reply. Priority when facts conflict: recent transcript > earlier summary > LivingMemory.\n"
             + "\n\n".join(sections)
+        )
+
+    def _clean_active_context(self, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        context: dict[str, Any] = {}
+        for key, limit in {
+            "current_state": 220,
+            "current_activity": 220,
+            "active_event": 220,
+            "recent_user_memory": 220,
+            "tone_bias": 160,
+        }.items():
+            text = self._safe_runtime_text(value.get(key), limit)
+            if text:
+                context[key] = text
+        hooks = self._clean_text_list(value.get("chat_hooks", []), limit=3)
+        if hooks:
+            context["chat_hooks"] = hooks
+        return context
+
+    def _clean_context_policy(self, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        policy: dict[str, Any] = {}
+        route = self._safe_identifier(value.get("route"), 48)
+        if route:
+            policy["route"] = route
+        for key in ("includeLivingMemory", "include_living_memory", "includeNewsMemory", "include_news_memory"):
+            if key in value:
+                policy[key] = bool(value.get(key))
+        for key in ("livingMemoryK", "living_memory_k"):
+            if key in value:
+                try:
+                    policy[key] = max(0, min(int(value.get(key)), self.livingmemory_recall_k))
+                except (TypeError, ValueError):
+                    policy[key] = self.livingmemory_recall_k
+        return policy
+
+    def _format_active_context(self, active_context: dict[str, Any]) -> str:
+        if not active_context:
+            return ""
+        labels = {
+            "current_state": "Current Hoshia state",
+            "current_activity": "Current activity",
+            "active_event": "Current user-facing event",
+            "recent_user_memory": "Recent user preference signal",
+            "tone_bias": "Tone bias",
+        }
+        lines: list[str] = []
+        for key, label in labels.items():
+            value = str(active_context.get(key, "")).strip()
+            if value:
+                lines.append(f"- {label}: {value}")
+        hooks = active_context.get("chat_hooks")
+        if isinstance(hooks, list):
+            for index, hook in enumerate(hooks[:3]):
+                text = str(hook or "").strip()
+                if text:
+                    lines.append(f"- Chat hook {index + 1}: {text}")
+        if not lines:
+            return ""
+        return (
+            "Fast active_context. This is a short, sanitized current-state view for low-latency replies. "
+            "Use it for tone and continuity, but do not recite field names or expose internal mechanics.\n"
+            + "\n".join(lines)
         )
 
     def _clean_context_messages(self, value: Any) -> list[dict[str, str]]:
@@ -489,8 +592,14 @@ class LiveRoomBridgePlugin(Star):
                     break
         return selected
 
-    async def _build_livingmemory_context(self, room_id: str, messages: Any, module_events: Any | None = None, reply_mode: str = "") -> str:
+    async def _build_livingmemory_context(self, room_id: str, messages: Any, module_events: Any | None = None, reply_mode: str = "", context_policy: dict[str, Any] | None = None) -> str:
         if not self.livingmemory_enabled:
+            return ""
+        policy = context_policy if isinstance(context_policy, dict) else {}
+        if policy.get("includeLivingMemory") is False or policy.get("include_living_memory") is False:
+            return ""
+        recall_k = self._livingmemory_recall_limit(policy)
+        if recall_k <= 0:
             return ""
         engine = self._livingmemory_engine()
         if not engine:
@@ -501,27 +610,27 @@ class LiveRoomBridgePlugin(Star):
             for viewer in self._selected_viewers(messages, module_events):
                 memories = await engine.search_memories(
                     query=viewer["query"],
-                    k=self.livingmemory_recall_k,
+                    k=recall_k,
                     session_id=self._viewer_session_id(room_id, viewer["user_id"]),
                     persona_id=self.livingmemory_persona_id,
                 )
-                lines = self._format_memory_lines(memories)
+                lines = self._format_memory_lines(memories, recall_k)
                 if lines:
                     sections.append(
                         f"@{viewer['nickname']} 的个人长期记忆参考（只用于理解这个观众，不要透露来源）：\n"
                         + "\n".join(lines)
                     )
 
-            news_query = self._news_query(messages, reply_mode)
+            news_query = self._news_query(messages, reply_mode) if policy.get("includeNewsMemory", True) and policy.get("include_news_memory", True) else ""
             if news_query:
                 await self._cleanup_expired_news_memories(engine, room_id)
                 news_memories = await engine.search_memories(
                     query=news_query,
-                    k=self.livingmemory_recall_k,
+                    k=recall_k,
                     session_id=self._news_session_id(room_id),
                     persona_id=self.livingmemory_persona_id,
                 )
-                news_lines = self._format_news_memory_lines(news_memories)
+                news_lines = self._format_news_memory_lines(news_memories, recall_k)
                 if news_lines:
                     sections.append(
                         "近期新闻热点参考（只用于话题灵感，不代表任何观众个人记忆）：\n"
@@ -535,8 +644,18 @@ class LiveRoomBridgePlugin(Star):
             return ""
         return "LivingMemory 召回内容：\n" + "\n\n".join(sections)
 
-    def _format_memory_lines(self, memories: Any) -> list[str]:
+    def _livingmemory_recall_limit(self, policy: dict[str, Any]) -> int:
+        for key in ("livingMemoryK", "living_memory_k"):
+            if key in policy:
+                try:
+                    return max(0, min(int(policy.get(key)), self.livingmemory_recall_k))
+                except (TypeError, ValueError):
+                    return self.livingmemory_recall_k
+        return self.livingmemory_recall_k
+
+    def _format_memory_lines(self, memories: Any, recall_k: int | None = None) -> list[str]:
         lines: list[str] = []
+        limit = max(1, min(int(recall_k or self.livingmemory_recall_k), self.livingmemory_recall_k))
         for memory in list(memories or []):
             metadata = self._memory_metadata(memory)
             if self._viewer_memory_expired(metadata):
@@ -545,13 +664,14 @@ class LiveRoomBridgePlugin(Star):
             if not content:
                 continue
             lines.append(f"- {content[:280]}")
-            if len(lines) >= self.livingmemory_recall_k:
+            if len(lines) >= limit:
                 break
         return lines
 
-    def _format_news_memory_lines(self, memories: Any) -> list[str]:
+    def _format_news_memory_lines(self, memories: Any, recall_k: int | None = None) -> list[str]:
         lines: list[str] = []
         now = time.time()
+        limit = max(1, min(int(recall_k or self.livingmemory_recall_k), self.livingmemory_recall_k))
         for memory in list(memories or []):
             metadata = self._memory_metadata(memory)
             if self._news_memory_expired(metadata, now):
@@ -560,7 +680,7 @@ class LiveRoomBridgePlugin(Star):
             if not content:
                 continue
             lines.append(f"- {content[:280]}")
-            if len(lines) >= self.livingmemory_recall_k:
+            if len(lines) >= limit:
                 break
         return lines
 

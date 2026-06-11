@@ -237,6 +237,60 @@ test("astrbot room batch can include module context and module events", async ()
   assert.equal(reply.source, "astrbot");
 });
 
+test("astrbot room batch forwards low-latency routing metadata", async () => {
+  const activeContext = {
+    current_state: "mood=calm; activity=chatting",
+    active_event: "Alice: hello",
+    chat_hooks: ["Now playing: demo song"],
+    tone_bias: "short reply"
+  };
+  const contextPolicy = {
+    route: "smalltalk",
+    recentContextLimit: 6,
+    includeLivingMemory: false,
+    consumeModuleMemoryEvents: false
+  };
+
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice: hello",
+    baseConfig,
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.reply_route, "smalltalk");
+      assert.equal(body.latency_trace_id, "reply_test");
+      assert.deepEqual(body.active_context, activeContext);
+      assert.deepEqual(body.context_policy, contextPolicy);
+      return responseJson(200, {
+        ok: true,
+        text: "hello back",
+        state: "SPEAKING",
+        source: "astrbot",
+        route: "smalltalk",
+        latency_breakdown: {
+          memory_recall_ms: 0,
+          llm_total_ms: 42,
+          total_ms: 50
+        }
+      });
+    },
+    {
+      roomSession: true,
+      replyRoute: "smalltalk",
+      latencyTraceId: "reply_test",
+      activeContext,
+      contextPolicy
+    }
+  );
+
+  assert.equal(reply.route, "smalltalk");
+  assert.deepEqual(reply.latency_breakdown, {
+    memory_recall_ms: 0,
+    llm_total_ms: 42,
+    total_ms: 50
+  });
+});
+
 test("proactive idle reply mode is forwarded to astrbot bridge", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "Live room" },

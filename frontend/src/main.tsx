@@ -128,7 +128,35 @@ async function fetchHoshiaPosts() {
 }
 
 function appendRoomMessage(current: LiveMessage[], message: LiveMessage) {
-  return [...current, message].slice(-maxHistoryMessages);
+  const traceId = message.latency_trace_id;
+  const withoutPending = traceId && message.type === "ai_reply"
+    ? current.filter((item) => !(item.type === "ai_reply_pending" && item.latency_trace_id === traceId))
+    : current;
+  return [...withoutPending, message].slice(-maxHistoryMessages);
+}
+
+function appendPendingMessage(current: LiveMessage[], message: LiveMessage) {
+  if (!message.latency_trace_id) return appendRoomMessage(current, message);
+  const exists = current.some((item) => item.type === "ai_reply_pending" && item.latency_trace_id === message.latency_trace_id);
+  if (exists) {
+    return current.map((item) => item.type === "ai_reply_pending" && item.latency_trace_id === message.latency_trace_id
+      ? { ...item, ...message, pending: true }
+      : item);
+  }
+  return appendRoomMessage(current, { ...message, pending: true });
+}
+
+function appendReplyDelta(current: LiveMessage[], payload: Partial<LiveMessage>) {
+  const traceId = payload.latency_trace_id;
+  if (!traceId) return current;
+  return current.map((item) => item.type === "ai_reply_pending" && item.latency_trace_id === traceId
+    ? { ...item, text: `${item.text || ""}${payload.text || ""}` }
+    : item);
+}
+
+function removePendingReply(current: LiveMessage[], traceId: string | undefined) {
+  if (!traceId) return current;
+  return current.filter((item) => !(item.type === "ai_reply_pending" && item.latency_trace_id === traceId));
 }
 
 function wsPath(path: string) {
@@ -298,6 +326,15 @@ function App() {
       const payload = JSON.parse(event.data);
       if (["danmaku", "ai_reply", "presence"].includes(payload.type)) {
         setMessages((current) => appendRoomMessage(current, payload));
+      }
+      if (payload.type === "ai_reply_pending") {
+        setMessages((current) => appendPendingMessage(current, payload));
+      }
+      if (payload.type === "ai_reply_delta") {
+        setMessages((current) => appendReplyDelta(current, payload));
+      }
+      if (payload.type === "ai_reply_done") {
+        setMessages((current) => removePendingReply(current, payload.latency_trace_id));
       }
       if (payload.type === "error") {
         setSocketStatus("error");
