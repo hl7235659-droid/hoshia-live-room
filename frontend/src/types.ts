@@ -53,6 +53,7 @@ export type MusicState = {
   queue: MusicTrack[];
   last_error?: string;
   can_control: boolean;
+  can_previous?: boolean;
   timestamp?: string;
 };
 

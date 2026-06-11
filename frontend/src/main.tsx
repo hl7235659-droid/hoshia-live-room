@@ -2511,6 +2511,7 @@ function BottomDock({
           <MusicRoomPanel
             musicState={musicState}
             socketStatus={socketStatus}
+            onMusicState={onMusicState}
             audioEnabled={audioEnabled}
             playbackNotice={musicPlaybackNotice}
             expanded={musicOpen}
@@ -2585,21 +2586,33 @@ function BottomDock({
 function MusicRoomPanel({
   musicState,
   socketStatus,
+  onMusicState,
   audioEnabled,
   playbackNotice,
   expanded
 }: {
   musicState: MusicState;
   socketStatus: string;
+  onMusicState: (state: MusicState) => void;
   audioEnabled: boolean;
   playbackNotice: string;
   expanded: boolean;
 }) {
+  const [notice, setNotice] = useState("");
   const current = musicState.current;
   const queuedTracks = current ? [current, ...musicState.queue] : musicState.queue;
   const canUseMusic = musicState.enabled && socketStatus !== "demo";
+  const isPlaying = musicState.status === "playing";
   const playbackStatus = canUseMusic && current && !audioEnabled ? "Sound is off on this device." : "";
-  const notice = playbackNotice || musicState.last_error || playbackStatus;
+  const panelNotice = notice || playbackNotice || musicState.last_error || playbackStatus;
+
+  async function control(action: "previous" | "pause" | "resume" | "next" | "remove", id?: string) {
+    if (!canUseMusic) return;
+    setNotice("");
+    const payload = await postMusic("control", id ? { action, id } : { action });
+    if (payload?.state) onMusicState(payload.state);
+    if (!payload?.ok) setNotice(friendlyMusicNotice(payload?.error));
+  }
 
   return (
     <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"} ${expanded ? "open" : ""}`} aria-label="Music room player">
@@ -2611,6 +2624,13 @@ function MusicRoomPanel({
           <span>{musicState.enabled ? statusText(musicState.status) : "music off"}</span>
           <strong>{current ? trackLabel(current) : "No song playing"}</strong>
         </div>
+        <div className="music-room-inline-controls" aria-label="Playback controls">
+          <button type="button" onClick={() => void control("previous")} disabled={!canUseMusic || !musicState.can_previous} title="Previous" aria-label="Previous song">‹</button>
+          <button type="button" onClick={() => void control(isPlaying ? "pause" : "resume")} disabled={!canUseMusic || !current} title={isPlaying ? "Pause" : "Play"} aria-label={isPlaying ? "Pause music" : "Resume music"}>
+            {isPlaying ? "❚❚" : "▶"}
+          </button>
+          <button type="button" onClick={() => void control("next")} disabled={!canUseMusic || (!current && !musicState.queue.length)} title="Next" aria-label="Next song">›</button>
+        </div>
       </div>
       <div className="music-room-expanded" aria-hidden={!expanded}>
         <div className="music-queue" aria-label="Song queue">
@@ -2619,13 +2639,18 @@ function MusicRoomPanel({
               <span className="music-queue-index">{String(index + 1).padStart(2, "0")}</span>
               <strong>{track.title}</strong>
               <em>{track.artist || "Unknown"}</em>
+              {index > 0 ? (
+                <button type="button" className="music-queue-remove" onClick={() => void control("remove", track.id)} aria-label={`Remove ${track.title}`} disabled={!canUseMusic}>
+                  ×
+                </button>
+              ) : null}
             </div>
           ))}
           {!queuedTracks.length ? <div className="music-queue-empty">还没有排队歌曲</div> : null}
         </div>
       </div>
-      {notice ? (
-        <p className="music-notice">{notice === musicState.last_error ? friendlyMusicNotice(notice) : notice}</p>
+      {panelNotice ? (
+        <p className="music-notice">{panelNotice === musicState.last_error ? friendlyMusicNotice(panelNotice) : panelNotice}</p>
       ) : null}
     </section>
   );

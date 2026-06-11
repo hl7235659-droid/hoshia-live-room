@@ -2198,6 +2198,48 @@ button:disabled {
   flex: 1 1 auto;
 }
 
+.music-room-inline-controls {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(41, 75, 96, 0.72);
+}
+
+.music-room-inline-controls button,
+.music-queue-remove {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-weight: 950;
+  line-height: 1;
+  transform: none;
+}
+
+.music-room-inline-controls button {
+  min-width: 13px;
+  height: 22px;
+  font-size: 17px;
+  opacity: 0.76;
+}
+
+.music-room-inline-controls button:hover:not(:disabled),
+.music-room-inline-controls button:focus-visible:not(:disabled),
+.music-queue-remove:hover:not(:disabled),
+.music-queue-remove:focus-visible:not(:disabled) {
+  opacity: 1;
+  color: #172033;
+}
+
+.music-room-inline-controls button:disabled,
+.music-queue-remove:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
 .music-room-title span,
 .music-notice,
 .music-queue small {
@@ -2274,7 +2316,7 @@ button:disabled {
 }
 
 .music-queue-row {
-  grid-template-columns: 34px minmax(0, 1fr) minmax(64px, auto);
+  grid-template-columns: 34px minmax(0, 1fr) minmax(64px, auto) 14px;
 }
 
 .music-queue-index {
@@ -2299,6 +2341,15 @@ button:disabled {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.music-queue-remove {
+  width: 14px;
+  height: 22px;
+  justify-self: end;
+  color: rgba(41, 75, 96, 0.54);
+  font-size: 14px;
+  opacity: 0.78;
 }
 
 .music-queue-empty {

@@ -1109,7 +1109,7 @@ function isActionableMusicIntent(intent) {
   if (intent.intent === "request_many") {
     return Boolean(String(intent.query || "").trim() || (Array.isArray(intent.queries) && intent.queries.length));
   }
-  return ["pause", "resume", "next", "remove", "status"].includes(intent.intent);
+  return ["pause", "resume", "next", "previous", "remove", "status"].includes(intent.intent);
 }
 
 async function handleBulkMusicRequestFromDanmaku(session, intent, originalText = "") {
@@ -1147,6 +1147,7 @@ function intentToMusicControl(intent) {
   if (intent === "pause") return "pause";
   if (intent === "resume") return "resume";
   if (intent === "next") return "next";
+  if (intent === "previous") return "previous";
   if (intent === "remove") return "remove";
   return "";
 }
@@ -1162,6 +1163,7 @@ function formatMusicControlSuccess(session, intent) {
   if (intent.intent === "pause") return `♪ Hoshia 已帮 ${session.nickname} 暂停播放。`;
   if (intent.intent === "resume") return `♪ Hoshia 已帮 ${session.nickname} 继续播放。`;
   if (intent.intent === "next") return `♪ Hoshia 已帮 ${session.nickname} 切到下一首。`;
+  if (intent.intent === "previous") return `♪ Hoshia 已帮 ${session.nickname} 切回上一首。`;
   if (intent.intent === "remove") return `♪ Hoshia 已帮 ${session.nickname} 删除待播歌曲。`;
   return `♪ Hoshia 已处理音乐操作。`;
 }

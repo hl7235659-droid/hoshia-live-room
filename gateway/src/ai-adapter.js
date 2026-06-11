@@ -249,7 +249,7 @@ function bridgeEndpoint(baseUrl, pathname) {
   return url.toString();
 }
 
-const musicIntents = new Set(["request", "request_many", "pause", "resume", "next", "remove", "status", "none"]);
+const musicIntents = new Set(["request", "request_many", "pause", "resume", "next", "previous", "remove", "status", "none"]);
 const musicTargetKinds = new Set(["", "queue_index", "requested_by_self"]);
 
 function normalizeMusicIntent(value) {

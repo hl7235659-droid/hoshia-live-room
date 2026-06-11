@@ -35,6 +35,9 @@ export function parseLocalMusicControlText(text) {
   if (/(下一首|下首|切歌|跳过|换歌|换一首|跳下一首)/.test(value)) {
     return localMusicIntent("next", 0.97, "♪ Hoshia 已切到下一首。");
   }
+  if (/(上一首|上首|回上一首|返回上一首|前一首)/.test(value)) {
+    return localMusicIntent("previous", 0.97, "♪ Hoshia 已切回上一首。");
+  }
   if (/(暂停|停一下|先停|停止播放|别放了|关音乐|停音乐|暂停音乐)/.test(value)) {
     return localMusicIntent("pause", 0.97, "♪ Hoshia 已暂停播放。");
   }
@@ -51,6 +54,7 @@ export class MusicService {
     this.status = "idle";
     this.current = null;
     this.queue = [];
+    this.history = [];
     this.lastError = "";
     this.tracks = new Map();
   }
@@ -70,6 +74,7 @@ export class MusicService {
       queue: this.queue.map((track) => this.publicTrack(track)),
       last_error: this.lastError,
       can_control: this.isAdmin(session),
+      can_previous: this.history.length > 0,
       timestamp: new Date().toISOString()
     };
   }
@@ -170,7 +175,7 @@ export class MusicService {
     const value = String(action || "").trim().toLowerCase();
     const isAdmin = this.isAdmin(session);
     const naturalControl = Boolean(options.naturalLanguage === true);
-    if (!isAdmin && !isAllowedNaturalControl(value, payload, naturalControl)) {
+    if (!isAdmin && !isAllowedViewerControl(value, payload, naturalControl)) {
       return this.fail("music_forbidden");
     }
 
@@ -180,10 +185,11 @@ export class MusicService {
     } else if (value === "pause") {
       if (this.current) this.status = "paused";
     } else if (value === "next") {
-      this.current = this.queue.shift() || null;
-      this.status = this.current ? "playing" : "idle";
+      this.advanceToNext();
+    } else if (value === "previous") {
+      if (!this.playPrevious()) return this.fail("music_target_not_found");
     } else if (value === "remove") {
-      const removed = this.removeTracks(session, payload, { allowCurrent: isAdmin });
+      const removed = this.removeTracks(session, payload, { allowCurrent: false });
       if (!removed) return this.fail("music_target_not_found");
     } else if (value === "clear") {
       if (!isAdmin) return this.fail("music_forbidden");
@@ -202,10 +208,31 @@ export class MusicService {
     if (!this.current?.id || !id || this.current.id !== id) {
       return this.fail("music_target_not_found");
     }
-    this.current = this.queue.shift() || null;
-    this.status = this.current ? "playing" : "idle";
+    this.advanceToNext();
     this.lastError = "";
     return { ok: true, state: this.publicState(session) };
+  }
+
+  advanceToNext() {
+    if (this.current) this.pushHistory(this.current);
+    this.current = this.queue.shift() || null;
+    this.status = this.current ? "playing" : "idle";
+  }
+
+  playPrevious() {
+    const previous = this.history.pop() || null;
+    if (!previous) return false;
+    if (this.current) this.queue.unshift(this.current);
+    this.current = previous;
+    this.status = "playing";
+    return true;
+  }
+
+  pushHistory(track) {
+    if (!track?.id) return;
+    this.history = this.history.filter((item) => item.id !== track.id);
+    this.history.push(track);
+    if (this.history.length > 20) this.history = this.history.slice(-20);
   }
 
   removeTracks(session, payload = {}, { allowCurrent = false } = {}) {
@@ -526,10 +553,11 @@ function normalizeSignaturePart(value) {
     .trim();
 }
 
-function isAllowedNaturalControl(action, payload, naturalControl) {
-  if (!naturalControl) return false;
-  if (action === "pause" || action === "resume" || action === "play" || action === "next") return true;
+function isAllowedViewerControl(action, payload, naturalControl) {
+  if (action === "pause" || action === "resume" || action === "play" || action === "next" || action === "previous") return true;
   if (action !== "remove") return false;
+  if (payload?.id) return true;
+  if (!naturalControl) return false;
   return Boolean(
     payload?.requestedBySelf
     || payload?.requested_by_self
