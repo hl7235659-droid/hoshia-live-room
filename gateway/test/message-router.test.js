@@ -5,7 +5,8 @@ import {
   buildContextPolicy,
   classifyMessageRoute,
   formatActiveContextLines,
-  pendingReplyNotice
+  pendingReplyNotice,
+  quickReplyLead
 } from "../src/message-router.js";
 
 const session = {
@@ -99,4 +100,11 @@ test("active context is compact and safe for prompt insertion", () => {
 test("pending reply notices are route-specific text", () => {
   assert.notEqual(pendingReplyNotice("smalltalk"), pendingReplyNotice("emotional"));
   assert.ok(pendingReplyNotice("diary_related").length > 0);
+});
+
+test("quick reply leads provide early spoken text for lightweight routes", () => {
+  assert.match(quickReplyLead("diary_related", "你今天干嘛了"), /今天/);
+  assert.match(quickReplyLead("emotional", "我今天好累"), /听/);
+  assert.match(quickReplyLead("smalltalk", "你好"), /我在/);
+  assert.equal(quickReplyLead("project_discussion", "看看项目架构"), "");
 });

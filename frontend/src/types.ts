@@ -20,6 +20,7 @@ export type LiveMessage = {
   latency_trace_id?: string;
   route?: string;
   pending?: boolean;
+  delta_mode?: "append" | "replace";
 };
 
 export type Session = {

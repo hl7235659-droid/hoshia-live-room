@@ -164,6 +164,17 @@ export function pendingReplyNotice(route) {
   return "她的耳朵动了一下，像是马上要接话。";
 }
 
+export function quickReplyLead(route, text = "") {
+  const value = String(text || "").trim();
+  if (route === "diary_related") return "今天啊……我本来想装作很充实一点的。";
+  if (route === "emotional") return "嗯……我先听着，你慢慢说。";
+  if (route === "smalltalk") {
+    if (/^(hi|hello|hey|yo|你好|在吗|早安|晚安)/i.test(value)) return "我在呢，刚好抬头看到你这句。";
+    return "我听到了，等我把这句话接住。";
+  }
+  return "";
+}
+
 export function formatActiveContextLines(activeContext = {}) {
   const entries = [
     ["Current state", activeContext.current_state],

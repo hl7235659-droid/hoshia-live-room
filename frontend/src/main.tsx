@@ -150,7 +150,7 @@ function appendReplyDelta(current: LiveMessage[], payload: Partial<LiveMessage>)
   const traceId = payload.latency_trace_id;
   if (!traceId) return current;
   return current.map((item) => item.type === "ai_reply_pending" && item.latency_trace_id === traceId
-    ? { ...item, text: `${item.text || ""}${payload.text || ""}` }
+    ? { ...item, text: payload.delta_mode === "replace" ? `${payload.text || ""}` : `${item.text || ""}${payload.text || ""}` }
     : item);
 }
 

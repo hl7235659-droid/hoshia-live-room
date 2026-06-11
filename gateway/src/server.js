@@ -73,7 +73,8 @@ import {
   buildContextPolicy,
   classifyMessageRoute,
   formatActiveContextLines,
-  pendingReplyNotice
+  pendingReplyNotice,
+  quickReplyLead
 } from "./message-router.js";
 
 class MemoryStore {
@@ -196,6 +197,7 @@ let characterState = "IDLE";
 const replyBatchWindowMs = 3200;
 const mentionReplyWindowMs = 1200;
 const fastReplyBatchWindowMs = 700;
+const quickReplyLeadDelayMs = 850;
 const maxReplyBatchSize = 8;
 const maxReplyTargets = 3;
 const singleUserReplyDelayMs = Math.max(0, Math.min(Number(config.singleUserReplyDelayMs || 600), 3000));
@@ -1321,6 +1323,7 @@ function enqueueAiReply(session, text) {
 
   if (wasEmpty) {
     broadcastAiReplyPending({ traceId: item.latencyTraceId, route: item.replyRoute, batch: [item] });
+    scheduleQuickReplyLead(item);
   }
 
   if (forceReply) {
@@ -1422,6 +1425,7 @@ async function handleAiReplyBatch(batch) {
     }))
   });
   if (reply.skipped) {
+    clearQuickReplyLead(batch);
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
     broadcastAiReplyDone({ traceId: latencyTraceId, route: replyRoute, skipped: true });
     await setCharacterState("IDLE");
@@ -1434,6 +1438,14 @@ async function handleAiReplyBatch(batch) {
   hoshiaInterestSystem.recordInteractionSignals({
     batch,
     moduleMemoryEvents: reply.source === "astrbot" ? moduleMemoryEvents : []
+  });
+
+  clearQuickReplyLead(batch);
+  await broadcastProgressiveReplyDeltas({
+    traceId: latencyTraceId,
+    route: reply.route || replyRoute,
+    text: reply.text,
+    hasLead: batch.some((item) => item.quickLeadSent)
   });
 
   const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
@@ -1458,6 +1470,32 @@ async function handleAiReplyBatch(batch) {
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
   scheduleProactiveReplyCheck();
+}
+
+function scheduleQuickReplyLead(item) {
+  const lead = quickReplyLead(item.replyRoute, item.text);
+  if (!lead) return;
+  item.quickLeadText = lead;
+  item.quickLeadTimer = setTimeout(() => {
+    item.quickLeadTimer = null;
+    item.quickLeadSent = true;
+    broadcastAiReplyDelta({
+      traceId: item.latencyTraceId,
+      route: item.replyRoute,
+      text: lead,
+      deltaMode: "replace",
+      stage: "lead"
+    });
+  }, quickReplyLeadDelayMs);
+}
+
+function clearQuickReplyLead(batch = []) {
+  for (const item of Array.isArray(batch) ? batch : []) {
+    if (item?.quickLeadTimer) {
+      clearTimeout(item.quickLeadTimer);
+      item.quickLeadTimer = null;
+    }
+  }
 }
 
 function scheduleProactiveReplyCheck(delayMs = null) {
@@ -2138,6 +2176,71 @@ function broadcastAiReplyPending({ traceId, route, batch = [] } = {}) {
     reply_targets: replyTargets(batch),
     source_message_id: latest?.id || ""
   });
+}
+
+function broadcastAiReplyDelta({ traceId, route, text = "", deltaMode = "append", stage = "" } = {}) {
+  const value = String(text || "");
+  if (!traceId || !value) return;
+  broadcast({
+    type: "ai_reply_delta",
+    room_id: config.roomId,
+    role: "ai",
+    user_id: "ai-host",
+    nickname: "Hoshia",
+    text: value,
+    timestamp: new Date().toISOString(),
+    latency_trace_id: traceId,
+    route: route || "smalltalk",
+    delta_mode: deltaMode,
+    stage
+  });
+}
+
+async function broadcastProgressiveReplyDeltas({ traceId, route, text = "", hasLead = false } = {}) {
+  const chunks = splitReplyForProgressiveDisplay(text);
+  if (!traceId || chunks.length <= 1) return;
+  let displayed = hasLead ? String(chunks[0] || "") : "";
+  for (const [index, chunk] of chunks.entries()) {
+    if (!chunk) continue;
+    if (index === 0) {
+      if (!hasLead) {
+        displayed = chunk;
+        broadcastAiReplyDelta({ traceId, route, text: displayed, deltaMode: "replace", stage: "reply_1" });
+      }
+      continue;
+    }
+    await sleep(progressiveReplyDelayMs(route, index));
+    displayed = displayed ? `${displayed}${chunk}` : chunk;
+    broadcastAiReplyDelta({ traceId, route, text: displayed, deltaMode: "replace", stage: `reply_${index + 1}` });
+  }
+}
+
+function splitReplyForProgressiveDisplay(text = "") {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length < 34) return [clean].filter(Boolean);
+  const parts = clean.match(/[^。！？!?…]+[。！？!?…]+|[^。！？!?…]+$/g)
+    ?.map((item) => item.trim())
+    .filter(Boolean) || [clean];
+  const chunks = [];
+  for (const part of parts) {
+    if (!chunks.length || chunks.length >= 3) {
+      chunks.push(part);
+    } else if (chunks[chunks.length - 1].length < 24) {
+      chunks[chunks.length - 1] += part;
+    } else {
+      chunks.push(part);
+    }
+  }
+  if (chunks.length > 3) {
+    return [chunks[0], chunks[1], chunks.slice(2).join("")];
+  }
+  return chunks;
+}
+
+function progressiveReplyDelayMs(route, index) {
+  if (route === "diary_related") return index === 1 ? 900 : 1700;
+  if (route === "emotional") return index === 1 ? 800 : 1400;
+  return index === 1 ? 550 : 900;
 }
 
 function broadcastAiReplyDone({ traceId, route, skipped = false } = {}) {
