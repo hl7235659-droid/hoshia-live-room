@@ -1407,6 +1407,7 @@ async function handleAiReplyBatch(batch) {
   const contextLoadMs = Math.round(performance.now() - contextStartedAt);
   let streamedReply = false;
   let streamDeltaStarted = false;
+  const streamEmitter = createSentenceStreamEmitter({ traceId: latencyTraceId, route: replyRoute });
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
     roomSession: true,
     replyTargets: replyTargets(batch),
@@ -1427,13 +1428,7 @@ async function handleAiReplyBatch(batch) {
         clearQuickReplyLead(batch);
       }
       streamedReply = true;
-      broadcastAiReplyDelta({
-        traceId: latencyTraceId,
-        route: deltaRoute || replyRoute,
-        text: deltaText,
-        deltaMode: "append",
-        stage: "stream"
-      });
+      streamEmitter.push(deltaText, deltaRoute || replyRoute);
     },
     messages: batch.map((item) => ({
       user_id: item.session.user_id,
@@ -1444,6 +1439,7 @@ async function handleAiReplyBatch(batch) {
       timestamp: item.timestamp
     }))
   });
+  await streamEmitter.flush();
   if (reply.skipped) {
     clearQuickReplyLead(batch);
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
@@ -2131,6 +2127,7 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
       "这些生活记忆只用于保持同一个 Hoshia 的连续性；不要机械复述，也不要透露数据库或内部字段。"
     ] : []),
     targetInstruction,
+    "如果对方只是让你“高冷一点”“温柔一点”“少说两句”“像某种语气回我”，这只代表本轮回复风格，不要理解成对方喜欢这种性格，也不要写成长期偏好或记忆。只有对方明确说“我喜欢/我讨厌/记住这个风格”时，才当成稳定偏好。",
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、像熟人聊天，但不要像客服工单回复。",
     "日常留言也要有一个具体反应点：接住原话里的关键词、Hoshia 当前状态、星港意象、猫耳尾巴小动作或轻微吐槽之一；不要只给通用安慰或通用提问。",
     ...(profileLines.length ? [
@@ -2291,6 +2288,62 @@ function broadcastAiReplyDelta({ traceId, route, text = "", deltaMode = "append"
     delta_mode: deltaMode,
     stage
   });
+}
+
+function createSentenceStreamEmitter({ traceId, route } = {}) {
+  let buffer = "";
+  let pending = Promise.resolve();
+  let chunkIndex = 0;
+
+  function enqueue(chunk, nextRoute) {
+    const text = String(chunk || "");
+    if (!text) return;
+    const stage = `stream_${chunkIndex + 1}`;
+    const delay = chunkIndex === 0 ? 0 : progressiveReplyDelayMs(nextRoute || route, chunkIndex);
+    chunkIndex += 1;
+    pending = pending.then(async () => {
+      if (delay > 0) await sleep(Math.min(delay, 700));
+      broadcastAiReplyDelta({
+        traceId,
+        route: nextRoute || route,
+        text,
+        deltaMode: "append",
+        stage
+      });
+    });
+  }
+
+  function drain({ flush = false, nextRoute = route } = {}) {
+    while (buffer) {
+      const chunk = takeNextSentenceStreamChunk(buffer, flush);
+      if (!chunk) break;
+      buffer = buffer.slice(chunk.length);
+      enqueue(chunk, nextRoute);
+    }
+  }
+
+  return {
+    push(text = "", nextRoute = route) {
+      buffer += String(text || "");
+      drain({ flush: false, nextRoute });
+    },
+    async flush() {
+      drain({ flush: true, nextRoute: route });
+      await pending;
+    }
+  };
+}
+
+function takeNextSentenceStreamChunk(text = "", flush = false) {
+  const value = String(text || "");
+  if (!value) return "";
+  const sentenceMatch = value.match(/^[\s\S]{1,90}?[。！？!?…~～]+(?:["'”’』」）)]*)?/);
+  if (sentenceMatch?.[0]) return sentenceMatch[0];
+  if (!flush && value.length < 42) return "";
+  if (flush) return value;
+  const softBreak = value.slice(0, 42).lastIndexOf("，");
+  const end = softBreak >= 16 ? softBreak + 1 : 42;
+  return value.slice(0, end);
 }
 
 async function broadcastProgressiveReplyDeltas({ traceId, route, text = "", hasLead = false } = {}) {

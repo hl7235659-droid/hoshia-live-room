@@ -2076,6 +2076,11 @@ button:disabled {
   text-underline-offset: 3px;
 }
 
+.mention-spacer {
+  width: 0.65rem;
+  min-width: 0.65rem;
+}
+
 .line span {
   min-width: 0;
 }

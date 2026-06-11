@@ -2419,23 +2419,31 @@ function DanmakuHistory({ messages, onMention }: { messages: LiveMessage[]; onMe
 
   return (
     <div className="danmaku-stream">
-      {messages.map((message, index) => (
-        <p
-          key={`${message.id}-${index}`}
-          className={`line ${message.role}`}
-          style={{ "--message-color": colorForMessage(message) } as CSSProperties}
-        >
-          <button
-            type="button"
-            className="mention-name"
-            onClick={() => onMention(message.nickname || labelForRole(message.role))}
-            title={`提到 ${message.nickname || labelForRole(message.role)}`}
+      {messages.map((message, index) => {
+        const repeatedSender = isSameHistorySender(messages[index - 1], message);
+        const displayName = message.nickname || labelForRole(message.role);
+        return (
+          <p
+            key={`${message.id}-${index}`}
+            className={`line ${message.role} ${repeatedSender ? "continuation" : ""}`}
+            style={{ "--message-color": colorForMessage(message) } as CSSProperties}
           >
-            {message.nickname || labelForRole(message.role)}
-          </button>
-          <span>{message.text}</span>
-        </p>
-      ))}
+            {repeatedSender ? (
+              <span className="mention-spacer" aria-hidden="true" />
+            ) : (
+              <button
+                type="button"
+                className="mention-name"
+                onClick={() => onMention(displayName)}
+                title={`提到 ${displayName}`}
+              >
+                {displayName}
+              </button>
+            )}
+            <span>{message.text}</span>
+          </p>
+        );
+      })}
       <div ref={bottomRef} />
     </div>
   );
@@ -2627,6 +2635,14 @@ function BottomDock({
       </section>
     </section>
   );
+}
+
+function isSameHistorySender(previous?: LiveMessage, current?: LiveMessage) {
+  if (!previous || !current) return false;
+  if (previous.role !== current.role) return false;
+  const previousName = previous.nickname || labelForRole(previous.role);
+  const currentName = current.nickname || labelForRole(current.role);
+  return previous.user_id === current.user_id && previousName === currentName;
 }
 
 function MusicRoomPanel({

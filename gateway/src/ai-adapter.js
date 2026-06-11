@@ -239,7 +239,7 @@ function createSingleTargetPrefixNormalizer(replyTargets = []) {
   const target = targets.length === 1 ? targets[0].slice(0, 32) : "";
   const prefix = target ? `@${target}` : "";
   let emitted = false;
-  const leadingPattern = prefix ? new RegExp(`^\s*@${escapeRegExp(target)}(?:\s+|[\u3001\uff0c,:\uff1a])?`, "i") : null;
+  const leadingPattern = prefix ? new RegExp(`^\\s*@${escapeRegExp(target)}(?:\\s+|[\u3001\uff0c,:\uff1a])?`, "i") : null;
 
   return {
     hasTarget: Boolean(prefix),
@@ -248,21 +248,36 @@ function createSingleTargetPrefixNormalizer(replyTargets = []) {
       if (!prefix || !value) return value;
       if (!emitted) {
         emitted = true;
-        return leadingPattern.test(value) ? value : `${prefix} ${value}`;
+        return normalizeTargetedReplyPrefix(leadingPattern.test(value) ? value : `${prefix} ${value}`, leadingPattern, prefix);
       }
-      return value.replace(leadingPattern, "").replace(/^\s+/, "");
+      return stripLeadingDisplayAliasMentions(value.replace(leadingPattern, "")).replace(/^\s+/, "");
     },
     normalizeFinalText(text = "") {
       const value = String(text || "").trim();
       if (!prefix || !value) return value;
       const withoutTargetRepeats = value
-        .replace(new RegExp(`\s*@${escapeRegExp(target)}(?:\s+|[\u3001\uff0c,:\uff1a])?`, "gi"), " ")
+        .replace(new RegExp(`\\s*@${escapeRegExp(target)}(?:\\s+|[\u3001\uff0c,:\uff1a])?`, "gi"), " ")
         .replace(/\s+/g, " ")
         .replace(/([\u3001\uff0c?.!????:])\s+/g, "$1")
         .trim();
-      return `${prefix} ${withoutTargetRepeats}`.trim();
+      return `${prefix} ${stripLeadingDisplayAliasMentions(withoutTargetRepeats)}`.trim();
     }
   };
+}
+
+function normalizeTargetedReplyPrefix(value, leadingPattern, prefix) {
+  const body = stripLeadingDisplayAliasMentions(String(value || "").replace(leadingPattern, "")).replace(/^\s+/, "");
+  return `${prefix} ${body}`.trim();
+}
+
+function stripLeadingDisplayAliasMentions(text = "") {
+  let value = String(text || "");
+  const aliasPattern = /^\s*@(特别联系人|特殊网友|联系人|Hoshia|hoshia)(?:\s+|[\u3001\uff0c,:\uff1a])?/i;
+  for (let index = 0; index < 4; index += 1) {
+    if (!aliasPattern.test(value)) break;
+    value = value.replace(aliasPattern, "");
+  }
+  return value;
 }
 
 function normalizeSingleTargetReplyText(reply, normalizer) {

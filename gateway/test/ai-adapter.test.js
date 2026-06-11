@@ -157,6 +157,36 @@ test("astrbot room batch can force single-viewer direct replies", async () => {
   assert.equal(reply.source, "astrbot");
 });
 
+test("astrbot single-target replies strip duplicate display alias mentions", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "小房间留言" },
+    "最近留言：\n[1] codex_test_852013 @Hoshia: 高冷一点回我",
+    baseConfig,
+    async () => responseJson(200, {
+      ok: true,
+      text: "@codex_test_852013 @特别联系人 刚才就在。",
+      state: "SPEAKING",
+      source: "astrbot"
+    }),
+    {
+      roomSession: true,
+      replyTargets: ["codex_test_852013"],
+      messages: [
+        {
+          user_id: "user-a",
+          nickname: "codex_test_852013",
+          text: "@Hoshia 高冷一点回我",
+          mentioned: true,
+          timestamp: "2026-06-09T00:00:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.text, "@codex_test_852013 刚才就在。");
+  assert.equal(reply.source, "astrbot");
+});
+
 test("astrbot room batch can include short-term context", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "Live room" },
