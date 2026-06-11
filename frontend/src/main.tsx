@@ -209,6 +209,7 @@ function App() {
   const [hoshiaState, setHoshiaState] = useState<HoshiaVisualState | null>(() => (isStageDemo ? demoHoshiaState : null));
   const [socketStatus, setSocketStatus] = useState(isStageDemo ? "demo" : "locked");
   const [awakeningIntroOpen, setAwakeningIntroOpen] = useState(isAwakeningDemo);
+  const [hoshiaPostsRefreshKey, setHoshiaPostsRefreshKey] = useState(0);
 
   useEffect(() => {
     if (isStageDemo) return;
@@ -369,7 +370,7 @@ function App() {
         setHoshiaState(payload.state);
       }
       if (payload.type === "hoshia_posts_changed") {
-        void refreshHoshiaPosts();
+        setHoshiaPostsRefreshKey((current) => current + 1);
       }
       if (payload.type === "presence") {
         setRoom((current) => (current ? { ...current, online: payload.online ?? current.online } : current));
@@ -461,7 +462,9 @@ function App() {
       musicState={musicState}
       onMusicState={setMusicState}
       socketStatus={socketStatus}
+      audience={audience}
       isDemo={isStageDemo}
+      hoshiaPostsRefreshKey={hoshiaPostsRefreshKey}
       onLocalSendStart={() => {
         setCharacterState("LISTENING");
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
@@ -490,7 +493,6 @@ function App() {
         setHoshiaState(null);
         setAwakeningIntroOpen(false);
       }}
-      audience={audience}
     />
   );
 }
@@ -808,6 +810,7 @@ function LiveMobile({
   socketStatus,
   audience,
   isDemo,
+  hoshiaPostsRefreshKey,
   onLocalSendStart,
   onDemoSend,
   onSessionUpdate,
@@ -825,6 +828,7 @@ function LiveMobile({
   socketStatus: string;
   audience: AudiencePayload | null;
   isDemo: boolean;
+  hoshiaPostsRefreshKey: number;
   onLocalSendStart: () => void;
   onDemoSend?: (text: string) => void;
   onSessionUpdate: (user: Session) => void;
@@ -850,7 +854,7 @@ function LiveMobile({
     return () => {
       disposed = true;
     };
-  }, [timelineOpen, isDemo]);
+  }, [timelineOpen, isDemo, hoshiaPostsRefreshKey]);
 
   async function refreshPosts() {
     if (isDemo) return;

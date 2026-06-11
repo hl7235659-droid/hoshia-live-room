@@ -154,6 +154,7 @@ Frontend:
 
 ```bash
 cd frontend
+npm run typecheck
 npm run build
 ```
 
@@ -169,6 +170,25 @@ AstrBot bridge syntax check:
 ```bash
 python -m compileall astrbot_plugin_live_room_bridge
 ```
+
+## Deployment Traceability
+
+The staging server deployment directory is a synchronized runtime tree, not a Git working tree. During deployment, write the source commit into a plain `REVISION` file before or during sync so the running code can be traced back without storing any server secrets:
+
+```bash
+git rev-parse HEAD > REVISION
+```
+
+Keep the server `.env`, `gateway/data`, and existing `docker-compose.yml` cloudflared tunnel settings when updating `/home/ubuntu/staging/live-room-dev`. After syncing code, rebuild and restart only the live-room services, then verify:
+
+```bash
+sudo docker compose build live-room-gateway live-room-web
+sudo docker compose up -d live-room-redis live-room-gateway live-room-web live-room-tunnel
+sudo docker compose ps
+curl http://127.0.0.1:18888/live/healthz
+```
+
+Do not commit `REVISION`, server host details, SSH key paths, tunnel URLs, credentials, databases, or private runtime logs.
 
 ## AstrBot Bridge
 

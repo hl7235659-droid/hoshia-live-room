@@ -10,6 +10,7 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+REVISION
 .cache/
 .vite/
 .idea/
