@@ -75,9 +75,17 @@ export function createHoshiaInterestSystem({
           userId: signal.user_id,
           now: currentNow
         })) continue;
+        const stablePreference = Boolean(signal.explicit_preference)
+          || previousInterestSignalCount(lifeMemoryService, {
+            interestId: signal.interest_id,
+            userId: signal.user_id,
+            now: currentNow
+          }) >= 2;
+        const memoryType = signal.user_id && stablePreference ? "preference" : "event";
+        const retentionDays = memoryType === "preference" ? 21 : 7;
         const content = cleanText(
           signal.user_id
-            ? `${signal.nickname || "A viewer"} showed recent interest in ${signal.label}; Hoshia may treat it as a shared topic today without quoting the raw message.`
+            ? `${signal.nickname || "A viewer"} showed recent interest in ${signal.label}; Hoshia may treat it as a shared topic without quoting the raw message.`
             : `The room produced a recent ${signal.label} signal; Hoshia may use it as light context without preserving raw event details.`,
           560
         );
@@ -86,15 +94,15 @@ export function createHoshiaInterestSystem({
           id: `interest_${sourceId.replace(/[^a-zA-Z0-9_.:-]/g, "_")}`,
           character_id: characterId,
           user_id: signal.user_id,
-          type: signal.user_id ? "preference" : "event",
+          type: memoryType,
           source: interestSource,
           source_id: sourceId,
           content,
-          importance: signal.user_id ? 0.58 : 0.46,
+          importance: memoryType === "preference" ? 0.58 : 0.42,
           emotion: signal.interest_id === "esports" ? "engaged" : "",
           tags: cleanTags(["interest_signal", signal.interest_id, signal.source]),
           created_at: currentNow.toISOString(),
-          expires_at: daysFrom(currentNow, signal.user_id ? 21 : 7)
+          expires_at: daysFrom(currentNow, retentionDays)
         });
         if (memory) memories.push(memory);
       }
@@ -203,7 +211,8 @@ function collectInteractionSignals({ batch = [], moduleMemoryEvents = [], profil
         label: match.label,
         user_id: cleanText(item?.session?.user_id, 80),
         nickname: cleanText(item?.session?.nickname, 32),
-        source: "chat"
+        source: "chat",
+        explicit_preference: explicitInterestPreference(item?.text)
       });
     }
   }
@@ -224,7 +233,11 @@ function collectInteractionSignals({ batch = [], moduleMemoryEvents = [], profil
         label: match.label,
         user_id: cleanText(event?.user_id, 80),
         nickname: cleanText(event?.nickname, 32),
-        source: cleanIdentifier(event?.module_id, 40) || "module"
+        source: cleanIdentifier(event?.module_id, 40) || "module",
+        explicit_preference: explicitInterestPreference([
+          event?.summary_hint,
+          event?.memory_kind
+        ].filter(Boolean).join(" "))
       });
     }
   }
@@ -235,6 +248,23 @@ function collectInteractionSignals({ batch = [], moduleMemoryEvents = [], profil
     seen.add(key);
     return true;
   });
+}
+
+function previousInterestSignalCount(lifeMemoryService, { interestId = "", userId = "", now = new Date() } = {}) {
+  if (!userId || !interestId) return 0;
+  return searchMemories(lifeMemoryService, {
+    source: interestSource,
+    userId,
+    limit: 50,
+    now
+  }).filter((memory) => {
+    const tags = Array.isArray(memory.tags) ? memory.tags : [];
+    return tags.includes("interest_signal") && tags.includes(interestId);
+  }).length;
+}
+
+function explicitInterestPreference(text = "") {
+  return /(喜欢|愛|爱|记住|記住|偏好|常看|常听|经常|經常|一直|remember|i like|favorite|favourite|prefer)/i.test(String(text || ""));
 }
 
 function findExistingMemory(lifeMemoryService, { source, sourceId, userId = "", now = new Date() } = {}) {

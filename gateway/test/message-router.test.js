@@ -33,6 +33,16 @@ test("message router classifies low-latency and heavy reply routes", () => {
   assert.equal(classifyMessageRoute(batch("/refresh music state")), "command");
 });
 
+test("message router classifies common Chinese live-room messages", () => {
+  assert.equal(classifyMessageRoute(batch("你好")), "smalltalk");
+  assert.equal(classifyMessageRoute(batch("我今天好累，压力有点大")), "emotional");
+  assert.equal(classifyMessageRoute(batch("你今天干嘛了，有没有写日记")), "diary_related");
+  assert.equal(classifyMessageRoute(batch("你还记得我以前喜欢什么吗")), "memory_related");
+  assert.equal(classifyMessageRoute(batch("这个项目的网关延迟需要继续优化")), "project_discussion");
+  assert.equal(classifyMessageRoute(batch("什么是流式输出？")), "factual_question");
+  assert.equal(classifyMessageRoute(batch("/刷新状态")), "command");
+});
+
 test("smalltalk context policy avoids heavy context and memory events", () => {
   const policy = buildContextPolicy("smalltalk", batch("hello"));
   assert.equal(policy.fastLane, true);

@@ -195,6 +195,7 @@ const activeUserConnections = new Map();
 let characterState = "IDLE";
 const replyBatchWindowMs = 3200;
 const mentionReplyWindowMs = 1200;
+const fastReplyBatchWindowMs = 700;
 const maxReplyBatchSize = 8;
 const maxReplyTargets = 3;
 const singleUserReplyDelayMs = Math.max(0, Math.min(Number(config.singleUserReplyDelayMs || 600), 3000));
@@ -1303,13 +1304,24 @@ async function sendMusicAcknowledgementReply(session, tracks, originalText = "")
 
 function enqueueAiReply(session, text) {
   const forceReply = isSingleUserDirectReply(session);
-  pendingReplyBatch.push({
+  const wasEmpty = pendingReplyBatch.length === 0;
+  const enqueuedAtMs = performance.now();
+  const item = {
     session,
     text,
     mentioned: mentionsHoshia(text),
     forceReply,
-    timestamp: new Date().toISOString()
-  });
+    timestamp: new Date().toISOString(),
+    enqueuedAtMs,
+    latencyTraceId: `reply_${nanoid(10)}`
+  };
+  item.replyRoute = classifyMessageRoute([item]);
+  item.contextPolicy = buildContextPolicy(item.replyRoute, [item]);
+  pendingReplyBatch.push(item);
+
+  if (wasEmpty) {
+    broadcastAiReplyPending({ traceId: item.latencyTraceId, route: item.replyRoute, batch: [item] });
+  }
 
   if (forceReply) {
     scheduleAiReplyBatch(singleUserReplyDelayMs);
@@ -1321,8 +1333,7 @@ function enqueueAiReply(session, text) {
     return;
   }
 
-  const delay = pendingReplyBatch.some((item) => item.mentioned) ? mentionReplyWindowMs : replyBatchWindowMs;
-  scheduleAiReplyBatch(delay);
+  scheduleAiReplyBatch(nextReplyDelay());
 }
 
 function scheduleAiReplyBatch(delay) {
@@ -1361,14 +1372,16 @@ async function handleAiReplyBatch(batch) {
   const replyRoute = classifyMessageRoute(batch);
   const contextPolicy = buildContextPolicy(replyRoute, batch);
   const routerMs = Math.round(performance.now() - routeStartedAt);
-  const latencyTraceId = `reply_${nanoid(10)}`;
+  const latencyTraceId = batch[0]?.latencyTraceId || `reply_${nanoid(10)}`;
+  const pendingVisibleMs = Math.max(0, Math.round(gatewayStartedAt - Number(batch[0]?.enqueuedAtMs || gatewayStartedAt)));
   const batchText = batch.map((item) => item.text).join("\n");
-  broadcastAiReplyPending({ traceId: latencyTraceId, route: replyRoute, batch });
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
   if (!contextPolicy.fastLane) await sleep(250);
   const contextStartedAt = performance.now();
-  const moduleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
-  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
+  const fullModuleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
+  const fullModuleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
+  const moduleContext = moduleContextForRoute(fullModuleContext, contextPolicy, batch);
+  const moduleEvents = moduleEventsForRoute(fullModuleEvents, contextPolicy);
   const activeContext = buildActiveContext({
     visualState: hoshiaVisualStateService.publicState(),
     audienceUsers: audiencePayload().users,
@@ -1433,7 +1446,8 @@ async function handleAiReplyBatch(batch) {
       replyBreakdown: reply.latency_breakdown,
       routerMs,
       contextLoadMs,
-      gatewayStartedAt
+      gatewayStartedAt,
+      pendingVisibleMs
     }),
     latency_trace_id: latencyTraceId,
     route: reply.route || replyRoute
@@ -1771,6 +1785,33 @@ async function buildShortTermAiContext(batch, contextPolicy = {}) {
   };
 }
 
+function moduleContextForRoute(moduleContext = [], contextPolicy = {}, batch = []) {
+  if (!contextPolicy.fastLane) return moduleContext;
+  const allowed = new Set(["hoshia_visual_state", "hoshia_visual", "hoshia_interest_system"]);
+  if (batchMentionsMusic(batch)) allowed.add("music");
+  return (Array.isArray(moduleContext) ? moduleContext : [])
+    .filter((item) => allowed.has(item?.module_id))
+    .map((item) => ({
+      module_id: item.module_id,
+      enabled: Boolean(item.enabled),
+      current_state: (Array.isArray(item.current_state) ? item.current_state : []).slice(0, 2),
+      capabilities: [],
+      limits: []
+    }))
+    .filter((item) => item.enabled && item.current_state.length);
+}
+
+function moduleEventsForRoute(moduleEvents = [], contextPolicy = {}) {
+  if (!contextPolicy.fastLane) return moduleEvents;
+  return (Array.isArray(moduleEvents) ? moduleEvents : [])
+    .filter((item) => item?.summary_hint)
+    .slice(0, 2);
+}
+
+function batchMentionsMusic(batch = []) {
+  return (Array.isArray(batch) ? batch : []).some((item) => /(音乐|歌|歌曲|点歌|播放|暂停|下一首|上一首|队列|music|song|playlist|play|pause|queue)/i.test(String(item?.text || "")));
+}
+
 async function refreshRoomContextSummary(roomId) {
   if (config.aiMode !== "astrbot") return;
   const maxMessages = positiveInt(config.shortTermContextMaxMessages, 100, 20, 500);
@@ -1878,6 +1919,9 @@ function isSingleUserDirectReply(session) {
 
 function nextReplyDelay() {
   if (pendingReplyBatch[0]?.forceReply) return singleUserReplyDelayMs;
+  const route = classifyMessageRoute(pendingReplyBatch);
+  const policy = buildContextPolicy(route, pendingReplyBatch);
+  if (policy.fastLane && !pendingReplyBatch.some((item) => item.mentioned)) return fastReplyBatchWindowMs;
   return pendingReplyBatch.some((item) => item.mentioned) ? mentionReplyWindowMs : replyBatchWindowMs;
 }
 
@@ -2107,13 +2151,16 @@ function broadcastAiReplyDone({ traceId, route, skipped = false } = {}) {
   });
 }
 
-function buildGatewayLatencyBreakdown({ replyBreakdown = {}, routerMs = 0, contextLoadMs = 0, gatewayStartedAt = performance.now() } = {}) {
+function buildGatewayLatencyBreakdown({ replyBreakdown = {}, routerMs = 0, contextLoadMs = 0, gatewayStartedAt = performance.now(), pendingVisibleMs = 0 } = {}) {
   const bridgeContextLoadMs = Number(replyBreakdown?.context_load_ms);
   const gatewayContextLoadMs = Math.max(0, Math.round(Number(contextLoadMs) || 0));
   const gatewayTotalMs = Math.max(0, Math.round(performance.now() - gatewayStartedAt));
+  const batchWaitMs = Math.max(0, Math.round(Number(pendingVisibleMs) || 0));
   return {
     ...(replyBreakdown || {}),
     router_ms: Math.max(0, Math.round(Number(routerMs) || 0)),
+    batch_wait_ms: batchWaitMs,
+    pending_visible_ms: batchWaitMs,
     gateway_context_load_ms: gatewayContextLoadMs,
     ...(Number.isFinite(bridgeContextLoadMs) ? { bridge_context_load_ms: Math.max(0, Math.round(bridgeContextLoadMs)) } : {}),
     context_load_ms: gatewayContextLoadMs + (Number.isFinite(bridgeContextLoadMs) ? Math.max(0, Math.round(bridgeContextLoadMs)) : 0),

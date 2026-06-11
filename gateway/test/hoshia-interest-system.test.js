@@ -85,8 +85,40 @@ test("interest system captures purified interest signals and stays sensitive-saf
 
     assert.equal(memories.length >= 1, true);
     assert.equal(allMemories.length >= 1, true);
+    assert.equal(allMemories.every((memory) => memory.type === "event"), true);
+    assert.equal(allMemories.every((memory) => Date.parse(memory.expires_at) <= Date.parse("2026-06-18T12:00:01.000Z")), true);
     assert.equal(JSON.stringify(allMemories).includes("token=secret"), false);
     assert.equal(JSON.stringify(allMemories).includes(".env"), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("explicit interest preference may become a short preference memory", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const lifeMemoryService = createHoshiaLifeMemoryService({ db });
+    const system = createHoshiaInterestSystem({
+      lifeMemoryService,
+      clock: () => new Date("2026-06-11T12:00:00.000Z")
+    });
+
+    system.recordInteractionSignals({
+      batch: [
+        {
+          session: { user_id: "user-1", nickname: "Alice" },
+          text: "记住，我喜欢新番和二次元话题"
+        }
+      ]
+    });
+
+    const allMemories = db.searchHoshiaLifeMemories({
+      sourceFilter: "interest_system",
+      query: "",
+      limit: 20
+    });
+
+    assert.equal(allMemories.some((memory) => memory.type === "preference"), true);
   } finally {
     cleanup();
   }
