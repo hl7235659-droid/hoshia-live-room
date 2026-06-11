@@ -258,7 +258,7 @@ function createSingleTargetPrefixNormalizer(replyTargets = []) {
       const withoutTargetRepeats = value
         .replace(new RegExp(`\\s*@${escapeRegExp(target)}(?:\\s+|[\u3001\uff0c,:\uff1a])?`, "gi"), " ")
         .replace(/\s+/g, " ")
-        .replace(/([\u3001\uff0c?.!????:])\s+/g, "$1")
+        .replace(/([\u3001\uff0c,.!?。？！:：])\s+/g, "$1")
         .trim();
       return `${prefix} ${stripLeadingDisplayAliasMentions(withoutTargetRepeats)}`.trim();
     }
