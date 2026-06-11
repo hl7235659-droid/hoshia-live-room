@@ -2,10 +2,10 @@ import express from "express";
 import http from "node:http";
 import cookie from "cookie";
 import Redis from "ioredis";
-import { WebSocket, WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
 import { config } from "./config.js";
 import { DatabaseError, openLiveRoomDatabase, normalizeUsername } from "./database.js";
+import { attachLiveRoomWebSocket, WEB_SOCKET_OPEN } from "./live-room-websocket.js";
 import {
   cookieName,
   decodeSessionCookie,
@@ -725,84 +725,31 @@ app.get("/api/music/stream/:trackId", requireSession, async (req, res) => {
   }
 });
 
-const wss = new WebSocketServer({ noServer: true });
-const websocketHeartbeatIntervalMs = 25000;
-
-server.on("upgrade", async (req, socket, head) => {
-  if (new URL(req.url, "http://localhost").pathname !== "/ws/live") {
-    socket.destroy();
-    return;
-  }
-
-  const session = await loadSessionFromReq(req);
-  if (!session) {
-    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit("connection", ws, req, session);
-  });
+attachLiveRoomWebSocket(server, {
+  activeUserConnections,
+  broadcast,
+  broadcastAudienceChanged,
+  characterState: () => characterState,
+  config,
+  db,
+  handleDanmaku,
+  hoshiaVisualStateService,
+  loadSessionFromReq,
+  markUserOffline,
+  markUserOnline,
+  musicService,
+  onClose: () => {
+    if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
+    if (hoshiaCommentReplyTimer) clearTimeout(hoshiaCommentReplyTimer);
+  },
+  roomInfo,
+  scheduleProactiveReplyCheck,
+  scheduleWelcomeGreeting,
+  shouldScheduleWelcomeGreeting,
+  sockets,
+  systemEvent,
+  uniqueOnlineCount
 });
-
-wss.on("connection", (ws, _req, session) => {
-  ws.isAlive = true;
-  sockets.set(ws, session);
-  const alreadyOnline = activeUserConnections.has(session.user_id);
-  markUserOnline(session);
-  broadcast(systemEvent("presence", `${session.nickname} joined`, { online: uniqueOnlineCount() }));
-  broadcastAudienceChanged();
-  ws.send(JSON.stringify({
-    type: "room_state",
-    room: roomInfo(),
-    state: characterState,
-    hoshia_state: hoshiaVisualStateService.publicState(),
-    messages: db.listRecentRoomMessages(config.roomId, 100)
-  }));
-  ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
-  ws.send(JSON.stringify({
-    type: "hoshia_state",
-    room_id: config.roomId,
-    state: hoshiaVisualStateService.publicState(),
-    timestamp: new Date().toISOString()
-  }));
-  if (shouldScheduleWelcomeGreeting(session, alreadyOnline)) scheduleWelcomeGreeting(session);
-  scheduleProactiveReplyCheck();
-
-  ws.on("pong", () => {
-    ws.isAlive = true;
-  });
-
-  ws.on("message", async (raw) => {
-    try {
-      const payload = JSON.parse(raw.toString("utf8"));
-      if (payload.type !== "danmaku") return;
-      await handleDanmaku(session, payload);
-    } catch (error) {
-      ws.send(JSON.stringify({ type: "error", error: "bad_message" }));
-    }
-  });
-
-  ws.on("close", () => {
-    sockets.delete(ws);
-    markUserOffline(session);
-    broadcast(systemEvent("presence", `${session.nickname} left`, { online: uniqueOnlineCount() }));
-    broadcastAudienceChanged();
-    scheduleProactiveReplyCheck();
-  });
-});
-
-const websocketHeartbeat = setInterval(() => {
-  for (const ws of wss.clients) {
-    if (ws.isAlive === false) {
-      ws.terminate();
-      continue;
-    }
-    ws.isAlive = false;
-    ws.ping();
-  }
-}, websocketHeartbeatIntervalMs);
 
 function runScheduledHoshiaVisualTick() {
   hoshiaVisualTickTimer = null;
@@ -1014,12 +961,6 @@ function scheduleNextHoshiaVisualTick() {
 
 scheduleNextHoshiaVisualTick();
 scheduleCommentReplyTick();
-
-wss.on("close", () => {
-  clearInterval(websocketHeartbeat);
-  if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
-  if (hoshiaCommentReplyTimer) clearTimeout(hoshiaCommentReplyTimer);
-});
 
 async function handleDanmaku(session, payload) {
   const text = String(payload.text || "").trim();
@@ -1790,7 +1731,7 @@ function uniqueProactiveHooks(hooks = []) {
 
 function firstActiveSession() {
   for (const [ws, session] of sockets.entries()) {
-    if (ws.readyState === WebSocket.OPEN && activeUserConnections.has(session.user_id)) return session;
+    if (ws.readyState === WEB_SOCKET_OPEN && activeUserConnections.has(session.user_id)) return session;
   }
   return null;
 }
@@ -2260,7 +2201,7 @@ function scheduleCharacterIdleFromListening() {
 function broadcast(payload) {
   const data = JSON.stringify(payload);
   for (const ws of sockets.keys()) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    if (ws.readyState === WEB_SOCKET_OPEN) ws.send(data);
   }
 }
 
@@ -2434,7 +2375,7 @@ function buildGatewayLatencyBreakdown({ replyBreakdown = {}, routerMs = 0, conte
 
 function broadcastMusicState() {
   for (const [ws, session] of sockets.entries()) {
-    if (ws.readyState === WebSocket.OPEN) {
+    if (ws.readyState === WEB_SOCKET_OPEN) {
       ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));
     }
   }
@@ -2646,7 +2587,7 @@ function publicPostForViewer(postId, viewerUserId) {
 
 function sendToSession(userId, payload) {
   for (const [ws, session] of sockets.entries()) {
-    if (session.user_id === userId && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+    if (session.user_id === userId && ws.readyState === WEB_SOCKET_OPEN) ws.send(JSON.stringify(payload));
   }
 }
 
