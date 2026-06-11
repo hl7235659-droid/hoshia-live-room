@@ -39,6 +39,13 @@ const baseConfig = {
   musicProviderTimeoutMs: 500
 };
 
+const MOJIBAKE_MARKERS = /[闊褰鐐銆锛浠杩涓�\uFFFD]/;
+
+function assertNoMojibake(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  assert.doesNotMatch(text, MOJIBAKE_MARKERS);
+}
+
 test("music song requested module event keeps requester attribution and memory candidate metadata", () => {
   const event = createMusicSongRequestedEvent(
     {
@@ -62,6 +69,7 @@ test("music song requested module event keeps requester attribution and memory c
   assert.equal(event.memory_kind, "music_preference_candidate");
   assert.equal(event.retention_days, 30);
   assert.deepEqual(event.data, { title: "Purple Rain", artist: "Prince", source: "musicfree" });
+  assertNoMojibake(event);
 });
 
 test("music module context describes current playback queue requester and limits", () => {
@@ -96,6 +104,7 @@ test("music module context describes current playback queue requester and limits
   assert.equal(context.current_state.some((line) => line.includes("Baba O'Riley - The Who") && line.includes("Alice")), true);
   assert.equal(context.capabilities.some((line) => line.includes("评价歌单风格")), true);
   assert.equal(context.limits.some((line) => line.includes("完整曲库")), true);
+  assertNoMojibake(context);
 });
 
 test("disabled music module returns safe disabled context", () => {
@@ -106,6 +115,7 @@ test("disabled music module returns safe disabled context", () => {
   assert.equal(context.enabled, false);
   assert.equal(context.current_state.includes("音乐模块未启用。"), true);
   assert.deepEqual(context.capabilities, []);
+  assertNoMojibake(context);
 });
 
 test("generic module providers can contribute future capability contexts", () => {
@@ -156,6 +166,7 @@ test("music module can be registered through provider registry", () => {
   assert.equal(contexts.length, 1);
   assert.equal(contexts[0].module_id, "music");
   assert.equal(contexts[0].current_state.some((line) => line.includes("Billie Jean - Michael Jackson")), true);
+  assertNoMojibake(contexts[0]);
 });
 
 test("hoshia visual module context exposes public state without raw paths", () => {
@@ -351,12 +362,14 @@ test("hoshia life module context exposes only safe daily canon summaries", () =>
   assert.equal(context.capabilities.some((line) => line.includes("校园日常细节")), true);
   assert.equal(context.limits.some((line) => line.includes("原始记忆 JSON")), true);
   assert.equal(context.limits.some((line) => line.includes("真实世界已验证事实")), true);
+  assertNoMojibake(context);
   assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
 
   const contexts = buildModuleContext({
     providers: [createHoshiaLifeModuleProvider(lifeSystem)]
   });
   assert.equal(contexts[0].module_id, "hoshia_life_system");
+  assertNoMojibake(contexts[0]);
 });
 
 test("disabled hoshia news module context keeps capability surface closed", () => {
@@ -443,6 +456,8 @@ test("module memory events are consumed once while recent events remain availabl
   assert.deepEqual(first[0].data, { title: "Purple Rain", artist: "Prince", source: "musicfree" });
   assert.deepEqual(second, []);
   assert.equal(recent.length, 2);
+  assertNoMojibake(first);
+  assertNoMojibake(recent);
 });
 
 test("consumed module memory events can be restored after skipped AI replies", () => {

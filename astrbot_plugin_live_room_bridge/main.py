@@ -1151,12 +1151,12 @@ Recent music events:
 {chr(10).join(event_lines) if event_lines else "(none)"}
 
 Supported intents:
-- request: viewer asks to play/request/add a song. Extract the best search query, including artist when present. Examples: "??????" => query "??? ??"; "?????????" => query "???????".
+- request: viewer asks to play/request/add a song. Extract the best search query, including artist when present. Examples: "play Purple Rain by Prince" => query "Purple Rain Prince"; "request Jay Chou Nocturne" => query "Jay Chou Nocturne".
 - request_many: viewer asks for multiple songs, a singer's popular songs, a style playlist, or a mood playlist. Clamp count to 1..5. For singer hot songs, use query like "周杰伦 热门". For style/mood playlists, generate 3-5 concise search queries such as ["深夜 R&B", "华语 R&B", "治愈 R&B", "慢节奏 R&B", "夜晚 情歌"] or ["city pop", "日系 city pop", "竹内玛莉亚", "山下达郎", "复古都市流行"].
 - pause: asks to pause/stop temporarily.
 - resume: asks to continue/resume/play current music.
 - next: asks to skip/switch/cut to next song.
-- remove: asks to delete queued songs. For "???/?3?/?????", target={{"kind":"queue_index","index":3}}. For "??????/?????", target={{"kind":"requested_by_self"}}.
+- remove: asks to delete queued songs. For "remove the 3rd queued song", target={{"kind":"queue_index","index":3}}. For "remove my song", target={{"kind":"requested_by_self"}}.
 - status: asks what is playing or what is in the queue.
 - none: not a music operation.
 
