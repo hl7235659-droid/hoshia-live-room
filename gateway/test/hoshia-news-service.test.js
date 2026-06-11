@@ -166,3 +166,46 @@ test("news safety cleaning strips urls tokens paths internal addresses and stale
   assert.equal(status.last_error, undefined);
   assert.deepEqual(status.recent_titles, ["Safe title"]);
 });
+
+test("news topics preserve interest frontier categories", () => {
+  const now = new Date().toISOString();
+  const topics = sanitizeNewsTopics([
+    { title: "New anime game discussion", category: "anime_game", post_seed: "聊聊这个角色热度", created_at: now },
+    { title: "Classic rock clip returns", category: "music_movie", post_seed: "老摇滚又被翻出来", created_at: now },
+    { title: "Campus running trend", category: "sports_campus", post_seed: "操场跑步话题", created_at: now },
+    { title: "AI tool workflow", category: "tech_tools", post_seed: "小工具更新", created_at: now },
+    { title: "B站热梗", category: "light_trends", post_seed: "这个梗怎么接", created_at: now },
+    { title: "Unknown category", category: "finance", post_seed: "泛话题", created_at: now }
+  ]);
+
+  assert.deepEqual(topics.map((topic) => topic.category), [
+    "anime_game",
+    "music_movie",
+    "sports_campus",
+    "tech_tools",
+    "light_trends",
+    "general"
+  ]);
+});
+
+test("news service featured topic prefers Hoshia interest categories", () => {
+  const service = new HoshiaNewsService(baseConfig);
+  service.setCachedTopics(sanitizeNewsTopics([
+    {
+      title: "General topic",
+      category: "general",
+      post_seed: "泛热点",
+      reaction_style: "轻轻接",
+      created_at: new Date().toISOString()
+    },
+    {
+      title: "Anime game topic",
+      category: "anime_game",
+      post_seed: "角色讨论",
+      reaction_style: "二次元雷达动了一下",
+      created_at: new Date().toISOString()
+    }
+  ]));
+
+  assert.equal(service.featuredTopic().category, "anime_game");
+});

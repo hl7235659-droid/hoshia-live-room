@@ -224,7 +224,9 @@ function collectInteractionSignals({ batch = [], moduleMemoryEvents = [], profil
       event?.data?.title,
       event?.data?.artist,
       event?.data?.activity,
-      event?.data?.mood
+      event?.data?.mood,
+      event?.data?.category,
+      event?.data?.topic
     ].filter(Boolean).join(" ");
     const matches = classifyInterestText(text, profile);
     for (const match of matches.slice(0, 1)) {

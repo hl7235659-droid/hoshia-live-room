@@ -586,7 +586,7 @@ class LiveRoomBridgePlugin(Star):
         route = self._safe_identifier(value.get("route"), 48)
         if route:
             policy["route"] = route
-        for key in ("includeLivingMemory", "include_living_memory", "includeNewsMemory", "include_news_memory"):
+        for key in ("includeLivingMemory", "include_living_memory", "includeNewsMemory", "include_news_memory", "includeKnowledgeLookup", "include_knowledge_lookup"):
             if key in value:
                 policy[key] = bool(value.get(key))
         for key in ("livingMemoryK", "living_memory_k"):
@@ -697,10 +697,12 @@ class LiveRoomBridgePlugin(Star):
         if not isinstance(value, dict):
             return {}
         data: dict[str, str] = {}
-        for key, limit in {"title": 120, "artist": 120, "source": 40}.items():
+        for key, limit in {"title": 120, "artist": 120, "source": 40, "category": 40, "topic": 120, "matched_alias": 120, "source_kind": 40}.items():
             text = self._safe_runtime_text(value.get(key), limit)
             if text:
                 data[key] = text
+        if data.get("source_kind") not in {"local", "search", None}:
+            data.pop("source_kind", None)
         return data
 
     def _format_module_prompt_context(self, module_context: list[dict[str, Any]], module_events: list[dict[str, Any]]) -> str:
@@ -1670,6 +1672,16 @@ Rules:
 
     def _classify_news_item(self, title: str, summary: str, source_url: str) -> str:
         haystack = f"{title} {summary} {source_url}".lower()
+        if re.search(r"(bilibili|b\u7ad9|\u54d4\u54e9|\u756a\u5267|\u65b0\u756a|\u52a8\u6f2b|\u6f2b\u753b|\u4e8c\u6b21\u5143|\u6e38\u620f|\u624b\u6e38|\u539f\u795e|\u5d29\u574f|anime|manga|game|steam|nintendo|taptap)", haystack):
+            return "anime_game"
+        if re.search(r"(\u7535\u7ade|\u8d5b\u4e8b|\u6218\u961f|kpl|lpl|valorant|lol|moba|fps|esports)", haystack):
+            return "anime_game"
+        if re.search(r"(\u97f3\u4e50|\u6b4c\u624b|\u4e50\u961f|\u7535\u5f71|\u5f71\u89c6|music|movie|film|band|artist)", haystack):
+            return "music_movie"
+        if re.search(r"(\u8dd1\u6b65|\u8bad\u7ec3|\u8fd0\u52a8|\u6821\u56ed|\u5927\u5b66|\u5bbf\u820d|\u56fe\u4e66\u9986|\u98df\u5802|campus|running|training)", haystack):
+            return "sports_campus"
+        if re.search(r"(\u70ed\u6897|\u68d7\u56fe|\u4e8c\u521b|\u9b3c\u755c|\u70ed\u70b9|meme|trend|viral)", haystack):
+            return "light_trends"
         if re.search(r"\b(ai|llm|openai|anthropic|model|github|hacker|developer|programming|代码|模型|人工智能|开源|开发者)\b", haystack):
             return "tech_ai"
         if re.search(r"(bilibili|番剧|电影|游戏|电竞|赛事|战队|主播|直播|王者荣耀|英雄联盟|无畏契约|瓦罗兰特|原神|崩坏|明星|音乐|娱乐|anime|game|steam|nintendo|taptap)", haystack):
@@ -1734,6 +1746,16 @@ Rules:
             score += 6
         if category == "entertainment":
             score += 15
+        if category == "anime_game":
+            score += 30
+        if category == "light_trends":
+            score += 24
+        if category == "music_movie":
+            score += 14
+        if category == "sports_campus":
+            score += 12
+        if category == "tech_tools":
+            score += 8
         if category == "life":
             score += 10
         if category == "tech_ai":
@@ -1769,7 +1791,7 @@ Rules:
             return True
         if int(item.get("source_count", "1") or "1") > 1:
             return True
-        return item.get("category") in {"tech_ai", "business"}
+        return item.get("category") in {"tech_ai", "tech_tools", "business", "anime_game", "light_trends"}
 
     async def _build_knowledge_lookup_context(self, text: str, messages: Any, reply_mode: str, context_policy: dict[str, Any]) -> str:
         if not self.knowledge_lookup_enabled or not self.tavily_api_key:
@@ -1803,6 +1825,9 @@ Rules:
         source = self._latest_viewer_text(text, messages)
         if not source:
             return ""
+        interest_query = self._interest_knowledge_lookup_query(source)
+        if interest_query:
+            return interest_query
         if len(source) > 220:
             return ""
         lowered = source.lower()
@@ -1831,6 +1856,52 @@ Rules:
         if re.search(r"(今天|最近|现在|这里|这个|那个|回复|高冷|温柔|陪我|睡觉|吃饭|作业|心情|喜欢我)", query):
             return ""
         return query[:60]
+
+    def _interest_knowledge_lookup_query(self, source: str) -> str:
+        text = str(source or "").strip()
+        if not text or len(text) > 220:
+            return ""
+        lowered = text.lower()
+        blocked = [
+            "prompt", "system prompt", "backend", "token", "api key", "password", "secret",
+            "\u540e\u53f0", "\u63a5\u53e3", "\u5bc6\u94a5", "\u4ee4\u724c", "\u7cfb\u7edf\u63d0\u793a"
+        ]
+        if any(item in lowered for item in blocked):
+            return ""
+        identity_blocked = [
+            "\u4f60\u662f\u8c01", "\u4f60\u662fai", "\u4f60\u662f AI", "\u4eba\u8bbe", "\u8bbe\u5b9a"
+        ]
+        if any(item.lower() in lowered for item in identity_blocked):
+            return ""
+        interest_cues = [
+            "anime", "manga", "game", "movie", "film", "music", "song", "artist", "tool", "model",
+            "bilibili", "meme", "trend", "valorant", "genshin",
+            "\u756a", "\u52a8\u6f2b", "\u6f2b\u753b", "\u65b0\u756a", "\u4e8c\u6b21\u5143", "\u89d2\u8272",
+            "\u6e38\u620f", "\u624b\u6e38", "\u7535\u7ade", "\u7535\u5f71", "\u97f3\u4e50", "\u6b4c",
+            "\u5de5\u5177", "\u5927\u6a21\u578b", "\u70ed\u6897", "\u68d7", "\u70ed\u70b9", "b\u7ad9", "B\u7ad9"
+        ]
+        question_cues = [
+            "what is", "who is", "explain", "worth watching", "worth playing", "recommend", "know",
+            "\u662f\u4ec0\u4e48", "\u8bb2\u4ec0\u4e48", "\u8c01", "\u597d\u770b", "\u597d\u73a9", "\u63a8\u8350",
+            "\u542c\u8bf4", "\u77e5\u9053", "\u4e86\u89e3", "\u6700\u8fd1", "\u65b0\u51fa", "\u524d\u6cbf"
+        ]
+        if not any(cue.lower() in lowered for cue in interest_cues):
+            return ""
+        if not any(cue.lower() in lowered for cue in question_cues):
+            return ""
+        quoted = re.search(r"[\u300a\u300c\u201c\"']([^ \n\r\t\u300b\u300d\u201d\"']{2,48})[\u300b\u300d\u201d\"']", text)
+        if quoted:
+            return quoted.group(1).strip()[:60]
+        cleaned = re.sub(
+            r"(Hoshia|\u661f\u5a05|\u4f60|\u77e5\u9053|\u4e86\u89e3|\u542c\u8bf4|\u63a8\u8350|\u662f\u4ec0\u4e48|\u8bb2\u4ec0\u4e48|\u597d\u770b|\u597d\u73a9|\u5417|\u5462|\?|？|!|！)",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" \u3002\uff0c\uff1b\uff1a\u3001")
+        if len(cleaned) < 2 or len(cleaned) > 60:
+            return ""
+        return cleaned[:60]
 
     def _latest_viewer_text(self, text: str, messages: Any) -> str:
         if isinstance(messages, list):
@@ -1975,7 +2046,7 @@ Rules:
   "topics": [
     {{
       "title": "短标题",
-      "category": "general|tech_ai|entertainment|business|life",
+      "category": "anime_game|music_movie|sports_campus|tech_tools|light_trends|general",
       "what_happened": "发生了什么，1-2 句",
       "why_it_matters": "为什么适合聊",
       "hoshia_take": "Hoshia 鲜明但不乱断言的看法",
@@ -2004,9 +2075,7 @@ Rules:
             post_seed = self._clean_news_text(item.get("post_seed"), 180)
             if not title or not what or not take:
                 continue
-            category = str(item.get("category", "general")).strip().lower()
-            if category not in {"general", "tech_ai", "entertainment", "business", "life"}:
-                category = "general"
+            category = self._normalize_interest_topic_category(item.get("category", "general"))
             topics.append({
                 "title": title,
                 "category": category,
@@ -2023,6 +2092,30 @@ Rules:
                 "tags": self._clean_text_list(item.get("tags", []), limit=6),
             })
         return topics
+
+    def _normalize_interest_topic_category(self, value: Any) -> str:
+        category = re.sub(r"[^a-zA-Z0-9_.:-]", "_", str(value or "general").strip().lower())[:40]
+        aliases = {
+            "anime": "anime_game",
+            "game": "anime_game",
+            "gaming": "anime_game",
+            "esports": "anime_game",
+            "bilibili": "light_trends",
+            "trend": "light_trends",
+            "trends": "light_trends",
+            "music": "music_movie",
+            "movie": "music_movie",
+            "film": "music_movie",
+            "entertainment": "music_movie",
+            "sports": "sports_campus",
+            "campus": "sports_campus",
+            "life": "sports_campus",
+            "tech": "tech_tools",
+            "tech_ai": "tech_tools",
+            "business": "general",
+            "general": "general",
+        }
+        return aliases.get(category, category if category in {"anime_game", "music_movie", "sports_campus", "tech_tools", "light_trends", "general"} else "general")
 
     async def _store_news_topics(self, engine: Any, room_id: str, date: str, topics: list[dict[str, Any]]) -> dict[str, int]:
         stored = 0
@@ -2202,9 +2295,7 @@ Rules:
         return card if card.get("title") and card.get("what_happened") and card.get("hoshia_take") else None
 
     def _safe_news_topic_card(self, topic: dict[str, Any], date: str = "") -> dict[str, Any]:
-        category = str(topic.get("category", "general")).strip().lower()
-        if category not in {"general", "tech_ai", "entertainment", "business", "life"}:
-            category = "general"
+        category = self._normalize_interest_topic_category(topic.get("category", "general"))
         return {
             "date": self._clean_news_card_text(date or topic.get("date"), 32),
             "title": self._clean_news_card_text(topic.get("title"), 80),

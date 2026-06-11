@@ -66,10 +66,13 @@ test("AstrBot bridge can add quiet Tavily knowledge lookup for unfamiliar topics
 
   assert.match(bridge, /knowledge_lookup_enabled/);
   assert.match(bridge, /_build_knowledge_lookup_context/);
+  assert.match(bridge, /_interest_knowledge_lookup_query/);
   assert.match(bridge, /_tavily_knowledge_lookup/);
   assert.match(bridge, /当前可聊背景/);
   assert.match(bridge, /不要说“我查了下\/搜了下\/资料显示”/);
   assert.match(bridge, /不要写成百科、影评或鉴赏报告/);
+  assert.match(bridge, /anime_game\|music_movie\|sports_campus\|tech_tools\|light_trends\|general/);
+  assert.match(bridge, /includeKnowledgeLookup/);
   assert.match(schema, /knowledge_lookup_enabled/);
   assert.match(schema, /knowledge_lookup_timeout_seconds/);
 });

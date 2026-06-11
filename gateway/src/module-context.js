@@ -114,6 +114,18 @@ export function createHoshiaInterestModuleProvider(interestSystem) {
   };
 }
 
+export function createHoshiaInterestKnowledgeModuleProvider(interestKnowledgeService) {
+  return {
+    moduleId: "hoshia_interest_knowledge",
+    getCapabilityContext(session) {
+      if (typeof interestKnowledgeService?.getCapabilityContext === "function") {
+        return interestKnowledgeService.getCapabilityContext(session);
+      }
+      return buildInterestKnowledgeUnavailableContext();
+    }
+  };
+}
+
 export function createHoshiaLifeModuleProvider(lifeSystem) {
   return {
     moduleId: "hoshia_life_system",
@@ -121,6 +133,16 @@ export function createHoshiaLifeModuleProvider(lifeSystem) {
       return buildHoshiaLifeModuleContext(lifeSystem, session);
     }
   };
+}
+
+function buildInterestKnowledgeUnavailableContext() {
+  return sanitizeModuleContext({
+    module_id: "hoshia_interest_knowledge",
+    enabled: false,
+    current_state: ["Interest knowledge is unavailable."],
+    capabilities: [],
+    limits: ["Do not pretend to know unfamiliar interest topics without provided context."]
+  });
 }
 
 export function buildMusicModuleContext(musicService, session) {
@@ -505,10 +527,11 @@ function formatTrackLine(track) {
 
 function sanitizeEventData(data) {
   const allowed = {};
-  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status"]) {
-    const value = cleanText(data[key], key === "source" ? 40 : 120);
+  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status", "category", "topic", "matched_alias", "source_kind"]) {
+    const value = cleanText(data[key], key === "source" || key === "category" || key === "source_kind" ? 40 : 120);
     if (value) allowed[key] = value;
   }
+  if (allowed.source_kind && !["local", "search"].includes(allowed.source_kind)) delete allowed.source_kind;
   return allowed;
 }
 

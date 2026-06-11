@@ -25,6 +25,7 @@ import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import {
   buildModuleContext,
   createHoshiaCommentReplyEvent,
+  createHoshiaInterestKnowledgeModuleProvider,
   createHoshiaInterestModuleProvider,
   createHoshiaLifeModuleProvider,
   createHoshiaPostCreatedEvent,
@@ -51,6 +52,7 @@ import { createHoshiaNewsService } from "./hoshia-news-service.js";
 import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
+import { createHoshiaInterestKnowledgeService } from "./interest-knowledge.js";
 import { createHoshiaDailyCanonService } from "./hoshia-daily-canon.js";
 import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
 import {
@@ -151,6 +153,7 @@ const hoshiaInterestSystem = createHoshiaInterestSystem({
   lifeMemoryService: hoshiaLifeMemoryService,
   timeZone: config.realityContextTimezone || "Asia/Shanghai"
 });
+const hoshiaInterestKnowledgeService = createHoshiaInterestKnowledgeService();
 const hoshiaDailyCanonService = createHoshiaDailyCanonService({
   db,
   timeZone: config.realityContextTimezone || "Asia/Shanghai"
@@ -189,6 +192,7 @@ const moduleProviders = [
   createHoshiaVisualModuleProvider(hoshiaVisualStateService),
   createHoshiaLifeModuleProvider(hoshiaDailyCanonService),
   createHoshiaInterestModuleProvider(hoshiaInterestSystem),
+  createHoshiaInterestKnowledgeModuleProvider(hoshiaInterestKnowledgeService),
   createHoshiaNewsModuleProvider(hoshiaNewsService)
 ];
 const sockets = new Map();
@@ -1383,6 +1387,9 @@ async function handleAiReplyBatch(batch) {
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
   if (!contextPolicy.fastLane) await sleep(250);
   const contextStartedAt = performance.now();
+  for (const event of hoshiaInterestKnowledgeService.observeBatch(batch, { roomId: config.roomId })) {
+    moduleEventStore.append(event);
+  }
   const fullModuleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
   const fullModuleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
   const moduleContext = moduleContextForRoute(fullModuleContext, contextPolicy, batch);
@@ -1914,7 +1921,7 @@ async function buildShortTermAiContext(batch, contextPolicy = {}) {
 
 function moduleContextForRoute(moduleContext = [], contextPolicy = {}, batch = []) {
   if (!contextPolicy.fastLane) return moduleContext;
-  const allowed = new Set(["hoshia_visual_state", "hoshia_visual", "hoshia_interest_system"]);
+  const allowed = new Set(["hoshia_visual_state", "hoshia_visual", "hoshia_interest_system", "hoshia_interest_knowledge"]);
   if (batchMentionsMusic(batch)) allowed.add("music");
   return (Array.isArray(moduleContext) ? moduleContext : [])
     .filter((item) => allowed.has(item?.module_id))
@@ -2535,6 +2542,10 @@ function deriveNewsSignalFromTopic(topic, reason = "news_topic") {
 }
 
 function inferNewsActivity(seed, category) {
+  const safeCategory = String(category || "").toLowerCase();
+  if (safeCategory === "anime_game" || safeCategory === "light_trends") return "otaku";
+  if (safeCategory === "music_movie" || safeCategory === "tech_tools") return "thinking";
+  if (safeCategory === "sports_campus") return "sports";
   if (/(游戏|电竞|排位|rank|开黑|队友|fps|moba|手游)/i.test(seed) || /game|esport/i.test(category || "")) return "gaming";
   if (/(二次元|番剧|动漫|漫画|meme|梗图|接梗|玩梗|联动)/i.test(seed)) return "otaku";
   if (/(运动|健身|跑步|训练|锻炼|体测)/i.test(seed)) return "sports";

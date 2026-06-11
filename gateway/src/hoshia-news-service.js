@@ -132,7 +132,8 @@ export class HoshiaNewsService {
   }
 
   featuredTopic() {
-    return this.cachedTopics.find((topic) => topic?.post_seed && hasReactionPoint(topic) && !isHighRiskTopic(topic)) || null;
+    const usable = this.cachedTopics.filter((topic) => topic?.post_seed && hasReactionPoint(topic) && !isHighRiskTopic(topic));
+    return usable.find((topic) => ["anime_game", "music_movie", "sports_campus", "tech_tools", "light_trends"].includes(topic.category)) || usable[0] || null;
   }
 
   getCapabilityContext() {
@@ -321,7 +322,7 @@ export function sanitizeNewsTopic(value, { maxAgeMs = DEFAULT_MAX_AGE_MINUTES * 
     hoshia_take: cleanText(value.hoshia_take || value.take, 220),
     conversation_starter: conversationStarter,
     why_it_matters: cleanText(value.why_it_matters, 180),
-    category: cleanIdentifier(value.category || value.source, 32),
+    category: normalizeTopicCategory(value.category || value.source),
     meme_hooks: cleanList(value.meme_hooks || value.memeHooks, 4, 90),
     reaction_style: cleanText(value.reaction_style || value.reactionStyle, 100),
     state_signal: cleanText(value.state_signal || value.stateSignal, 140),
@@ -373,6 +374,32 @@ function isHighRiskTopic(topic) {
   return topic.high_risk === true
     || topic.highRisk === true
     || ["high", "critical", "unsafe", "blocked", "danger"].includes(riskLevel);
+}
+
+function normalizeTopicCategory(value) {
+  const category = cleanIdentifier(value, 32);
+  const aliases = {
+    anime: "anime_game",
+    game: "anime_game",
+    gaming: "anime_game",
+    esports: "anime_game",
+    bilibili: "light_trends",
+    trend: "light_trends",
+    trends: "light_trends",
+    music: "music_movie",
+    movie: "music_movie",
+    film: "music_movie",
+    entertainment: "music_movie",
+    sport: "sports_campus",
+    sports: "sports_campus",
+    campus: "sports_campus",
+    life: "sports_campus",
+    tech: "tech_tools",
+    tech_ai: "tech_tools",
+    business: "general",
+    general: "general"
+  };
+  return aliases[category] || (["anime_game", "music_movie", "sports_campus", "tech_tools", "light_trends", "general"].includes(category) ? category : "general");
 }
 
 function cleanList(value, maxItems, maxLength) {

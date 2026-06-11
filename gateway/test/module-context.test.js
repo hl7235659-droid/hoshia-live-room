@@ -7,6 +7,7 @@ import {
   buildHoshiaNewsModuleContext,
   buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
+  createHoshiaInterestKnowledgeModuleProvider,
   createHoshiaInterestModuleProvider,
   createHoshiaLifeModuleProvider,
   createHoshiaNewsModuleProvider,
@@ -277,6 +278,32 @@ test("hoshia interest module context exposes daily canon and shared topic hooks 
     providers: [createHoshiaInterestModuleProvider(interestSystem)]
   });
   assert.equal(contexts[0].module_id, "hoshia_interest_system");
+});
+
+test("hoshia interest knowledge module can be registered through provider registry", () => {
+  const service = {
+    getCapabilityContext() {
+      return {
+        module_id: "hoshia_interest_knowledge",
+        enabled: true,
+        current_state: [
+          "Interest field: Anime, games, and fandom.",
+          "Current topic: 葬送的芙莉莲 (local)."
+        ],
+        capabilities: ["Hoshia can use safe interest background."],
+        limits: ["Do not expose source links, credentials, paths, or internal fields."]
+      };
+    }
+  };
+
+  const contexts = buildModuleContext({
+    providers: [createHoshiaInterestKnowledgeModuleProvider(service)]
+  });
+
+  assert.equal(contexts[0].module_id, "hoshia_interest_knowledge");
+  assert.equal(contexts[0].enabled, true);
+  assert.equal(contexts[0].current_state.some((line) => line.includes("芙莉莲")), true);
+  assert.doesNotMatch(JSON.stringify(contexts[0]), /https?:\/\/|token|\.env|E:\\\\|\/home\/ubuntu/i);
 });
 
 test("hoshia life module context exposes only safe daily canon summaries", () => {
