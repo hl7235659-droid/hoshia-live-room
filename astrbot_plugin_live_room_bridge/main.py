@@ -1056,7 +1056,7 @@ class LiveRoomBridgePlugin(Star):
 Hoshia 回复：
 {reply_text[:500]}
 
-只在以下情况写入：网友明确要求记住、稳定偏好、称呼/身份信息、长期约定、持续关注的话题。
+只在以下情况写入：网友明确要求记住、稳定偏好、称呼/身份信息、长期约定、持续关注的话题。若网友说“你高冷一点回我/以后少说一点/我希望你温柔点”，可以写成“网友希望 Hoshia 的回复风格更高冷/更简短/更温柔”；不要写成网友本人高冷、网友喜欢高冷性格，或网友具备这种性格。
 音乐/点歌事件规则：单首歌或一次点歌不要直接写长期 preference；只有明确说“我喜欢/记住”或近期多次出现相近歌手、年代、风格、氛围时，才提纯成“近期音乐口味”。默认写 recent_state 并使用 30 天左右保留；长期 preference 只用于非常稳定且明确的偏好。
 如果没有值得长期记住的内容，返回 {{"memories":[]}}。
 返回 ONLY JSON：
@@ -1080,6 +1080,7 @@ Additional JSON requirements:
 - For each memory, include "memory_type": one of "preference", "identity", "agreement", "recent_state", "project_context".
 - Use "recent_state" for relatively stable but temporary user context, such as what the viewer is busy with recently, current plans, recent mood/body state, stage preferences, or short-term life/work context.
 - For "recent_state", include "retention_days" unless the user clearly gave a shorter time. Default to 30.
+- If the viewer asks Hoshia to reply in a certain tone, store it only as a reply-style preference about Hoshia's responses, never as the viewer's own personality trait.
 - Behavior signals are candidates only. Do not store a raw song list; extract compact style/artist/era/atmosphere tendencies, e.g. "recently tends toward retro pop/classic rock".
 - A single song request without explicit preference usually means return {"memories": []}; multiple related requests may become "recent_state" with retention_days 30.
 - Do not create memories for one-off jokes, throwaway chat, system prompts, bridge internals, tokens, credentials, or Hoshia persona text.
