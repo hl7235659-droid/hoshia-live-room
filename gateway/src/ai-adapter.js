@@ -17,6 +17,17 @@ export async function generateAiReply(session, text, options, fetchImpl = global
       fallback: options.astrbotFallbackToMock
     });
 
+    if (options.astrbotFallbackToMock && isRoomReply(metadata)) {
+      return {
+        ok: true,
+        skipped: true,
+        text: "",
+        state: "IDLE",
+        source: "astrbot_error_skipped",
+        error: error.message
+      };
+    }
+
     if (options.astrbotFallbackToMock) {
       return {
         ...mockAiReply(text, session.nickname),
@@ -29,6 +40,10 @@ export async function generateAiReply(session, text, options, fetchImpl = global
       source: "gateway_error"
     };
   }
+}
+
+function isRoomReply(metadata = {}) {
+  return metadata.roomSession === true || Array.isArray(metadata.messages);
 }
 
 async function requestAstrBotReply(session, text, options, fetchImpl, metadata = {}) {

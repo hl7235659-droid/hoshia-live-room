@@ -18,7 +18,7 @@ export const config = {
   aiMode: enumValue(process.env.AI_MODE || "mock", ["mock", "astrbot"], "mock"),
   astrbotBridgeUrl: process.env.ASTRBOT_BRIDGE_URL || "",
   astrbotBridgeToken: process.env.ASTRBOT_BRIDGE_TOKEN || "",
-  astrbotTimeoutMs: Number(process.env.ASTRBOT_TIMEOUT_MS || 15000),
+  astrbotTimeoutMs: Number(process.env.ASTRBOT_TIMEOUT_MS || 45000),
   astrbotFallbackToMock: parseBool(process.env.ASTRBOT_FALLBACK_TO_MOCK, true),
   astrbotStreamingEnabled: parseBool(process.env.ASTRBOT_STREAMING_ENABLED, true),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),

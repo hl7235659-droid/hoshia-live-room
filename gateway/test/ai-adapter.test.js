@@ -632,6 +632,21 @@ test("astrbot errors fall back to mock when enabled", async () => {
   assert.match(reply.text, /TTS|VoxCPM2/);
 });
 
+test("astrbot room reply errors skip instead of posting mock fallback", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    "Recent danmaku:\n[1] 003: 你今天没事做吗",
+    baseConfig,
+    async () => responseJson(500, { ok: false }),
+    { roomSession: true, messages: [{ user_id: "003", nickname: "003", text: "你今天没事做吗" }] }
+  );
+
+  assert.equal(reply.skipped, true);
+  assert.equal(reply.source, "astrbot_error_skipped");
+  assert.equal(reply.text, "");
+  assert.equal(reply.state, "IDLE");
+});
+
 test("astrbot errors return safe gateway error when fallback is disabled", async () => {
   const reply = await generateAiReply(
     session,
