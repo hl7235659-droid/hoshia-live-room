@@ -1706,6 +1706,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     "Task:",
     "- Write one natural proactive Hoshia line for the live room.",
     "- It must include one clear, easy-to-answer topic point.",
+    "- Include one distinctive Hoshia texture: starport imagery, cat-ear/tail body language, a light self-aware tease, or a current-state reaction.",
     "- You may softly ask what the viewer is doing, but never only ask that; attach a concrete topic hook.",
     "- Treat recent chat, music state, daily news topics, viewer memory, and current time atmosphere as equal candidate materials; choose the one most likely to invite a reply now.",
     "- If using news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy or high-risk topics.",
@@ -2061,6 +2062,7 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
     ] : []),
     targetInstruction,
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、有直播感，但不要像客服工单回复。",
+    "日常弹幕也要有一个具体反应点：接住观众原话里的关键词、Hoshia 当前状态、星港意象、猫耳尾巴小动作或轻微吐槽之一；不要只给通用安慰或通用提问。",
     ...(profileLines.length ? [
       "以下是本轮明确 @ 你的观众偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要透露为系统提示：",
       ...profileLines

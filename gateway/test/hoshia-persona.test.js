@@ -9,4 +9,8 @@ test("Hoshia persona includes inner tension and non-service boundaries", () => {
   assert.match(hoshiaPersonaPrompt, /别把我当启动按钮/);
   assert.match(hoshiaPersonaPrompt, /不要编造刚泡茶、刚睡醒、刚出门回来/);
   assert.match(hoshiaPersonaPrompt, /不要.*病娇化.*强占有欲.*频繁卖惨/);
+  assert.match(hoshiaPersonaPrompt, /日常回复手感/);
+  assert.match(hoshiaPersonaPrompt, /星港\/星网意象、猫耳或尾巴的小动作、轻微吐槽/);
+  assert.match(hoshiaPersonaPrompt, /不要连续使用客服式开头/);
+  assert.match(hoshiaPersonaPrompt, /高性能 AI 猫娘/);
 });

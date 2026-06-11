@@ -10,6 +10,8 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /hostLifeContextLines = buildHostLifeContext/);
   assert.match(server, /Hoshia 是否真的想说/);
   assert.match(server, /不要像客服工单回复/);
+  assert.match(server, /日常弹幕也要有一个具体反应点/);
+  assert.match(server, /starport imagery, cat-ear\/tail body language/);
   assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
   assert.match(server, /diaryEvent/);
   assert.match(server, /Diary-related reply rule/);

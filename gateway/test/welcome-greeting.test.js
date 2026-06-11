@@ -32,6 +32,8 @@ test("welcome greeting prompt includes account personalization", () => {
   });
 
   assert.match(prompt, /主动欢迎刚进入房间的观众/);
+  assert.match(prompt, /日常回复手感/);
+  assert.match(prompt, /欢迎语也要带一点 Hoshia 的辨识度/);
   assert.match(prompt, /Alice/);
   assert.match(prompt, /#7DDCFF/);
   assert.match(prompt, /2026-06-09T12:00:00.000Z/);
