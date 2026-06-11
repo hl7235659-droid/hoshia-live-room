@@ -227,9 +227,9 @@ class LiveRoomBridgePlugin(Star):
             if reply_mode == "proactive_idle":
                 prompt = f"{prompt}\n\n{self._build_proactive_idle_instruction()}"
             elif targets:
-                prompt = f"{prompt}\n\nExplicit reply target(s): {' '.join('@' + name for name in targets)}. If you are answering them, start your reply with the matching @nickname."
+                prompt = f"{prompt}\n\n这次优先回应：{' '.join('@' + name for name in targets)}。如果你是在回答其中某个人，请用对应的 @昵称 开头。"
             elif force_reply:
-                prompt = f"{prompt}\n\nSingle-viewer direct reply mode ({reply_mode or 'single_user_direct'}). The live room currently has one online viewer, so reply naturally to their latest message even without an @ mention. Do not run proactive silence logic; keep the answer warm, concise, and conversational."
+                prompt = f"{prompt}\n\n现在只有一位特殊网友在线，请自然回应对方刚才的话；即使没有直接 @ 你，也不要沉默。回复保持温暖、简短、像正常聊天。"
             else:
                 should_reply, judge_payload = await self._judge_proactive_reply(room_id, prompt, messages)
                 if not should_reply:
@@ -251,7 +251,7 @@ class LiveRoomBridgePlugin(Star):
                     if stream_reply:
                         return self._stream_response(self._single_stream_event("skipped", skipped_payload))
                     return HTTPStatus.OK, skipped_payload
-                prompt = f"{prompt}\n\nThis is a proactive live-room interjection. Nobody explicitly mentioned you. Reply only if the topic, relationship, or room atmosphere genuinely gives Hoshia a reason to speak. Do not fill silence just to prove she is online or available."
+                prompt = f"{prompt}\n\n这是一次主动开口。没有人直接叫你；只有在话题、关系或现场气氛真的适合 Hoshia 接一句时才回复。不要为了证明自己在场而填补安静。"
 
             if stream_reply:
                 return self._stream_response(self._stream_llm_reply(
@@ -530,7 +530,7 @@ class LiveRoomBridgePlugin(Star):
         summary = str(context_summary or "").strip()
         if summary:
             sections.append(
-                "Earlier live-room conversation summary. Use it only as background; newer messages override it:\n"
+                "稍早前的聊天摘要。只当作背景，更新的发言优先：\n"
                 + summary[:4000]
             )
 
@@ -542,14 +542,14 @@ class LiveRoomBridgePlugin(Star):
             lines.append(f"- {timestamp}{role}{user_suffix}: {item['text']}")
         if lines:
             sections.append(
-                "Recent live-room transcript. This is the highest-priority context for questions like what was just said:\n"
+                "最近聊天记录。涉及刚才说了什么时，以这里为准：\n"
                 + "\n".join(lines)
             )
 
         if not sections:
             return ""
         return (
-            "Short-term conversation context for this reply. Priority when facts conflict: recent transcript > earlier summary > LivingMemory.\n"
+            "本次回复可参考的短期聊天背景。若信息冲突，最近聊天记录优先于稍早摘要和过往偏好。\n"
             + "\n\n".join(sections)
         )
 
@@ -616,8 +616,7 @@ class LiveRoomBridgePlugin(Star):
         if not lines:
             return ""
         return (
-            "Fast active_context. This is a short, sanitized current-state view for low-latency replies. "
-            "Use it for tone and continuity, but do not recite field names or expose internal mechanics.\n"
+            "当前状态参考。只用于把握语气和连续性，不要念出标题、字段名或后台机制。\n"
             + "\n".join(lines)
         )
 
@@ -700,36 +699,35 @@ class LiveRoomBridgePlugin(Star):
 
     def _format_module_prompt_context(self, module_context: list[dict[str, Any]], module_events: list[dict[str, Any]]) -> str:
         sections: list[str] = []
-        for module in module_context:
-            title = f"Module: {module['module_id']} ({'enabled' if module['enabled'] else 'disabled'})"
-            lines = [title]
+        for index, module in enumerate(module_context, start=1):
+            lines = [f"可用能力 {index}：" if module["enabled"] else f"暂不可用能力 {index}："]
             if module["current_state"]:
-                lines.append("Current state:")
+                lines.append("当前情况：")
                 lines.extend(f"- {line}" for line in module["current_state"][:12])
             if module["capabilities"]:
-                lines.append("Capabilities:")
+                lines.append("你现在可以自然回应的能力：")
                 lines.extend(f"- {line}" for line in module["capabilities"][:8])
             if module["limits"]:
-                lines.append("Limits:")
+                lines.append("需要避免误说的限制：")
                 lines.extend(f"- {line}" for line in module["limits"][:8])
             sections.append("\n".join(lines))
 
         event_lines = []
         for event in module_events[:24]:
-            actor = event["nickname"] or event["user_id"] or "viewer"
+            actor = event["nickname"] or event["user_id"] or "网友"
             timestamp = f"[{event['occurred_at']}] " if event["occurred_at"] else ""
             data_text = self._module_event_data_text(event)
-            suffix = f" / data: {data_text}" if data_text else ""
-            event_lines.append(f"- {timestamp}{actor}: {event['summary_hint']} ({event['event_type']}){suffix}")
+            suffix = f"；{data_text}" if data_text else ""
+            event_lines.append(f"- {timestamp}{actor}: {event['summary_hint']}{suffix}")
         if event_lines:
-            sections.append("Recent module events:\n" + "\n".join(event_lines))
+            sections.append("最近互动信号：\n" + "\n".join(event_lines))
 
         if not sections:
             return ""
         return (
-            "Safe live-room module context. Use it only as current known module state and behavioral signal. "
-            "Do not expose internal field names, tokens, paths, IPs, provider URLs, or configuration. "
-            "For music, only evaluate the current/queued songs and recent request events; do not claim access to a full library.\n"
+            "当前小房间状态参考。只把它当作你能感知到的状态和网友行为信号。"
+            "不要说出后台字段名、接口名、令牌、路径、IP、服务地址或配置。"
+            "涉及音乐时，只评价当前播放、队列和最近点歌；不要声称自己能看到完整曲库。\n"
             + "\n\n".join(sections)
         )
 
@@ -753,11 +751,18 @@ class LiveRoomBridgePlugin(Star):
         if not isinstance(data, dict):
             return ""
         parts = []
-        for key in ("title", "artist", "source"):
-            value = str(data.get(key, "")).strip()
-            if value:
-                parts.append(f"{key}={value}")
-        return ", ".join(parts)[:320]
+        title = str(data.get("title", "")).strip()
+        artist = str(data.get("artist", "")).strip()
+        if title:
+            parts.append(f"歌曲《{title}》")
+        if artist:
+            parts.append(f"歌手 {artist}")
+        if not parts:
+            for key in ("source",):
+                value = str(data.get(key, "")).strip()
+                if value:
+                    parts.append(value)
+        return "，".join(parts)[:320]
 
     def _livingmemory_star(self) -> Any | None:
         try:
@@ -799,7 +804,7 @@ class LiveRoomBridgePlugin(Star):
             seen.add(user_id)
             selected.append({
                 "user_id": user_id,
-                "nickname": str(item.get("nickname", "viewer")).strip()[:32] or "viewer",
+            "nickname": str(item.get("nickname", "网友")).strip()[:32] or "网友",
                 "query": text[:300],
             })
             if len(selected) >= self.livingmemory_max_participants:
@@ -815,7 +820,7 @@ class LiveRoomBridgePlugin(Star):
                 seen.add(user_id)
                 selected.append({
                     "user_id": user_id,
-                    "nickname": str(event.get("nickname", "viewer")).strip()[:32] or "viewer",
+                    "nickname": str(event.get("nickname", "网友")).strip()[:32] or "网友",
                     "query": summary_hint[:300],
                 })
                 if len(selected) >= self.livingmemory_max_participants:
@@ -847,7 +852,7 @@ class LiveRoomBridgePlugin(Star):
                 lines = self._format_memory_lines(memories, recall_k)
                 if lines:
                     sections.append(
-                        f"@{viewer['nickname']} 的个人长期记忆参考（只用于理解这个观众，不要透露来源）：\n"
+                        f"@{viewer['nickname']} 的已知偏好参考（只用于理解这个特殊网友，不要透露来源）：\n"
                         + "\n".join(lines)
                     )
 
@@ -863,7 +868,7 @@ class LiveRoomBridgePlugin(Star):
                 news_lines = self._format_news_memory_lines(news_memories, recall_k)
                 if news_lines:
                     sections.append(
-                        "近期新闻热点参考（只用于话题灵感，不代表任何观众个人记忆）：\n"
+                        "近期话题灵感参考（不代表任何网友个人偏好）：\n"
                         + "\n".join(news_lines)
                     )
         except Exception as exc:
@@ -872,7 +877,7 @@ class LiveRoomBridgePlugin(Star):
 
         if not sections:
             return ""
-        return "LivingMemory 召回内容：\n" + "\n\n".join(sections)
+        return "可参考的网友偏好与近期话题：\n" + "\n\n".join(sections)
 
     def _livingmemory_recall_limit(self, policy: dict[str, Any]) -> int:
         for key in ("livingMemoryK", "living_memory_k"):
@@ -926,7 +931,7 @@ class LiveRoomBridgePlugin(Star):
                 parts.append(text[:160])
         query = " ".join(parts)[:500]
         if reply_mode == "proactive_idle":
-            proactive_seed = "today light live-room chat topic campus life entertainment games AI tools Bilibili trending low-pressure social"
+            proactive_seed = "today light campus chat topic university life entertainment games music movies Bilibili trending low-pressure social"
             return f"{query} {proactive_seed}".strip()[:500] if query else proactive_seed
         if not query:
             return ""
@@ -936,17 +941,17 @@ class LiveRoomBridgePlugin(Star):
 
     def _build_proactive_idle_instruction(self) -> str:
         return """
-Proactive idle reply mode:
-- Hoshia is speaking first because at least one viewer is online and the room has been quiet.
-- Output only Hoshia's message, in Chinese, 1-2 short sentences, at most 90 Chinese characters.
-- Prefer daily diary context from hoshia_life_system first: current event, recent event, diary summary, or focus hooks. Use news, music, recent chat, viewer memories, or time atmosphere only after diary hooks are unavailable or clearly less fitting.
-- The message must include one concrete, easy-to-answer topic point grounded in a specific event, such as stage notes, replaying a game decision, looping a song, a class/work detail, or an interest thread.
-- Hoshia may lightly expand daily canon events into small in-character diary details, but must not present them as verified real-world travel, external news, private browsing, or real achievements.
-- It may softly ask what the viewer is doing, but it must not only ask that; attach a specific topic hook.
-- If using daily news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy, risky, medical, legal, investment, or highly divisive topics.
-- Do not send a line that only says the room is quiet, asks the viewer to sit in the starport, or says Hoshia is here without a concrete event point.
-- Do not say you detected silence. Do not scold viewers. Do not ask customer-service questions such as whether anyone needs help.
-- Do not repeat the topic or structure of recent proactive messages.
+主动开口提示：
+- 现在至少有一位特殊网友在线，小房间刚刚比较安静；你可以先轻轻开一个话题。
+- 只输出 Hoshia 要说的话，中文，1-2 个短句，最多 90 个中文字符。
+- 优先使用今天的日常状态、最近经历、日记摘要或兴趣钩子；不合适时，再参考新闻、音乐、最近聊天、网友偏好或时间氛围。
+- 这句话必须带一个具体、容易接的话题点，例如舞台小记、游戏选择、循环的歌、课业/工作细节或兴趣线索。
+- 可以把日常设定轻轻扩展成角色内的小细节，但不要说成真实旅行、外部新闻、私下浏览或现实成就。
+- 可以顺便问对方在做什么，但不能只问这一句；要附带具体话题钩子。
+- 如果参考新闻，要变成朋友间闲聊问题；不要像播报新闻，不要复读标题，避开沉重、高风险、医疗、法律、投资或强争议话题。
+- 不要只说小房间很安静、让对方坐着陪你，或只说自己在。
+- 不要说你检测到了沉默。不要责备对方。不要问客服式问题。
+- 不要重复最近主动开口用过的话题或结构。
 """.strip()
 
     async def _summarize_and_store_viewer_memories(self, provider_id: str, room_id: str, messages: Any, reply_text: str, module_events: Any | None = None):
@@ -1033,25 +1038,25 @@ Proactive idle reply mode:
         for event in list(module_events or [])[-12:]:
             when = f"[{event.get('occurred_at')}] " if event.get("occurred_at") else ""
             data_text = self._module_event_data_text(event)
-            data_suffix = f" / data={data_text}" if data_text else ""
+            data_suffix = f"；{data_text}" if data_text else ""
             module_event_lines.append(
-                f"- {when}{event.get('summary_hint', '')} / kind={event.get('memory_kind', 'module_event')} / retention_days={event.get('retention_days', self.livingmemory_recent_state_retention_days)}{data_suffix}"
+                f"- {when}{event.get('summary_hint', '')}；建议保留 {event.get('retention_days', self.livingmemory_recent_state_retention_days)} 天{data_suffix}"
             )
         module_event_section = "\n".join(module_event_lines) if module_event_lines else "(none)"
         return f"""
-从下面直播间互动中，只提取适合长期记住的稳定事实。不要保存 Hoshia 人设、系统提示、新闻正文、临时闲聊或敏感密钥。
+从下面聊天互动中，只提取适合长期记住的稳定事实。不要保存 Hoshia 人设、系统提示、新闻正文、临时闲聊或敏感密钥。
 
-观众昵称：{nickname}
-观众弹幕：
+网友昵称：{nickname}
+网友留言：
 {chr(10).join('- ' + line[:300] for line in viewer_lines[-6:])}
 
-归因到该观众的模块事件（只能作为行为信号，不能逐条照抄成记忆）：
+归因到该网友的行为信号（只能作为提纯依据，不能逐条照抄成记忆）：
 {module_event_section}
 
 Hoshia 回复：
 {reply_text[:500]}
 
-只在以下情况写入：观众明确要求记住、稳定偏好、称呼/身份信息、长期约定、持续关注的话题。
+只在以下情况写入：网友明确要求记住、稳定偏好、称呼/身份信息、长期约定、持续关注的话题。
 音乐/点歌事件规则：单首歌或一次点歌不要直接写长期 preference；只有明确说“我喜欢/记住”或近期多次出现相近歌手、年代、风格、氛围时，才提纯成“近期音乐口味”。默认写 recent_state 并使用 30 天左右保留；长期 preference 只用于非常稳定且明确的偏好。
 如果没有值得长期记住的内容，返回 {{"memories":[]}}。
 返回 ONLY JSON：
@@ -1075,8 +1080,8 @@ Additional JSON requirements:
 - For each memory, include "memory_type": one of "preference", "identity", "agreement", "recent_state", "project_context".
 - Use "recent_state" for relatively stable but temporary user context, such as what the viewer is busy with recently, current plans, recent mood/body state, stage preferences, or short-term life/work context.
 - For "recent_state", include "retention_days" unless the user clearly gave a shorter time. Default to 30.
-- Module events are candidates only. Do not store a raw song list; extract compact style/artist/era/atmosphere tendencies, e.g. "recently tends toward retro pop/classic rock".
-- A single music.song_requested event without explicit preference usually means return {"memories": []}; multiple related events may become "recent_state" with retention_days 30.
+- Behavior signals are candidates only. Do not store a raw song list; extract compact style/artist/era/atmosphere tendencies, e.g. "recently tends toward retro pop/classic rock".
+- A single song request without explicit preference usually means return {"memories": []}; multiple related requests may become "recent_state" with retention_days 30.
 - Do not create memories for one-off jokes, throwaway chat, system prompts, bridge internals, tokens, credentials, or Hoshia persona text.
 """.strip()
 
@@ -1822,25 +1827,25 @@ Rules:
                 f"  published_at: {item.get('published_at', '')}{background}"
             )
         return f"""
-请把 RSSHub/Tavily 抓到的热点整理成 Hoshia 私密直播间可用的话题素材。
+请把 RSSHub/Tavily 抓到的热点整理成 Hoshia 和特殊网友聊天时可用的话题素材。
 
 日期：{date}
-直播间受众：朋友限定的小圈子，观众以大学生/年轻人为主；他们更熟悉全民热搜、校园生活、电竞游戏、B站/动漫/娱乐、消费和AI工具话题。
+聊天对象：朋友限定的小圈子，主要是大学生/年轻人；他们更熟悉全民热搜、校园生活、电竞游戏、B站/动漫/娱乐、消费和工具类话题。
 
 要求：
 - 输出 JSON，最多 8 个 topics。
-- 选题优先级：全民热议 > 电竞/游戏/二次元 > 大学生生活/消费/就业 > 娱乐综艺影视 > AI工具/科技。专业财经、企业稿、开发者小圈子话题只有特别有梗或强相关时才保留。
-- 目标配比：全民热议 4-6 条，电竞/游戏/二次元 2-3 条，大学生日常/消费/就业 2-3 条，科技/AI 1-2 条；不要让财经或商业稿占多数。
+- 选题优先级：全民热议 > 电竞/游戏/二次元 > 大学生生活/消费/就业 > 娱乐综艺影视 > 轻工具/科技。专业财经、企业稿、开发者小圈子话题只有特别有梗或强相关时才保留。
+- 目标配比：全民热议 4-6 条，电竞/游戏/二次元 2-3 条，大学生日常/消费/就业 2-3 条，轻工具/科技 1-2 条；不要让财经或商业稿占多数。
 - 不要复述新闻全文，不要编造事实。
 - Hoshia 可以有鲜明观点，但要区分“大家在聊”和“事实已确认”。
-- 每条都要能自然变成朋友直播间里的开场或接话，不要像新闻播报。
-- Hoshia 的看法要像朋友吐槽/主播锐评，不要像媒体评论员；适合大学生听，不端着。
+- 每条都要能自然变成朋友间的开场或接话，不要像新闻播报。
+- Hoshia 的看法要像朋友吐槽，不要像媒体评论员；适合大学生听，不端着。
 - 识别流行梗、二创点、适用语境和 Hoshia 式接法；如果看不出梗，不要硬装懂，可以写“暂时不适合玩梗”。
 - 不要复读热搜标题。每条要提炼成短话题卡，不保存原始长内容、原文链接、内部地址或抓取日志。
 - 高风险话题可以保留，但 risk_note 要提醒不要给医疗、投资、法律、安全等具体建议。
 - conversation_starter 要是自然口语问题。
-- meme_hooks 是可轻轻带一下的梗点/吐槽角度，最多 4 条；reply_hooks 是观众回复后 Hoshia 可接的短句方向，最多 4 条。
-- reaction_style 是 Hoshia 的反应风格，例如“轻吐槽”“装作冷静但破防”“认真提醒一下”；state_signal 是适合用来判断直播间状态的短信号。
+- meme_hooks 是可轻轻带一下的梗点/吐槽角度，最多 4 条；reply_hooks 是对方回复后 Hoshia 可接的短句方向，最多 4 条。
+- reaction_style 是 Hoshia 的反应风格，例如“轻吐槽”“装作冷静但破防”“认真提醒一下”；state_signal 是适合用来判断聊天气氛/对方状态的短信号。
 - post_seed 是可以改写成动态/短帖的一句话，不要包含链接或原文引用。
 
 输入热点：
@@ -1855,12 +1860,12 @@ Rules:
       "what_happened": "发生了什么，1-2 句",
       "why_it_matters": "为什么适合聊",
       "hoshia_take": "Hoshia 鲜明但不乱断言的看法",
-      "conversation_starter": "可以抛给观众的问题",
+      "conversation_starter": "可以抛给特殊网友的问题",
       "meme_hooks": ["梗点或吐槽角度"],
       "reaction_style": "Hoshia 接这个话题时的反应风格",
-      "state_signal": "适合什么直播间气氛/观众状态时使用",
+      "state_signal": "适合什么聊天气氛/网友状态时使用",
       "post_seed": "可改写成短帖/动态的一句话",
-      "reply_hooks": ["观众回复后可以怎么接"],
+      "reply_hooks": ["对方回复后可以怎么接"],
       "risk_note": "边界提醒",
       "tags": ["标签"]
     }}
@@ -1944,7 +1949,7 @@ Rules:
             lines.append(f"为什么值得聊：{topic.get('why_it_matters')}")
         lines.append(f"Hoshia 的看法：{topic.get('hoshia_take', '')}")
         if topic.get("conversation_starter"):
-            lines.append(f"可以抛给观众：{topic.get('conversation_starter')}")
+            lines.append(f"可以抛给特殊网友：{topic.get('conversation_starter')}")
         meme_hooks = "；".join(topic.get("meme_hooks", []))
         if meme_hooks:
             lines.append(f"梗点/吐槽角度：{meme_hooks}")
@@ -2531,26 +2536,24 @@ New transcript chunk:
                     continue
                 nickname = str(item.get("nickname", "viewer"))[:32]
                 text = str(item.get("text", "")).strip()[:300]
-                mentioned = " yes" if item.get("mentioned") else " no"
                 if text:
-                    lines.append(f"- {nickname} (mentioned={mentioned}): {text}")
+                    lines.append(f"- {nickname}: {text}")
         if not lines:
             lines = [prompt[:1200]]
 
         return f"""
-You are a decision model for Hoshia, a private AI live-room host.
-Nobody explicitly mentioned Hoshia in this batch. Decide whether Hoshia should proactively join the chat.
+You decide whether Hoshia, a friend-room host, should naturally join the current conversation.
+Nobody directly called Hoshia in this batch. Decide whether speaking now would feel welcome and natural.
 
-Room: {room_id}
 Energy: {state['energy']:.2f}/1.0
 Seconds since last proactive reply: {elapsed:.1f}
 Reply threshold: {self.proactive_reply_threshold:.2f}
 
-Recent live-room messages:
+Recent room messages:
 {chr(10).join(lines)}
 
 Score each dimension from 0 to 10:
-- relevance: Are the messages related to Hoshia, the stream, AI-host behavior, an interesting question, or a topic Hoshia can naturally join?
+- relevance: Are the messages related to Hoshia, the stream atmosphere, an interesting question, or a topic Hoshia can naturally join?
 - willingness: Considering Hoshia's current energy, selfhood, preferences, and boundaries, would she genuinely want to speak rather than merely fill silence or act available?
 - social: Would speaking now feel socially appropriate rather than interruptive?
 - timing: Is the timing good, considering recent proactive replies?

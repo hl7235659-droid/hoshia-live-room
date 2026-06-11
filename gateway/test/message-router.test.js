@@ -116,7 +116,7 @@ test("active context exposes current diary event as a concrete reply hook", () =
   const lines = formatActiveContextLines(activeContext).join("\n");
 
   assert.match(activeContext.current_diary_event, /22:40-23:30/);
-  assert.match(activeContext.current_diary_event, /直播间|房间状态|话题/);
+  assert.match(activeContext.current_diary_event, /小房间|房间状态|话题/);
   assert.match(lines, /Current diary event/);
   assert.doesNotMatch(activeContext.current_diary_event, /Stage notes|token=|\/home\/ubuntu|\.env/i);
 });

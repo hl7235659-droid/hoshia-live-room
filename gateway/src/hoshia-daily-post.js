@@ -261,7 +261,9 @@ export function createHoshiaDailyPostCreatedEvent(post, state, {
 
 export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone, context = {}) {
   const currentState = normalizeVisualState(state);
-  const rhythm = newsRhythmFor(asDate(now), timeZone);
+  const rhythm = campusRhythmFor(asDate(now), timeZone);
+  const campusLine = campusTemplateForState(currentState, rhythm, context);
+  if (campusLine) return cleanText(campusLine, 700);
   const repeatCount = repeatedStatePostCount(context.recentPosts, currentState);
   const template = repeatCount > 0
     ? alternateTemplateForState(currentState, rhythm, context)
@@ -275,10 +277,13 @@ export function buildNewsTopicPostContent(topic = {}, state = {}, now = new Date
   const safeTopic = normalizeNewsTopic(topic, now);
   if (!safeTopic) return "";
   const currentState = normalizeVisualState(state);
-  const rhythm = rhythmFor(asDate(now), timeZone);
-  const hook = pickFirst(safeTopic.meme_hooks) || pickFirst(safeTopic.reply_hooks) || safeTopic.reaction_style;
-  const stateTone = newsTopicStateTone(currentState);
-  return cleanText(`${rhythm}${stateTone}看到这个点：${safeTopic.post_seed}。${reactionLineForNewsTopic(safeTopic, hook)} ${replyLineForNewsTopic(safeTopic)}`, 700);
+  const campusRhythm = campusRhythmFor(asDate(now), timeZone);
+  const campusTone = campusStateTone(currentState);
+  const campusHook = pickFirst(safeTopic.meme_hooks) || pickFirst(safeTopic.reply_hooks) || safeTopic.reaction_style;
+  const campusReaction = campusHook
+    ? `第一反应是「${campusHook}」，感觉很适合拿来当今晚宿舍聊天的开场。`
+    : `第一反应有点${safeTopic.reaction_style || "想吐槽"}，先贴在这里等晚点慢慢聊。`;
+  return cleanText(`${campusRhythm}${campusTone}看到一个话题：${safeTopic.post_seed}。${campusReaction} 你们会怎么接这句话？`, 700);
 }
 
 export function dayKeyFor(value = new Date(), timeZone = defaultTimeZone) {
@@ -312,6 +317,108 @@ export function normalizeDailyPostMaximum(value, minimum = defaultDailyMin) {
   const safeMinimum = normalizeDailyPostMinimum(minimum);
   if (!Number.isFinite(number)) return Math.max(safeMinimum, fallback);
   return Math.max(safeMinimum, Math.min(number, defaultDailyMax));
+}
+
+function campusTemplateForState(state, rhythm, context = {}) {
+  const repeatCount = repeatedStatePostCount(context.recentPosts, state);
+  const event = normalizeDiaryEvent(context.diaryEvent);
+  const eventLine = campusEventLine(event, repeatCount);
+  const base = campusBaseLineForState(state, rhythm, repeatCount);
+  const social = campusSocialLineFor(state);
+  return [base, eventLine, social].filter(Boolean).join(" ");
+}
+
+function campusBaseLineForState(state, rhythm, repeatCount = 0) {
+  const again = repeatCount > 0 ? "又想补一条近况：" : "";
+  const exact = {
+    "gaming:competitive": `${rhythm}${again}下午那局游戏还在脑子里回放，越想越觉得当时可以更稳一点。先不嘴硬，等晚点再复盘。`,
+    "gaming:annoyed": `${rhythm}${again}排位留下了一点不服气，键盘都快被我盯出火花了。先去倒杯水，别把宿舍气氛也打急。`,
+    "sports:energetic": `${rhythm}${again}从星见大学操场回来反而精神了一点，水杯、毛巾和耳机都排在桌边，像在提醒我别趴下。`,
+    "sports:tired": `${rhythm}${again}训练后腿有点沉，拉伸完只想靠着椅背慢慢喝水。累归累，身体好像真的被叫醒了。`,
+    "otaku:excited": `${rhythm}${again}社团群里聊到喜欢的片段，差点把抱枕举起来给全宿舍看。先记下来，晚点再慢慢讲。`,
+    "otaku:curious": `${rhythm}${again}翻了一点新番和角色讨论，越看越想整理一个小小推荐清单。`,
+    "sleepy:sleepy": `${rhythm}${again}宿舍灯光刚刚好，键盘灯也像快睡着了。再赖一会儿，我就去休息。`,
+    "sleepy:lonely": `${rhythm}${again}宿舍有点安静，窗外的光落在桌面上，连耳机都像在等人说话。`,
+    "happy:happy": `${rhythm}${again}心情还不错，连桌角贴纸都看起来很顺眼。要是你刚好路过，就当我偷偷挥手了。`,
+    "happy:playful": `${rhythm}${again}状态还不错，想装作很淡定，但尾巴大概已经把我出卖了。`,
+    "thinking:thinking": `${rhythm}${again}在整理今天的小计划，便签贴了半张桌子。不是发呆，是认真加载中。`,
+    "thinking:focused": `${rhythm}${again}注意力终于收回来一点，适合安静处理课业，也适合认真听你说话。`,
+    "emo:emo": `${rhythm}${again}情绪有点低电量，先把灯调暗一点，慢慢把自己从课表和消息里捞回来。`,
+    "emo:lonely": `${rhythm}${again}有一点想有人陪，但又不太想大声说。那就先把这条近况放在这里。`
+  };
+  const key = `${state.activity}:${state.mood}`;
+  if (exact[key]) return exact[key];
+  const fallback = {
+    gaming: `${rhythm}${again}游戏脑还占上风，手柄和耳机都在宿舍桌上待命。`,
+    sports: `${rhythm}${again}身体比脑子诚实，运动后的水杯已经空了半个。`,
+    otaku: `${rhythm}${again}适合补番和整理小小的喜欢，先把灵感放进抽屉。`,
+    sleepy: `${rhythm}${again}进入省电模式，宿舍灯光也跟着变软了。`,
+    happy: `${rhythm}${again}心情明亮一点，连桌面上的小物都看起来很顺眼。`,
+    thinking: `${rhythm}${again}适合慢慢想事情，先把散掉的想法排成队。`,
+    emo: `${rhythm}${again}先低功耗待机一下，等状态自己慢慢回温。`
+  };
+  return fallback[state.activity] || `${rhythm}${again}没有安排很大的事，就在星见大学的日常和宿舍小房间之间慢慢待着。`;
+}
+
+function campusEventLine(event, repeatCount = 0) {
+  if (!event) return "";
+  const label = campusEventLabel(event);
+  const variants = [
+    `这条和今天的小日记有关：${label}还留在脑子里，所以想把现在的心情也记一格。`,
+    `刚才那段${label}让状态偏了一点点，像便签贴在今天的边角。`,
+    `把${label}当成今天的小标签，先轻轻放在动态里。`
+  ];
+  if (event.type === "user_related") {
+    return [
+      "有人出现过以后，宿舍桌前就没有刚才那么空。",
+      "特殊网友留下的一点回应，让今天的记录多了一小格温度。",
+      "刚才的互动还在这里，所以想把这份在线感也记下来。"
+    ][repeatCount % 3];
+  }
+  return variants[repeatCount % variants.length];
+}
+
+function campusEventLabel(event) {
+  const labels = {
+    campus_life: "星见大学的课业和桌面小事",
+    sport: "操场训练后的身体反馈",
+    anime_game: "游戏和新番念头",
+    social: "想和人说话的时刻",
+    private_mood: "安静低电量的小情绪",
+    room_activity: "宿舍小房间整理",
+    random_detail: "路过的校园小细节",
+    interest_intake: "刚看过的兴趣话题",
+    user_related: "特殊网友路过的痕迹"
+  };
+  return labels[event.type] || "今天的小片段";
+}
+
+function campusSocialLineFor(state) {
+  if (state.social_need >= 75) return "如果有人来敲门，我大概会装作只是刚好在线。";
+  if (state.social_need <= 25) return "今天被陪伴感充了一点电，可以安静开心一会儿。";
+  return "";
+}
+
+function campusRhythmFor(now, timeZone) {
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: cleanText(timeZone, 64) || defaultTimeZone,
+    hour: "2-digit",
+    hour12: false
+  }).format(asDate(now)));
+  if (hour >= 5 && hour < 11) return "早上";
+  if (hour >= 11 && hour < 18) return "下午";
+  if (hour >= 18 && hour < 23) return "晚上";
+  return "深夜";
+}
+
+function campusStateTone(state) {
+  if (state.activity === "sleepy" || state.energy <= 30) return "困到反应慢半拍，";
+  if (state.activity === "happy" || state.mood === "playful") return "尾巴已经先笑出来了，";
+  if (state.activity === "thinking" || state.mood === "focused") return "认真想了一下，";
+  if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一会儿，结果还是被抓到了，";
+  if (state.activity === "gaming") return "刚从胜负欲里抬头，";
+  if (state.activity === "otaku") return "二次元雷达动了一下，";
+  return "窝在宿舍小房间里，";
 }
 
 function listDailyPostsForDate({ db, now, limit, timeZone }) {
@@ -433,7 +540,7 @@ function newsTopicStateTone(state) {
   if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一下，结果还是被戳到了，";
   if (state.activity === "gaming") return "刚从胜负欲里抬头，";
   if (state.activity === "otaku") return "二次元雷达动了一下，";
-  return "窝在直播间里，";
+  return "窝在宿舍小房间里，";
 }
 
 function reactionLineForNewsTopic(topic, hook) {
@@ -503,7 +610,7 @@ function templateForState(state, rhythm) {
     "gaming:annoyed": `今天${rhythm}排位有点不服气，键盘都快被我盯出火花了。等我冷静一下再去找回场子。`,
     "sports:energetic": `今天${rhythm}训练完反而更精神了，水杯、毛巾和耳机都排在桌边，像是在催我继续动起来。`,
     "sports:tired": `今天${rhythm}运动后有点累，拉伸完只想靠着椅背慢慢喝水。累归累，身体有在好好醒着。`,
-    "otaku:excited": `今天${rhythm}补到很喜欢的一段，差点把抱枕举起来给全直播间看。先记下来，晚点再慢慢讲。`,
+    "otaku:excited": `今天${rhythm}补到很喜欢的一段，差点把抱枕举起来给整个宿舍看。先记下来，晚点再慢慢讲。`,
     "otaku:curious": `今天${rhythm}翻了点二次元笔记，越看越想整理一个小小的推荐清单。`,
     "sleepy:sleepy": `今天${rhythm}房间安静得刚刚好，键盘灯也像快睡着了。再赖一会儿，我就去休息。`,
     "sleepy:lonely": `今天${rhythm}有点安静，窗外的光落在桌面上，连耳机都像在等人说话。`,
@@ -523,7 +630,7 @@ function templateForState(state, rhythm) {
   if (state.activity === "happy") return `今天${rhythm}心情明亮一点，连桌面上的小物都看起来很顺眼。`;
   if (state.activity === "thinking") return `今天${rhythm}适合慢慢想事情，先把散掉的想法排成队。`;
   if (state.activity === "emo") return `今天${rhythm}先低功耗待机一下，等状态自己慢慢回温。`;
-  return `今天${rhythm}没有安排很大的事，就在直播间和自己的小桌面之间慢慢待着。`;
+  return `今天${rhythm}没有安排很大的事，就在宿舍小房间和自己的小桌面之间慢慢待着。`;
 }
 
 function repeatedStatePostCount(posts = [], state = {}) {
@@ -584,10 +691,10 @@ function diaryEventLabel(event, state = {}) {
     anime_game: "游戏和二次元念头",
     social: "想和人说话的时刻",
     private_mood: "安静低电量的小情绪",
-    room_activity: "直播间整理",
+    room_activity: "小房间整理",
     random_detail: "路过的小细节",
     interest_intake: "刚刚看过的兴趣话题",
-    user_related: "观众来过的痕迹"
+    user_related: "特殊网友来过的痕迹"
   };
   return labels[event.type] || `${activityLabel(state.activity)}状态`;
 }
@@ -602,7 +709,7 @@ function diaryEventChineseLines(event, state = {}) {
   if (event.type === "user_related") {
     return [
       "有人出现过以后，房间就没有刚才那么空。",
-      "观众留下的一点回应，让今天的记录多了一小格温度。",
+      "特殊网友留下的一点回应，让今天的记录多了一小格温度。",
       "刚刚的互动还在这里，所以想把这份在线感也记下来。"
     ];
   }

@@ -574,5 +574,5 @@ export function mockAiReply(text, nickname) {
   if (/(?:\u8bed\u97f3|tts)/i.test(clean)) {
     return { text: "\u5f53\u524d\u5148\u4e0d\u64ad\u653e\u771f\u5b9e TTS\uff0c\u540e\u7eed\u53ef\u4ee5\u628a\u8fd9\u6761\u56de\u590d\u8f6c\u8fdb VoxCPM2 \u961f\u5217\u3002", state: "SPEAKING", source: "mock" };
   }
-  return { text: `\u6536\u5230\uff1a${clean.slice(0, 80)}\u3002\u6211\u5148\u7528 mock AI \u966a\u4f60\u6d4b\u8bd5\u76f4\u64ad\u95f4\u3002`, state: "SPEAKING", source: "mock" };
+  return { text: `\u6536\u5230\uff1a${clean.slice(0, 80)}\u3002\u6211\u5148\u5728\u8fd9\u4e2a\u6d4b\u8bd5\u5c0f\u623f\u95f4\u966a\u4f60\u804a\u4e00\u4f1a\u513f\u3002`, state: "SPEAKING", source: "mock" };
 }

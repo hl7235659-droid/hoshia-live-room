@@ -17,7 +17,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
         type: "event",
         source: "post",
         source_id: post.id,
-        content: `Hoshia posted a ${post.activity || "daily"} update: ${post.content}`,
+        content: `Hoshia 在校园动态里记了一条${lifeActivityLabel(post.activity)}近况：${post.content}`,
         importance: 0.62,
         emotion: post.mood || "",
         tags: [post.activity, post.mood, post.source_type].filter(Boolean)
@@ -32,7 +32,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           type: "event",
           source: "post_like",
           source_id: interaction.id,
-          content: `${interaction.nickname || "A viewer"} liked Hoshia's ${post.activity || "daily"} update.`,
+          content: `${interaction.nickname || "一位网友"}给 Hoshia 的${lifeActivityLabel(post.activity)}校园动态点了赞。`,
           importance: 0.28,
           emotion: "positive",
           tags: ["like", post.activity, post.mood].filter(Boolean),
@@ -46,7 +46,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           type: "event",
           source: "post_comment",
           source_id: post.id,
-          content: `${interaction.nickname || "A viewer"} commented on Hoshia's ${post.activity || "daily"} update: ${interaction.content}`,
+          content: `${interaction.nickname || "一位网友"}在 Hoshia 的${lifeActivityLabel(post.activity)}校园动态下留言：${interaction.content}`,
           importance: importanceForText(interaction.content, questionLike(interaction.content) ? 0.72 : 0.58),
           emotion: emotionForText(interaction.content),
           tags: ["comment", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean),
@@ -60,7 +60,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
           type: commitmentLike(interaction.content) ? "commitment" : "event",
           source: "post_reply",
           source_id: post.id,
-          content: `Hoshia replied in a post thread: ${interaction.content}`,
+          content: `Hoshia 在校园动态评论串里回复了一句：${interaction.content}`,
           importance: importanceForText(interaction.content, 0.66),
           emotion: emotionForText(interaction.content),
           tags: ["reply", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean)
@@ -77,7 +77,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
         type: commitmentLike(text) ? "commitment" : "event",
         source: "chat",
         source_id: messageId || "",
-        content: `${session?.nickname || "A viewer"} said in the live room: ${text}`,
+        content: `${session?.nickname || "一位网友"}在宿舍小房间聊到：${text}`,
         importance,
         emotion: emotionForText(text),
         tags: ["chat", ...topicTags(text)],
@@ -119,7 +119,7 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
       });
       if (!memories.length) return [];
       return [
-        "【Hoshia life memory】",
+        "【Hoshia 生活记忆】",
         ...memories.map((memory) => `- ${memoryLine(memory)}`)
       ];
     }
@@ -230,8 +230,33 @@ function normalizeMemoryType(value) {
 
 function memoryLine(memory) {
   const when = shortDate(memory.created_at);
-  const user = memory.user_id ? "viewer-related" : "Hoshia";
-  return `${when} ${user} ${memory.type}: ${cleanText(memory.content, 220)}`;
+  const owner = memory.user_id ? "和网友有关" : "Hoshia 自己";
+  return `${when} ${owner} ${memoryTypeLabel(memory.type)}：${cleanText(memory.content, 220)}`;
+}
+
+function memoryTypeLabel(type) {
+  const labels = {
+    event: "生活片段",
+    preference: "偏好",
+    relationship: "关系线索",
+    commitment: "约定",
+    summary: "摘要"
+  };
+  return labels[type] || "记录";
+}
+
+function lifeActivityLabel(activity) {
+  const labels = {
+    idle: "日常",
+    gaming: "游戏",
+    sports: "运动",
+    otaku: "兴趣",
+    sleepy: "困困",
+    happy: "开心",
+    thinking: "思考",
+    emo: "低电量"
+  };
+  return labels[activity] || "日常";
 }
 
 function memoryPacketQuery({ query = "", scene = "", postId = "", batch = [] } = {}) {
@@ -285,7 +310,7 @@ function importanceForText(text, fallback) {
   const value = String(text || "");
   let score = fallback;
   if (/(记住|remember|答应|promise|承诺|说过|截图|下次|喜欢|讨厌)/i.test(value)) score += 0.22;
-  if (/(动态|评论|主页|练|排位|游戏|电竞|项目|直播间|Hoshia)/i.test(value)) score += 0.12;
+  if (/(动态|评论|主页|练|排位|游戏|电竞|项目|小房间|Hoshia)/i.test(value)) score += 0.12;
   if (questionLike(value)) score += 0.12;
   if (value.length >= 80) score += 0.08;
   return clampNumber(score, 0, 1, fallback);

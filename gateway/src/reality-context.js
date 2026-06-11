@@ -95,23 +95,22 @@ export function buildRealityContext({
   const timezone = config.realityContextTimezone || "Asia/Shanghai";
   const audienceById = new Map(audienceUsers.map((user) => [user.user_id || user.id, user]));
   const lines = [
-    "【现实与运行上下文】",
+    "【现实与聊天上下文】",
     formatTimeLine(now, timezone),
     ...calendarLines(now, timezone),
-    `房间状态：room_id=${safeText(room?.room_id || config.roomId)}；当前在线 ${Number(room?.online || 0)} 人；已注册 ${Number(room?.registered || 0)} 人；房间为朋友限定。`,
-    `AI链路：当前 AI_MODE=${safeText(config.aiMode)}；AstrBot bridge ${config.aiMode === "astrbot" ? "已作为回复后端启用" : "未启用，使用本地 mock 回复"}；单人直回模式 ${config.singleUserDirectReplyEnabled ? "开启" : "关闭"}。`,
+    `小房间状态：当前在线 ${Number(room?.online || 0)} 人；已注册 ${Number(room?.registered || 0)} 人；这里是朋友限定的小房间。`,
     ...viewerContextLines(batch, audienceById, activeConnections)
   ];
 
   if (config.realityContextIncludeOps) {
     lines.push(
-      "运行自知：Hoshia 前端是 React/Vite 直播间界面，后端是 Node.js gateway，消息历史在 SQLite 中保存，会话/限流优先使用 Redis，AstrBot bridge 可作为可选 AI 大脑。",
-      "安全边界：可以概括自己运行在直播间系统中，但不要透露环境文件、访问凭据、远程登录信息、服务器地址、本地或服务器路径、数据库路径或隧道配置。"
+      "安全边界：这些内部状态只供生成回复时避险，不要在 Hoshia 的话里提到技术链路、环境文件、访问凭据、远程登录信息、服务器地址、本地或服务器路径、数据库路径或隧道配置。",
+      "身份边界：不要让 Hoshia 自称或承认自己是技术产物、荧幕角色、表演者或被研究对象。"
     );
   }
 
   lines.push(
-    "表达要求：时间、节日和运行状态只在用户询问或自然相关时使用；在线时长、弹幕颜色、偏好记忆只用于更贴心的互动，不要机械复述字段名或内部结构。"
+    "表达要求：时间、节日和当前状态只在用户询问或自然相关时使用；在线时长、留言颜色、偏好记忆只用于更贴心的互动，不要机械复述字段名或内部结构。"
   );
 
   return sanitizeContextLines(lines);
@@ -172,10 +171,10 @@ function viewerContextLines(batch, audienceById, activeConnections) {
       : "；偏好记忆未启用或未提供";
 
     lines.push(
-      `本轮观众 @${safeText(session.nickname || audience.nickname || "观众")}：弹幕颜色 ${color}；当前在线 ${formatDuration(currentOnlineSeconds)}；累计在线约 ${formatDuration(totalOnlineSeconds)}；现在${online ? "在线" : "离线"}${profileText}。`
+      `本轮网友 @${safeText(session.nickname || audience.nickname || "网友")}：留言颜色 ${color}；当前在线 ${formatDuration(currentOnlineSeconds)}；累计在线约 ${formatDuration(totalOnlineSeconds)}；现在${online ? "在线" : "离线"}${profileText}。`
     );
   }
-  return lines.length ? lines : ["本轮没有可用的观众上下文。"];
+  return lines.length ? lines : ["本轮没有可用的网友上下文。"];
 }
 
 function dateParts(date, timezone) {

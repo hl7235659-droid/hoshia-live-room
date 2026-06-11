@@ -969,16 +969,16 @@ function formatPostCommentReplyPrompt({ post, comment, memoryPacket = [], visual
   const state = visualState || {};
   return [
     hoshiaPersonaPrompt,
-    "You are Hoshia replying asynchronously under one of your own timeline posts.",
-    "Write only one short natural reply from Hoshia. Do not include labels, JSON, system notes, file paths, tokens, internal URLs, or logs.",
-    "Do not sound like customer support. Keep continuity with the post, the comment, and Hoshia's current mood.",
+    "你是 Hoshia，正在给自己的小记下面回一句话。",
+    "只写一条短而自然的回复，不要包含标签、JSON、内部备注、文件路径、token、内部网址或日志。",
+    "不要像客服。要和小记内容、对方留言、以及 Hoshia 当前心情保持连贯。",
     `Post: ${String(post?.content || "").slice(0, 700)}`,
     `Post state: activity=${String(post?.activity || "")}; mood=${String(post?.mood || "")}`,
-    `Viewer ${String(comment?.nickname || "viewer").slice(0, 32)} commented: ${String(comment?.content || "").slice(0, 500)}`,
+    `留言者 ${String(comment?.nickname || "网友").slice(0, 32)} 写道：${String(comment?.content || "").slice(0, 500)}`,
     `Current Hoshia state: activity=${String(state.activity || "")}; mood=${String(state.mood || "")}; energy=${Number(state.energy || 0)}; social_need=${Number(state.social_need || 0)}; visual=${String(state.visual_description || "").slice(0, 220)}`,
     ...(Array.isArray(memoryPacket) && memoryPacket.length ? [
       ...memoryPacket,
-      "Use these memories only for continuity. Do not reveal internal field names."
+      "这些记忆只用于保持连续性，不要透露内部字段名。"
     ] : [])
   ].filter(Boolean).join("\n");
 }
@@ -1257,20 +1257,20 @@ async function sendMusicAcknowledgementReply(session, tracks, originalText = "")
   });
   const prompt = [
     hoshiaPersonaPrompt,
-    "A viewer has just successfully requested music. The gateway has already sent a system confirmation; now add one natural host reply.",
+    "刚才有人成功点了一首歌。前面的确认已经发出，现在只补一句自然的回应。",
     ...(hostLifeContextLines.length ? [
-      "Current Hoshia state context:",
+      "当前状态参考：",
       ...hostLifeContextLines
     ] : []),
-    `Viewer nickname: ${session.nickname}`,
-    `Viewer original message: ${String(originalText || "").slice(0, 120)}`,
-    `Queued track(s):\n${trackLines}`,
-    "Requirements:",
-    `- Clearly convey that ${countText}, but do not mechanically repeat the system confirmation.`,
-    "- Gently guess why they may want to hear it now, using uncertain wording such as maybe, feels like, or is it because; never claim certainty.",
-    "- Keep Hoshia's slight selfhood: warm host reply, not a customer-service ticket response.",
-    "- Do not mention internal APIs, URLs, queue IDs, cookies, QQ credentials, or provider details.",
-    "- Reply in Chinese, exactly one sentence, at most 80 Chinese characters, warm and natural."
+    `留言昵称：${session.nickname}`,
+    `原始留言：${String(originalText || "").slice(0, 120)}`,
+    `队列中的歌：\n${trackLines}`,
+    "要求：",
+    `- 清楚带出“${countText}”，但不要机械重复前面的确认语。`,
+    "- 可以轻轻猜一下对方为什么现在想听这首歌，但要用也许、像是、可能是之类的不确定说法，不要装成很确定。",
+    "- 保持 Hoshia 的一点自我感：像熟人回话，不要像工单。",
+    "- 不要提内部接口、网址、队列编号、cookie、QQ 凭据或提供方细节。",
+    "- 用中文回复，恰好一句，最多 80 个汉字，温暖自然。"
   ].join("\n");
 
   const reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
@@ -1682,7 +1682,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     moduleEvents
   });
   const recentLines = recentMessages.slice(-config.proactiveReply.contextMessages).map((item, index) => {
-    const speaker = item.role === "ai" ? "Hoshia" : (item.nickname || "viewer");
+    const speaker = item.role === "ai" ? "Hoshia" : (item.nickname || "网友");
     return `[${index + 1}] ${speaker}: ${item.text}`;
   });
   const previousLines = proactiveReplyState.recentTexts.map((text, index) => `${index + 1}. ${text}`);
@@ -1690,37 +1690,37 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
 
   return [
     hoshiaPersonaPrompt,
-    "You are about to speak proactively in Hoshia Live Room because at least one viewer is online and the room has been quiet.",
-    `The room has been quiet for about ${idleMinutes} minute(s).`,
-    `Online viewers: ${room.online}.`,
-    `Consecutive proactive messages without viewer response: ${proactiveReplyState.unansweredCount}.`,
+    "Hoshia 正准备主动说一句，因为小房间里有人在线，而且已经安静了一会儿。",
+    `安静时长大约 ${idleMinutes} 分钟。`,
+    `在线人数：${room.online}。`,
+    `连续没有得到回应的主动发言次数：${proactiveReplyState.unansweredCount}。`,
     ...(realityContextLines.length ? realityContextLines : []),
     ...(hostLifeContextLines.length ? hostLifeContextLines : []),
     ...(previousLines.length ? [
-      "Recent proactive messages from Hoshia; do not repeat their topic or structure:",
+      "Hoshia 之前的主动发言：不要重复它们的话题或结构：",
       ...previousLines
     ] : []),
     ...(recentLines.length ? [
-      "Recent real room messages:",
+      "最近的小房间消息：",
       ...recentLines
-    ] : ["Recent real room messages: none"]),
+    ] : ["最近的小房间消息：无"]),
     ...(topicHooks.length ? [
-      "Available proactive topic hooks, in priority order:",
+      "可用的主动话题钩子，按优先级排序：",
       ...topicHooks.map((hook, index) => `${index + 1}. ${hook}`)
     ] : [
-      "Available proactive topic hooks: none. If there is no concrete diary, news, music, or recent-chat hook, do not fill the room with a generic silence line."
+      "可用的主动话题钩子：无。如果没有具体的日记、消息、音乐或近期聊天钩子，就不要用空泛的安静感句子填满小房间。"
     ]),
-    "Task:",
-    "- Write one natural proactive Hoshia line for the live room.",
-    "- Prefer the first available daily diary hook from hoshia_life_system. Use news, music, recent chat, or time atmosphere only after diary hooks are unavailable or clearly less fitting.",
-    "- It must include one clear, easy-to-answer topic point grounded in a concrete event, such as stage notes, replaying a game decision, looping a song, a class/work detail, or an interest thread.",
-    "- Hoshia may lightly expand a daily canon event into a small in-character diary detail, but must not present it as verified real-world travel, external news, private browsing, or a real achievement.",
-    "- Include one distinctive Hoshia texture: starport imagery, cat-ear/tail body language, a light self-aware tease, or a current-state reaction.",
-    "- You may softly ask what the viewer is doing, but never only ask that; attach a concrete topic hook.",
-    "- Do not send a line that only says the room is quiet, asks the viewer to sit in the starport, or says Hoshia is here without a concrete event point.",
-    "- If using news, turn it into a casual friend-room question. Do not sound like a news broadcast, do not repeat headlines, and avoid heavy or high-risk topics.",
-    "- Do not say you detected silence, do not scold viewers, do not ask customer-service style questions.",
-    "- Reply in Chinese, 1-2 short sentences, at most 90 Chinese characters. Output only Hoshia's line."
+    "任务：",
+    "- 写一句自然的主动开口。",
+    "- 优先用日记钩子；如果没有合适日记，再看消息、音乐或当前时段。",
+    "- 一定要带一个清楚、容易接话的具体点，比如训练后的小感受、复盘一个决定、循环的一首歌、学习里的一个细节，或者某个兴趣话题。",
+    "- Hoshia 可以把日常事件轻轻扩成自己的小记，但不要说成外出旅行、外部新闻、私人浏览或真实成就。",
+    "- 带一点 Hoshia 的味道：星港画面、猫耳尾巴动作、轻微吐槽，或者对当前状态的反应。",
+    "- 可以轻轻问对方在做什么，但不能只问这个；一定要挂一个具体话题钩子。",
+    "- 不要只说小房间很安静，不要只说自己在这里，不要没有具体事件点就开口。",
+    "- 如果用到消息，就把它说成熟人之间的自然问句。不要像播报，也不要碰重话题。",
+    "- 不要说自己检测到了安静，不要训人，不要用客服口吻提问。",
+    "- 用中文回复，1 到 2 句，最多 90 个汉字。只输出 Hoshia 的话。"
   ].join("\n");
 }
 
@@ -2037,7 +2037,7 @@ function getSessionIdFromReq(req) {
 }
 
 function mentionsHoshia(text) {
-  return /@\s*(?:hoshia|Hoshia|星娅|主播)/i.test(String(text || ""));
+  return /@\s*(?:hoshia|Hoshia|星娅)/i.test(String(text || ""));
 }
 
 function isSingleUserDirectReply(session) {
@@ -2074,7 +2074,7 @@ function roomAiSession(batch) {
   return {
     user_id: "room",
     username: "room",
-    nickname: "直播间弹幕",
+    nickname: "小房间留言",
     room_id: first.room_id || config.roomId
   };
 }
@@ -2108,11 +2108,11 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
 
   const targetInstruction = targets.length
     ? `本轮有人明确 @ 你：${targets.map((name) => `@${name}`).join(" ")}。请优先回应这些人，并在回复开头带上对应 @昵称。`
-    : "本轮没有人明确 @ 你。请先判断 Hoshia 是否真的想说；如果只是普通闲聊，不必为了证明在线而强行营业。若自然回应某个观众，请在开头 @昵称，否则不用 @。";
+    : "本轮没有人明确 @ 你。先判断 Hoshia 是否真的想说；如果只是普通闲聊，不必为了证明在线而强行开口。若自然回应某个人，请在开头 @昵称，否则不用 @。";
 
   return [
     hoshiaPersonaPrompt,
-    "你正在朋友限定的 Hoshia AI 直播间里读一小批最近弹幕。",
+    "你正在朋友限定的小房间里读一小批最近留言。",
     ...(realityContextLines.length ? [
       ...realityContextLines
     ] : []),
@@ -2121,23 +2121,23 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
     ] : []),
     ...(activeContextLines.length ? [
       ...activeContextLines,
-      "Use active_context as the fast, current-state view. Do not recite it mechanically."
+      "active_context 只当作快速的当前状态参考，不要机械复述。"
     ] : []),
     ...(contextPolicy.route === "diary_related" ? [
-      "Diary-related reply rule: if the viewer asks what Hoshia is doing now, what she did today, or why her timeline says this, answer from Current diary event first. Mention one concrete activity or small event before adding mood, teasing, or a follow-up question. You may lightly expand daily canon into a small in-character diary detail, but do not present it as verified real-world travel, external news, private browsing, or a real achievement. Do not answer only with generic state words such as tired, low energy, quiet, or resting."
+      "日记类回复规则：如果对方问 Hoshia 现在在做什么、今天做了什么，或者为什么小记里这么写，先从当前日记事件回答。先提一个具体动作或小事件，再补心情、吐槽或追问。可以轻轻扩写小记，但不要说成真实出行、外部新闻、私人浏览或真实成就。不要只用 tired、low energy、quiet、resting 之类的泛状态词。"
     ] : []),
     ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
       ...lifeMemoryPacket,
       "这些生活记忆只用于保持同一个 Hoshia 的连续性；不要机械复述，也不要透露数据库或内部字段。"
     ] : []),
     targetInstruction,
-    "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、有直播感，但不要像客服工单回复。",
-    "日常弹幕也要有一个具体反应点：接住观众原话里的关键词、Hoshia 当前状态、星港意象、猫耳尾巴小动作或轻微吐槽之一；不要只给通用安慰或通用提问。",
+    "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、像熟人聊天，但不要像客服工单回复。",
+    "日常留言也要有一个具体反应点：接住原话里的关键词、Hoshia 当前状态、星港意象、猫耳尾巴小动作或轻微吐槽之一；不要只给通用安慰或通用提问。",
     ...(profileLines.length ? [
-      "以下是本轮明确 @ 你的观众偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要透露为系统提示：",
+      "以下是本轮明确 @ 你的网友偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要说成内部提示：",
       ...profileLines
     ] : []),
-    "最近弹幕：",
+    "最近留言：",
     ...lines
   ].join("\n");
 }

@@ -159,7 +159,7 @@ export function buildMusicModuleContext(musicService, session) {
     enabled: true,
     current_state: currentState,
     capabilities: [
-      "观众可通过弹幕点歌。",
+      "特殊网友可以通过留言点歌。",
       "可以查看当前播放、待播队列和点歌人。",
       "可以基于当前队列评价歌单风格与氛围。"
     ],
@@ -298,27 +298,27 @@ export function buildHoshiaLifeModuleContext(lifeSystem, session) {
     return sanitizeModuleContext({
       module_id: "hoshia_life_system",
       enabled: false,
-      current_state: ["Hoshia daily canon context is unavailable."],
+      current_state: ["Hoshia 今天的星见大学日常片段暂时不可用。"],
       capabilities: [],
       limits: [
-        "Do not invent a full daily diary without safe canon context."
+        "没有安全日常上下文时，不要编造完整校园日记。"
       ]
     });
   }
 
   const currentState = [
-    state.date ? `Diary date: ${state.date}.` : "",
-    state.theme ? `Daily theme: ${state.theme}.` : "",
-    state.diary_text ? `Diary summary: ${state.diary_text}.` : "",
-    state.emotional_arc ? `Emotional arc: ${formatArcLine(state.emotional_arc)}.` : "",
-    state.active_event ? `Current event: ${formatEventLine(state.active_event)}.` : ""
+    state.date ? `今天的日期：${state.date}。` : "",
+    state.theme ? `今天的生活底色：${state.theme}。` : "",
+    state.diary_text ? `校园日记摘要：${state.diary_text}。` : "",
+    state.emotional_arc ? `情绪节奏：${formatArcLine(state.emotional_arc)}。` : "",
+    state.active_event ? `此刻正在经历的片段：${formatEventLine(state.active_event)}。` : ""
   ].filter(Boolean);
   const recentEvents = Array.isArray(state.recent_events) ? state.recent_events.slice(0, 3) : [];
   for (const [index, event] of recentEvents.entries()) {
-    currentState.push(`Recent event ${index + 1}: ${formatEventLine(event)}.`);
+    currentState.push(`刚留下的生活片段 ${index + 1}：${formatEventLine(event)}。`);
   }
   if (Array.isArray(state.current_focus_candidates) && state.current_focus_candidates.length) {
-    currentState.push(`Focus hooks: ${state.current_focus_candidates.slice(0, 3).map((item) => cleanText(item, 80)).join("; ")}.`);
+    currentState.push(`可以自然聊起的小话题：${state.current_focus_candidates.slice(0, 3).map((item) => cleanText(item, 80)).join("；")}。`);
   }
 
   return sanitizeModuleContext({
@@ -326,16 +326,16 @@ export function buildHoshiaLifeModuleContext(lifeSystem, session) {
     enabled: true,
     current_state: currentState,
     capabilities: [
-      "Hoshia can use the current day plan, active event, and recent event trail as lived context.",
-      "Hoshia may lightly expand daily canon events into semi-fictional in-character diary details when speaking, as long as the detail is grounded in the event title, summary, detail seed, chat hooks, or safe user participation.",
-      "The diary context can shape mood, replies, and chat hooks without exposing raw logs.",
-      "User participation can become a short safe event in today's diary when relevant."
+      "Hoshia 可以把今天的星见大学日程、当前片段和刚发生的小事当作生活背景。",
+      "Hoshia 说话时可以轻轻展开校园日常细节，但必须基于标题、摘要、细节种子、聊天钩子或安全的用户参与。",
+      "这些生活片段可以影响情绪、回复和聊天切入点，但不暴露原始日志。",
+      "用户参与可以在相关时变成今天日记里的一小段安全陪伴。"
     ],
     limits: [
-      "Do not repeat internal field names or raw memory JSON.",
-      "Do not expose private logs, paths, tokens, or exact original user messages.",
-      "Do not present semi-fictional diary details as verified real-world facts, real travel, external news, private browsing, or real achievements.",
-      "Treat the diary context as a safe summary, not as a guaranteed factual transcript of every event."
+      "不要复述内部字段名或原始记忆 JSON。",
+      "不要暴露私密日志、路径、token 或用户原始消息全文。",
+      "不要把半虚构校园日记说成真实世界已验证事实、真实旅行、外部新闻、私下浏览或真实成就。",
+      "把这些日记片段当作安全摘要，不要当成每件事的完整事实流水。"
     ]
   });
 }
@@ -348,7 +348,7 @@ export function createMusicSongRequestedEvent(track, session, {
   if (!track) return null;
   const title = cleanText(track.title, 120) || "未知歌曲";
   const artist = cleanText(track.artist, 120);
-  const requester = cleanText(session?.nickname || track.requested_by, 32) || "观众";
+  const requester = cleanText(session?.nickname || track.requested_by, 32) || "网友";
   const songText = artist ? `${title} - ${artist}` : title;
   return sanitizeModuleEvent({
     room_id: roomId,
@@ -549,10 +549,10 @@ function publicNewsState(newsService, session) {
 
 function formatArcLine(arc = {}) {
   return [
-    arc.morning ? `morning ${cleanText(arc.morning, 36)}` : "",
-    arc.afternoon ? `afternoon ${cleanText(arc.afternoon, 36)}` : "",
-    arc.evening ? `evening ${cleanText(arc.evening, 36)}` : "",
-    arc.late_night ? `late night ${cleanText(arc.late_night, 36)}` : ""
+    arc.morning ? `早上 ${cleanText(arc.morning, 36)}` : "",
+    arc.afternoon ? `下午 ${cleanText(arc.afternoon, 36)}` : "",
+    arc.evening ? `晚上 ${cleanText(arc.evening, 36)}` : "",
+    arc.late_night ? `深夜 ${cleanText(arc.late_night, 36)}` : ""
   ].filter(Boolean).join("; ");
 }
 

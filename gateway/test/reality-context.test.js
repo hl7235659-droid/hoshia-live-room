@@ -63,7 +63,7 @@ test("reality context includes safe room viewer configuration and memory", () =>
             preferred_name: "小艾",
             reply_style: "teasing_friend",
             reply_style_text: "像熟朋友一样轻松吐槽",
-            interests: "AI 和游戏",
+            interests: "游戏和老电影",
             memory_enabled: true
           }
         },
@@ -76,14 +76,15 @@ test("reality context includes safe room viewer configuration and memory", () =>
 
   assert.match(context, /当前现实时间：2026-06-09 20:10:00/);
   assert.match(context, /当前在线 1 人/);
-  assert.match(context, /AI_MODE=astrbot/);
-  assert.match(context, /弹幕颜色 #7DDCFF/);
+  assert.doesNotMatch(context, /AI_MODE=astrbot/);
+  assert.match(context, /留言颜色 #7DDCFF/);
   assert.match(context, /累计在线约 1小时2分钟/);
   assert.match(context, /称呼「小艾」/);
-  assert.match(context, /AI 和游戏/);
-  assert.match(context, /React\/Vite/);
-  assert.match(context, /Node\.js gateway/);
-  assert.match(context, /SQLite/);
+  assert.match(context, /游戏和老电影/);
+  assert.doesNotMatch(context, /React\/Vite/);
+  assert.doesNotMatch(context, /Node\.js gateway/);
+  assert.doesNotMatch(context, /SQLite/);
+  assert.match(context, /不要让 Hoshia 自称或承认自己是技术产物、荧幕角色、表演者或被研究对象/);
 });
 
 test("reality context can be disabled and filters sensitive-looking values", () => {

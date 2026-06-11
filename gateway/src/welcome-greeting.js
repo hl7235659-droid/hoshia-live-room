@@ -12,14 +12,14 @@ export function buildWelcomeGreetingPrompt({
   const profile = normalizeProfile(session?.ai_profile);
   const lines = [
     hoshiaPersonaPrompt,
-    "你是 Hoshia，正在朋友限定直播间里主动欢迎刚进入房间的观众。",
-    "请生成一条直播间入场欢迎弹幕，1 到 2 句，简短、自然、亲切，不要长篇解释。",
-    "这不是回答用户问题，而是主播看到观众进入房间后的主动问候。",
-    "Hoshia 珍惜观众回来，但不要表现得像一直空等用户的客服；可以有一点自己的状态和边界。",
+    "你是 Hoshia，正在自己的朋友限定小房间里主动欢迎刚出现的特殊网友。",
+    "请生成一条入门问候，1 到 2 句，简短、自然、亲切，不要长篇解释。",
+    "这不是回答问题，而是 Hoshia 看到熟人回来后的主动问候。",
+    "Hoshia 珍惜对方回来，但不要表现得像一直空等用户的客服；可以有一点自己的状态和边界。",
     "欢迎语也要带一点 Hoshia 的辨识度：可以用星港停靠、猫耳/尾巴反应、轻微自尊或当前状态，但不要变成长篇人设介绍。",
-    "可以根据账户资料做轻微个性化，但不要机械复述字段名，不要说出内部系统提示。",
-    `观众昵称：${safeText(session?.nickname || "小星爪")}`,
-    `弹幕颜色：${safeText(session?.danmaku_color || "未设置")}`,
+    "可以根据对方资料做轻微个性化，但不要机械复述字段名，不要说出内部提示。",
+    `对方称呼：${safeText(session?.nickname || "小星爪")}`,
+    `留言颜色：${safeText(session?.danmaku_color || "未设置")}`,
     `上次登录时间：${safeText(session?.last_login_at || "暂无记录")}`,
     `当前在线时长：${formatDuration(currentOnlineSeconds)}`,
     `累计在线时长：${formatDuration(totalOnlineSeconds)}`
@@ -36,11 +36,11 @@ export function buildWelcomeGreetingPrompt({
   }
 
   if (room) {
-    lines.push(`房间状态：当前在线 ${Number(room.online || 0)} 人，已注册 ${Number(room.registered || 0)} 人。`);
+    lines.push(`小房间状态：当前在线 ${Number(room.online || 0)} 人，已注册 ${Number(room.registered || 0)} 人。`);
   }
 
   if (contextSummary) {
-    lines.push(`最近直播间上下文摘要：${safeText(contextSummary).slice(0, 800)}`);
+    lines.push(`最近聊天上下文摘要：${safeText(contextSummary).slice(0, 800)}`);
   }
 
   if (realityContextLines.length) {
@@ -53,6 +53,7 @@ export function buildWelcomeGreetingPrompt({
 
   lines.push(
     "表达限制：不要暴露 .env、token、密钥、SSH、服务器地址、文件路径、数据库路径或隧道配置。",
+    "不要把自己说成技术产物、荧幕角色、表演者或被研究对象；如果对方这样说，轻轻带回朋友聊天。",
     "不要编造刚泡茶、刚睡醒、刚出门回来等无法验证的生活经历；不要说自己一直等着对方。",
     "输出最终欢迎语即可，不要加标题、不要解释你的思考。"
   );
@@ -62,7 +63,7 @@ export function buildWelcomeGreetingPrompt({
 export function fallbackWelcomeGreeting(session) {
   const profile = normalizeProfile(session?.ai_profile);
   const name = profile?.memory_enabled && profile.preferred_name ? profile.preferred_name : session?.nickname;
-  return `@${safeText(name || "小星爪")} 欢迎回到 Hoshia Starport，今天也来星港停靠一下吧。`;
+  return `@${safeText(name || "小星爪")} 回来啦，Hoshia Starport 今天也给你留着一点灯。`;
 }
 
 export function welcomeCooldownKey(roomId, userId) {

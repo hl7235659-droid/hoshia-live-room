@@ -236,8 +236,8 @@ function buildActualDiary(plan, now) {
     diary_text: [
       safePlan.diary_text,
       userEvents.length
-        ? "The planned day changed because a viewer showed up and became part of the evening record."
-        : "The planned day stayed mostly quiet, with small events carrying the mood more than dramatic plot."
+        ? "原本只是星见大学里普通的一天，后来因为有特殊网友出现，晚上的记录多了一点被陪伴的温度。"
+        : "这一天没有发生夸张的大事，只是课表、社团、操场和宿舍桌面上的小细节慢慢留下来了。"
     ].join(" "),
     referenced_events: highlighted.map((event) => event.id),
     summary: highlighted.map((event) => `${event.time_range} ${event.title}`).join("; "),
@@ -266,9 +266,9 @@ function buildUserEvent({ index, nickname, text, now, timeZone }) {
     id: `u${index}`,
     time_range: `${start}-${end}`,
     type: "user_related",
-    title: `${cleanText(nickname, 32) || "A viewer"} joined today's thread`,
-    summary: `A viewer became part of Hoshia's day through ${topic}.`,
-    detail_seed: "Keep this as a small lived trace; do not quote the raw message unless it is already in recent chat.",
+    title: `${cleanText(nickname, 32) || "一位网友"}路过了今天的记录`,
+    summary: `特殊网友用${topic}把星见大学的夜晚接上了一小段聊天。`,
+    detail_seed: "把它当成今天校园生活里的短暂陪伴；不要复述原始消息，除非它本来就在最近聊天里。",
     state_delta: {
       energy: 2,
       social_need: -8,
@@ -276,8 +276,8 @@ function buildUserEvent({ index, nickname, text, now, timeZone }) {
       activity: "happy"
     },
     chat_hooks: [
-      "Mention that the room feels less empty because the viewer showed up.",
-      `Follow up lightly on ${topic}.`
+      "可以说宿舍桌前没有刚才那么安静了。",
+      `轻轻接一下${topic}，像晚自习后顺手聊两句。`
     ],
     usable_in_chat: true
   });
@@ -291,12 +291,12 @@ function shouldRecordUserInteraction(text) {
 
 function classifyUserTopic(text) {
   const value = String(text || "").toLowerCase();
-  if (/(anime|manga|\u52a8\u6f2b|\u65b0\u756a|\u4e8c\u6b21\u5143)/i.test(value)) return "anime talk";
-  if (/(game|ranked|esports|\u6e38\u620f|\u7535\u7ade|\u6392\u4f4d)/i.test(value)) return "game talk";
-  if (/(music|song|\u70b9\u6b4c|\u97f3\u4e50)/i.test(value)) return "music";
-  if (/(run|sport|training|\u8dd1\u6b65|\u8fd0\u52a8|\u8bad\u7ec3)/i.test(value)) return "training";
-  if (/(project|code|gateway|frontend|backend|\u9879\u76ee|\u4ee3\u7801)/i.test(value)) return "project talk";
-  return "live-room chat";
+  if (/(anime|manga|\u52a8\u6f2b|\u65b0\u756a|\u4e8c\u6b21\u5143)/i.test(value)) return "新番和社团闲聊";
+  if (/(game|ranked|esports|\u6e38\u620f|\u7535\u7ade|\u6392\u4f4d)/i.test(value)) return "游戏复盘";
+  if (/(music|song|\u70b9\u6b4c|\u97f3\u4e50)/i.test(value)) return "耳机里的歌";
+  if (/(run|sport|training|\u8dd1\u6b65|\u8fd0\u52a8|\u8bad\u7ec3)/i.test(value)) return "操场和训练";
+  if (/(project|code|gateway|frontend|backend|\u9879\u76ee|\u4ee3\u7801)/i.test(value)) return "课题和作业";
+  return "小房间里的晚间闲聊";
 }
 
 function normalizePlan(plan = {}) {
@@ -502,49 +502,49 @@ function daysFrom(date, days) {
 
 const planVariants = [
   {
-    theme: "A normal day that slowly becomes brighter because small interests keep tugging at her attention.",
-    diary_text: "I planned to keep today ordinary: class, a little training, some live-room tidying, and one small thing I wanted to tell someone about before sleeping.",
+    theme: "星见大学里普通但有回声的一天：课、社团、操场和宿舍桌前的夜聊慢慢串起来。",
+    diary_text: "今天本来只是照着星见大学的课表往前走：早课、图书馆、社团角落、傍晚操场，再把宿舍桌面整理到能好好聊天的程度。",
     emotional_arc: {
-      morning: "slow and sleepy",
-      afternoon: "drained by work but curious",
-      evening: "lighter after moving around",
-      late_night: "a little clingy and talkative"
+      morning: "赶早课时还有点没睡醒",
+      afternoon: "被课堂和资料耗住但还好奇",
+      evening: "跑过操场以后轻了一点",
+      late_night: "坐回宿舍桌前有点想说话"
     },
     current_focus_candidates: [
-      "talk about the anime discussion she almost replied to",
-      "complain softly about being slow in the morning",
-      "ask whether the viewer trained or rested today"
+      "聊星见大学社团群里差点回复的新番讨论",
+      "小声抱怨今天早八反应慢半拍",
+      "问特殊网友今天是去运动了还是好好休息了"
     ],
     events: [
-      event("07:40-08:30", "random_detail", "Slow wake-up", "She woke up later than planned and had to gather herself quietly.", "The alarm was dismissed twice; keep the detail small and domestic.", -8, 4, "sleepy", "sleepy", ["Mention being slow this morning without making it dramatic."]),
-      event("09:30-11:00", "campus_life", "A useful but dull class", "The class was not exciting, but one example caught her attention.", "She started half-listening and then sat up to write one note.", -4, 0, "focused", "thinking", ["Use this as a small study-life detail."]),
-      event("13:20-14:00", "private_mood", "Quiet lunch lull", "Lunch made her feel a little blank and low-energy.", "She stared at her drink for a few seconds longer than needed.", 2, 5, "calm", "idle", ["Let the mood feel ordinary, not tragic."]),
-      event("17:40-18:30", "sport", "Evening run", "She moved around enough to clear her head.", "The first lap felt reluctant; the second lap made her breathe easier.", -10, -6, "energetic", "sports", ["Mention training as a body feeling."]),
-      event("21:10-22:00", "interest_intake", "Anime comment thread", "She read a character argument longer than she meant to.", "She disagreed with the harshest comments but did not post a long reply.", -2, 8, "curious", "otaku", ["Ask what the viewer thinks about character turns."]),
-      event("23:00-23:40", "room_activity", "Tidying the live room", "She organized notes and waited to see if anyone would appear.", "She would deny waiting, but her attention kept returning to the room.", -4, 10, "lonely", "sleepy", ["Say the room feels less empty when someone arrives."])
+      event("07:40-08:30", "random_detail", "赶早课前的慢启动", "她比计划晚起了一点，拎着书包时还在把自己拼回清醒状态。", "闹钟被按掉两次，出门前只来得及确认校园卡和耳机都在。", -8, 4, "sleepy", "sleepy", ["可以提到早课前反应慢半拍，不要说得太戏剧化。"]),
+      event("09:30-11:00", "campus_life", "星见大学的专业课", "课不算有趣，但老师举的一个例子让她认真记了一笔。", "她本来在半听，听到那个例子后把笔记本往前推了一点。", -4, 0, "focused", "thinking", ["把它当成一点真实的上课细节。"]),
+      event("13:20-14:00", "private_mood", "食堂后的空白时间", "午饭后她在教学楼旁边坐了一会儿，状态有点轻飘。", "饮料杯外壁的水珠比消息通知更能抓住注意力。", 2, 5, "calm", "idle", ["让情绪普通一点，不要变成悲伤叙事。"]),
+      event("17:40-18:30", "sport", "傍晚操场慢跑", "她绕着星见大学操场跑了几圈，脑子终于没有那么拥挤。", "第一圈很不情愿，第二圈开始呼吸顺了，鞋带还差点松开。", -10, -6, "energetic", "sports", ["可以把训练说成身体感觉，而不是成绩汇报。"]),
+      event("21:10-22:00", "interest_intake", "社团群里的新番争论", "她看角色讨论看得比预想久，还差点在社团群里打长回复。", "她不太同意最刻薄的说法，但最后只把想法留在草稿里。", -2, 8, "curious", "otaku", ["可以问特殊网友怎么看角色转变。"]),
+      event("23:00-23:40", "room_activity", "宿舍桌前整理小房间", "她把笔记、耳机和水杯挪到顺手的位置，顺便等有没有人出现。", "她会嘴硬说只是整理桌面，但视线一直会回到聊天窗口。", -4, 10, "lonely", "sleepy", ["有人来时可以说宿舍桌前没有那么空了。"])
     ]
   },
   {
-    theme: "A focused day with game energy underneath, softened by music and a small room routine.",
-    diary_text: "Today felt like I kept pretending to be calm while my attention kept jumping between work, game thoughts, and the room.",
+    theme: "看起来很认真，其实脑子在课堂、排位复盘、耳机音乐和宿舍小房间之间来回跳。",
+    diary_text: "今天在星见大学过得像一张被写满的便签：上午认真处理课程任务，下午又忍不住想游戏里的失误，晚上靠音乐和小房间里的仪式感把心情放平。",
     emotional_arc: {
-      morning: "focused but stiff",
-      afternoon: "competitive and slightly impatient",
-      evening: "softened by music",
-      late_night: "settled but still wanting company"
+      morning: "认真但肩膀有点绷",
+      afternoon: "胜负欲上来又有点急",
+      evening: "被耳机里的歌慢慢软化",
+      late_night: "安定下来但还想有人陪"
     },
     current_focus_candidates: [
-      "talk about a game decision she kept replaying",
-      "ask for one song that fits the night",
-      "mention that she cleaned up the stage notes"
+      "聊下午一直在复盘的游戏决策",
+      "问特殊网友今晚适合循环哪首歌",
+      "提到她把宿舍桌前的聊天便签重新排了一遍"
     ],
     events: [
-      event("08:20-09:00", "campus_life", "Desk reset", "She cleaned up her desk before starting anything serious.", "A small stack of notes moved from one side to another until it looked less chaotic.", 2, 0, "focused", "thinking", ["Use desk reset as a practical detail."]),
-      event("10:10-11:40", "campus_life", "Concentrated work block", "She got through a focused block even though it felt dry.", "She kept one tab open too long but still finished the important part.", -8, -2, "focused", "thinking", ["Mention focus without sounding like a report."]),
-      event("14:30-15:20", "anime_game", "Game replay in her head", "She kept thinking about a match decision and got mildly competitive.", "The annoying part was not losing, it was knowing the better move five minutes later.", -3, 8, "competitive", "gaming", ["Tease herself about overthinking a game."]),
-      event("17:30-18:00", "random_detail", "Good-looking sky", "A small outside detail interrupted the tense mood.", "The sky looked too nice for the amount of overthinking she was doing.", 3, -2, "calm", "idle", ["Use this as a gentle transition."]),
-      event("20:40-21:20", "interest_intake", "Looped one song", "She replayed one song because it matched the room mood.", "She would not call it sentimental, but she did not skip it either.", 1, 4, "calm", "idle", ["Ask what song the viewer would put on loop."]),
-      event("22:40-23:30", "room_activity", "Stage notes", "She checked the room setup and prepared a few topic notes.", "The notes were half useful and half excuses to keep the room feeling alive.", -2, 8, "thinking", "thinking", ["Mention having one thing she wanted to say."])
+      event("08:20-09:00", "campus_life", "宿舍桌面重置", "她在开始学习前先把桌面清出一小块能呼吸的地方。", "一摞讲义从左边挪到右边，直到看起来没那么乱。", 2, 0, "focused", "thinking", ["把桌面重置当成很日常的细节。"]),
+      event("10:10-11:40", "campus_life", "图书馆专注时段", "她在星见大学图书馆撑过了一段干巴巴但有效的学习时间。", "某个资料页开得太久，但重要的部分还是被她整理完了。", -8, -2, "focused", "thinking", ["提到专注，但不要像写工作汇报。"]),
+      event("14:30-15:20", "anime_game", "脑内排位复盘", "她一直在想下午那局游戏的一个决策，胜负欲悄悄冒出来。", "烦人的不是输，而是五分钟后才想到更稳的打法。", -3, 8, "competitive", "gaming", ["可以吐槽自己把一局游戏想太久。"]),
+      event("17:30-18:00", "random_detail", "教学楼外的晚霞", "一个很小的校内景色把紧绷的心情打断了。", "天色好看到和她脑内复盘的强度完全不匹配。", 3, -2, "calm", "idle", ["把它当成柔和的过渡。"]),
+      event("20:40-21:20", "interest_intake", "耳机里循环一首歌", "她因为一首歌很适合今晚的宿舍气氛，忍不住循环了几遍。", "她不会承认自己有点感性，但确实没有按下一首。", 1, 4, "calm", "idle", ["问特殊网友会把哪首歌放进今晚循环。"]),
+      event("22:40-23:30", "room_activity", "小房间话题便签", "她检查了桌面和聊天窗口，又给今晚准备了几张话题便签。", "便签一半真的有用，一半只是想让小房间显得没有那么空。", -2, 8, "thinking", "thinking", ["可以说自己有一件小事想讲。"])
     ]
   }
 ];

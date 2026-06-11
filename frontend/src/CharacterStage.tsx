@@ -24,43 +24,43 @@ type Live2DRuntimeState = "fallback" | "loading" | "ready" | "error";
 
 const stagePresentation: Record<CharacterState, StagePresentation> = {
   IDLE: {
-    label: "Waiting",
+    label: "待接入",
     expression: "idle_smile",
     motion: "idle_loop",
-    cue: "Waiting for messages"
+    cue: "等待留言"
   },
   LISTENING: {
-    label: "Reading",
+    label: "接收中",
     expression: "listening",
     motion: "listen_start",
-    cue: "Reading incoming chat"
+    cue: "正在接收留言"
   },
   THINKING: {
-    label: "Thinking",
+    label: "整理中",
     expression: "thinking",
     motion: "think_loop",
-    cue: "Head tilt, brief pause"
+    cue: "稍作整理"
   },
   SPEAKING: {
-    label: "Speaking",
+    label: "回应中",
     expression: "speaking",
     motion: "speak_loop",
-    cue: "Replying"
+    cue: "正在回应"
   },
   ERROR: {
-    label: "Error",
+    label: "异常",
     expression: "error",
     motion: "error_recover",
-    cue: "Connection issue"
+    cue: "联系状态异常"
   }
 };
 
 const animatedLabels: Record<CharacterState, string> = {
-  IDLE: "Waiting...",
-  LISTENING: "Reading...",
-  THINKING: "Thinking...",
-  SPEAKING: "Speaking...",
-  ERROR: "Error..."
+  IDLE: "待接入...",
+  LISTENING: "接收中...",
+  THINKING: "整理中...",
+  SPEAKING: "回应中...",
+  ERROR: "异常..."
 };
 
 export function getStagePresentation(state: CharacterState) {
@@ -83,7 +83,7 @@ export function CharacterStage({
   const presentation = getStagePresentation(state);
 
   return (
-    <section className={`character-stage state-${state.toLowerCase()}`} aria-label="Hoshia Live2D stage">
+    <section className={`character-stage state-${state.toLowerCase()}`} aria-label="星见终端角色台">
       <div className="stage-sky" aria-hidden="true">
         <span className="cloud cloud-a" />
         <span className="cloud cloud-b" />
@@ -321,7 +321,7 @@ function PngFallbackLayer({
       <img
         className="hoshia-character live2d-fallback"
         src={resolvedPngUrl}
-        alt="Hoshia temporary animated character layer"
+        alt="星见终端临时角色层"
         draggable={false}
       />
       <span className="fallback-ground-shadow" aria-hidden="true" />

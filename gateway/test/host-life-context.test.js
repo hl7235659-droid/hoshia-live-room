@@ -38,7 +38,7 @@ test("host life context derives current mood from time room and music state", ()
   assert.match(context, /夜间/);
   assert.match(context, /有人明确叫到 Hoshia/);
   assert.match(context, /被启动的客服/);
-  assert.match(context, /当前注意力：歌单和弹幕气氛/);
+  assert.match(context, /当前注意力：歌单和留言气氛/);
   assert.match(context, /Purple Rain - Prince/);
   assert.match(context, /Alice 点了 Purple Rain - Prince/);
   assert.match(context, /不要编造刚泡茶、刚睡醒、刚出门回来/);
@@ -60,7 +60,7 @@ test("host life context allows silence instead of forced availability", () => {
   }).join("\n");
 
   assert.match(context, /可以先听一会儿/);
-  assert.match(context, /不必为了填补沉默而营业/);
+  assert.match(context, /不必为了填补沉默而硬说话/);
   assert.match(context, /是否真的想说/);
 });
 

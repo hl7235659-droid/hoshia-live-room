@@ -14,7 +14,7 @@ export function parseMusicRequestText(text) {
   if (direct) return direct[1].trim();
 
   const mentionCleaned = value
-    .replace(/@(?:Hoshia|hoshia|星娅|主播)\s*/gi, "")
+    .replace(/@(?:Hoshia|hoshia|星娅)\s*/gi, "")
     .trim();
   const mentioned = mentionCleaned.match(/^点歌\s*[：: ]?\s*(.{1,160})$/i);
   return mentioned ? mentioned[1].trim() : "";
@@ -24,7 +24,7 @@ export function parseLocalMusicControlText(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
   const value = raw
-    .replace(/@(?:Hoshia|hoshia|星娅|主播)\s*/gi, "")
+    .replace(/@(?:Hoshia|hoshia|星娅)\s*/gi, "")
     .replace(/\s+/g, "")
     .toLowerCase();
   if (!value) return null;

@@ -261,7 +261,7 @@ function App() {
           } : current);
         }
       } catch {
-        // Audience data is optional UI chrome; keep the live room usable if it fails.
+        // Contact data is optional UI chrome; keep the entry usable if it fails.
       }
     }
 
@@ -502,8 +502,8 @@ function GateLoadingView() {
         <div className="gate-header">
           <div className="login-mark" />
           <div className="gate-status">
-            <span>Room gate</span>
-            <strong>Checking access</strong>
+            <span>联系入口</span>
+            <strong>正在确认入口</strong>
           </div>
         </div>
       </section>
@@ -529,7 +529,7 @@ function GateView({ onUnlock }: { onUnlock: () => void }) {
     setBusy(false);
 
     if (!response.ok) {
-      setError("Room token is not valid.");
+      setError("联系入口口令不正确。");
       return;
     }
 
@@ -542,34 +542,34 @@ function GateView({ onUnlock }: { onUnlock: () => void }) {
         <div className="gate-header">
           <div className="login-mark" />
           <div className="gate-status">
-            <span>Room gate</span>
-            <strong>Private doorway</strong>
+            <span>联系入口</span>
+            <strong>星见终端</strong>
           </div>
         </div>
-        <h1>Hoshia Live</h1>
-        <p>Enter the room token first. After the gate opens, you can log in or register.</p>
-        <section className="login-welcome" aria-label="Hoshia room gate">
+        <h1>星见终端</h1>
+        <p>先输入联系入口口令。入口打开后，可以登录或创建账号。</p>
+        <section className="login-welcome" aria-label="Hoshia 联系入口">
           <div className="login-mascot">
-            <img src={loginMascotUrl} alt="Hoshia welcomes you at the private room gate" draggable={false} />
+            <img src={loginMascotUrl} alt="Hoshia 在联系入口等你" draggable={false} />
           </div>
           <div className="welcome-bubble">
-            <strong>Private gate.</strong>
-            <span>I will show the account room after the token matches.</span>
+            <strong>私密联系入口。</strong>
+            <span>口令匹配后，我会打开星见终端。</span>
           </div>
         </section>
-        <div className="gate-strip" aria-label="Private room safety notes">
-          <span><ShieldCheck size={14} /> Friends only</span>
-          <span><LockKeyhole size={14} /> Token gate</span>
+        <div className="gate-strip" aria-label="联系入口安全说明">
+          <span><ShieldCheck size={14} /> 特别联系人</span>
+          <span><LockKeyhole size={14} /> 口令入口</span>
         </div>
         <form onSubmit={submit}>
           <label>
-            <span>Room token</span>
-            <input value={roomToken} onChange={(event) => setRoomToken(event.target.value)} type="password" placeholder="Room token" />
+            <span>入口口令</span>
+            <input value={roomToken} onChange={(event) => setRoomToken(event.target.value)} type="password" placeholder="入口口令" />
           </label>
           {error ? <span className="login-error">{error}</span> : null}
           <button disabled={busy || !roomToken} type="submit">
             <KeyRound size={16} />
-            {busy ? "Checking gate..." : "Open gate"}
+            {busy ? "正在确认入口..." : "打开联系入口"}
           </button>
         </form>
       </section>
@@ -629,7 +629,7 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
       setAuthMode("login");
       setPassword("");
       setRegistrationCode("");
-      setNotice("Account created. Enter your password and click login.");
+      setNotice("账号已创建。输入密码后即可进入星见终端。");
       return;
     }
 
@@ -644,12 +644,12 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
         <div className="gate-header">
           <div className="login-mark" />
           <div className="gate-status">
-            <span>Account gate</span>
-            <strong>{authMode === "register" ? "Create access" : "Private access"}</strong>
+            <span>账号入口</span>
+            <strong>{authMode === "register" ? "创建联系入口" : "私密联系入口"}</strong>
           </div>
           <button type="button" className="room-preview-button" onClick={() => setPreviewOpen((current) => !current)}>
             <Users size={14} />
-            <span>{roomPreview.online} online</span>
+            <span>{roomPreview.online} 位联系人</span>
             {previewOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
@@ -660,24 +660,24 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
               <span />
               <span />
             </div>
-            <p>{roomPreview.online ? "Friends are already inside." : "No friends are visible inside yet."}</p>
-            <small>Names and avatars will appear after the account system is connected.</small>
+            <p>{roomPreview.online ? "已有特别联系人接入。" : "暂时还没有可见联系人。"}</p>
+            <small>账号系统接入后，会显示昵称和头像。</small>
           </div>
         ) : null}
-        <h1>Hoshia Live</h1>
-        <p>{authMode === "register" ? "Use a one-time code to create your account." : "Use your account to enter the friends-only stage."}</p>
+        <h1>星见终端</h1>
+        <p>{authMode === "register" ? "使用一次性代码创建你的账号。" : "使用账号进入特别联系人入口。"}</p>
         <section className="login-welcome" aria-label="Hoshia welcome">
           <div className="login-mascot">
-            <img src={loginMascotUrl} alt="Hoshia welcomes you at the private room gate" draggable={false} />
+            <img src={loginMascotUrl} alt="Hoshia 在联系入口等你" draggable={false} />
           </div>
           <div className="welcome-bubble">
             <strong>{authMode === "register" ? "First visit?" : "Welcome back."}</strong>
-            <span>{authMode === "register" ? "Your account can be personalized later in profile." : "The room is locked. I will open it after your password matches."}</span>
+            <span>{authMode === "register" ? "之后可以在资料里调整你的联系人信息。" : "联系入口已锁定。密码匹配后我会为你打开。"}</span>
           </div>
         </section>
-        <div className="gate-strip" aria-label="Private room safety notes">
-          <span><ShieldCheck size={14} /> Friends only</span>
-          <span><LockKeyhole size={14} /> Account protected</span>
+        <div className="gate-strip" aria-label="联系入口安全说明">
+          <span><ShieldCheck size={14} /> 特别联系人</span>
+          <span><LockKeyhole size={14} /> 账号保护</span>
         </div>
         <form onSubmit={submit}>
           <div className="auth-switch" role="tablist" aria-label="Authentication mode">
@@ -726,7 +726,7 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
           {notice ? <span className="login-success">{notice}</span> : null}
           <button disabled={busy || !canSubmitAuth(authMode, { username, password, registrationCode })} type="submit">
             <KeyRound size={16} />
-            {busy ? "Checking gate..." : authMode === "register" ? "Create account" : "Unlock room"}
+            {busy ? "正在确认入口..." : authMode === "register" ? "创建账号" : "进入星见终端"}
           </button>
         </form>
       </section>
@@ -749,11 +749,11 @@ function authErrorMessage(error: string | undefined, mode: "login" | "register")
   if (error === "password_invalid") return "Password needs at least 8 characters.";
   if (error === "nickname_required") return "Display name needs at least 2 characters.";
   if (error === "username_taken") return "That account already exists. Choose another account name.";
-  if (error === "gate_required") return "Open the room gate first.";
+  if (error === "gate_required") return "请先打开联系入口。";
   if (error === "registration_code_invalid") return "Register code is not valid.";
   if (error === "registration_code_used") return "Register code has already been used.";
   if (error === "registration_code_expired") return "Register code has expired.";
-  return mode === "register" ? "Could not create account. Check your keys." : "Could not unlock the room.";
+  return mode === "register" ? "账号创建失败，请检查口令。" : "无法进入星见终端。";
 }
 
 function accountErrorMessage(error: string | undefined) {
@@ -1019,12 +1019,12 @@ function LiveOverlay({
   }
 
   return (
-    <section className="live-overlay" aria-label="Live room overlay">
+    <section className="live-overlay" aria-label="星见终端浮层">
       <header className={`overlay-top ${islandOpen ? "island-expanded" : ""}`}>
         <button
           type="button"
           className="island-leave-link"
-          aria-label="Leave room"
+          aria-label="离开联系入口"
           onClick={onLeave}
         >
           <ChevronLeft size={22} strokeWidth={2.25} />
@@ -1033,7 +1033,7 @@ function LiveOverlay({
           <button
             type="button"
             className="atomic-island-summary"
-            aria-label="Toggle live room controls"
+            aria-label="切换联系状态"
             aria-expanded={islandOpen}
             onClick={toggleIsland}
             onKeyDown={(event) => {
@@ -1044,8 +1044,8 @@ function LiveOverlay({
           >
             <span className="island-live-dot" aria-hidden="true" />
             <span className="island-title">
-              <strong>Hoshia Live</strong>
-              <small>friends only</small>
+              <strong>星见终端</strong>
+              <small>特别联系人</small>
             </span>
             <span className="island-equalizer" aria-hidden="true">
               <i />
@@ -1071,7 +1071,7 @@ function LiveOverlay({
             </button>
           ) : null}
           {islandOpen && menuOpen ? (
-            <div className="island-menu-popover" role="menu" aria-label="Live room controls">
+            <div className="island-menu-popover" role="menu" aria-label="联系状态控制">
               <button
                 type="button"
                 className="island-action primary"
@@ -1082,7 +1082,7 @@ function LiveOverlay({
                 }}
               >
                 <AccountAvatar session={session} size="tiny" />
-                <span>Personal account</span>
+                <span>联系人账号</span>
                 <strong>@{session.nickname}</strong>
               </button>
               <button
@@ -1095,12 +1095,12 @@ function LiveOverlay({
                 }}
               >
                 <Settings size={16} />
-                <span>Settings</span>
-                <strong>sound / color</strong>
+                <span>设置</span>
+                <strong>声音 / 颜色</strong>
               </button>
               <div className="island-action status" role="note">
                 <LockKeyhole size={14} />
-                <span>Private</span>
+                <span>私密联系</span>
               </div>
             </div>
           ) : null}
@@ -1124,7 +1124,7 @@ function LiveOverlay({
       <button
         type="button"
         className="timeline-open-link"
-        aria-label="Open Hoshia timeline"
+        aria-label="打开 Hoshia 近况"
         onClick={onOpenTimeline}
         title="Hoshia 的动态"
       >
@@ -1180,12 +1180,12 @@ function HoshiaTimelineOverlay({
   return (
     <section
       className="hoshia-timeline-shell"
-      aria-label="Hoshia dynamic page"
+      aria-label="Hoshia 近况"
       style={{ "--timeline-bg": `url("${timelineBgUrl}")` } as CSSProperties}
     >
       <div className="timeline-bg-mark" aria-hidden="true">H</div>
       <header className="timeline-topbar">
-        <button type="button" aria-label="Back to live room" onClick={onClose}>
+        <button type="button" aria-label="返回星见终端" onClick={onClose}>
           <ChevronLeft size={20} />
         </button>
         <strong>Hoshia 的动态</strong>
@@ -1200,20 +1200,20 @@ function HoshiaTimelineOverlay({
             <span className="timeline-eyebrow">soft console</span>
             <div className="timeline-name-row">
               <h2>Hoshia</h2>
-              <span className="timeline-live-pill"><Sparkles size={14} /> live</span>
+              <span className="timeline-live-pill"><Sparkles size={14} /> 近况</span>
             </div>
             <p>今天也在星港里整理状态、动态和一点点嘴硬。</p>
           </div>
         </section>
 
-        <section className="timeline-stats-card" aria-label="Hoshia current status">
+        <section className="timeline-stats-card" aria-label="Hoshia 当前联系状态">
           <TimelineMetric label="活动" value={activityLabel(visualState?.activity || "idle")} />
           <TimelineMetric label="心情" value={moodLabel(visualState?.mood || "calm")} />
           <TimelineMetric label="能量" value={`${energy}%`} />
           <TimelineMetric label="陪伴感" value={`${100 - socialNeed}%`} />
         </section>
 
-        <section className="timeline-feed" aria-label="Hoshia posts">
+        <section className="timeline-feed" aria-label="Hoshia 近况留言">
           {posts.length ? posts.map((post) => (
             <article className="timeline-post-card" key={post.id}>
               <div className="post-watermark" aria-hidden="true">Hoshia</div>
@@ -1248,7 +1248,7 @@ function HoshiaTimelineOverlay({
                   {post.interactions.map((interaction) => (
                     <Fragment key={interaction.id}>
                       <div className={`post-comment ${interaction.nickname === "Hoshia" ? "hoshia" : ""}`}>
-                        <strong>{interaction.nickname || (interaction.user_id === session.user_id ? session.nickname : "viewer")}</strong>
+                        <strong>{interaction.nickname || (interaction.user_id === session.user_id ? session.nickname : "特别联系人")}</strong>
                         <span>{interaction.content}</span>
                       </div>
                       {interaction.type === "comment" && interaction.reply_status === "pending" ? (
@@ -1358,13 +1358,13 @@ function AudienceBookmark({ audience, room }: { audience: AudiencePayload | null
   }, [selectedUserId, users]);
 
   return (
-    <aside className={`audience-bookmark ${open ? "open" : ""}`} aria-label="Room audience">
+    <aside className={`audience-bookmark ${open ? "open" : ""}`} aria-label="特别联系人">
       <button
         type="button"
         className="audience-tab"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        title="View online and registered members"
+        title="查看特别联系人和联系状态"
       >
         <Users size={16} />
         <strong>{onlineCount}</strong>
@@ -1376,10 +1376,10 @@ function AudienceBookmark({ audience, room }: { audience: AudiencePayload | null
         <section className="audience-panel">
           <div className="audience-panel-head">
             <div>
-              <span>Audience</span>
-              <strong>{onlineCount} online / {registeredCount} registered</strong>
+              <span>特别联系人</span>
+              <strong>{onlineCount} 已接入 / {registeredCount} 已登记</strong>
             </div>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close audience panel">
+            <button type="button" onClick={() => setOpen(false)} aria-label="关闭联系人面板">
               <X size={15} />
             </button>
           </div>
@@ -1396,19 +1396,19 @@ function AudienceBookmark({ audience, room }: { audience: AudiencePayload | null
                 <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} size="tiny" />
                 <span className="audience-row-name">
                   <strong>{user.nickname}</strong>
-                  <small>{user.online ? "online now" : "offline"}</small>
+                  <small>{user.online ? "已接入" : "未接入"}</small>
                 </span>
-                <i aria-label={user.online ? "online" : "offline"} />
+                <i aria-label={user.online ? "已接入" : "未接入"} />
               </button>
             )) : (
-              <p className="audience-empty">No registered member data yet.</p>
+              <p className="audience-empty">还没有特别联系人资料。</p>
             )}
           </div>
 
           {selectedUser ? (
             <AudienceUserCard user={selectedUser} />
           ) : (
-            <p className="audience-detail-hint">Tap a member to view account info and total room time.</p>
+            <p className="audience-detail-hint">点选特别联系人查看账号信息和停留时长。</p>
           )}
         </section>
       ) : null}
@@ -1429,29 +1429,29 @@ function AudienceUserCard({ user }: { user: AudienceUser }) {
 
   const totalSeconds = user.total_online_seconds + (user.online ? liveSeconds : 0);
   return (
-    <section className={`audience-user-card ${user.online ? "online" : "offline"}`} aria-label={`${user.nickname} account info`}>
+    <section className={`audience-user-card ${user.online ? "online" : "offline"}`} aria-label={`${user.nickname} 联系人信息`}>
       <div className="audience-user-title">
         <AccountAvatar session={{ nickname: user.nickname, avatar_url: user.avatar_url }} />
         <div>
           <span>@{user.nickname}</span>
-          <strong>{user.username || "member"}</strong>
+          <strong>{user.username || "特别联系人"}</strong>
         </div>
       </div>
       <dl>
         <div>
-          <dt>Status</dt>
-          <dd>{user.online ? "Online" : "Offline"}</dd>
+          <dt>联系状态</dt>
+          <dd>{user.online ? "已接入" : "未接入"}</dd>
         </div>
         <div>
-          <dt>Registered</dt>
+          <dt>登记时间</dt>
           <dd>{formatShortDate(user.registered_at)}</dd>
         </div>
         <div>
-          <dt>Last login</dt>
-          <dd>{user.last_login_at ? formatShortDate(user.last_login_at) : "No login record"}</dd>
+          <dt>上次接入</dt>
+          <dd>{user.last_login_at ? formatShortDate(user.last_login_at) : "暂无接入记录"}</dd>
         </div>
         <div>
-          <dt><Clock size={12} /> Total stay</dt>
+          <dt><Clock size={12} /> 累计停留</dt>
           <dd>{formatDuration(totalSeconds)}</dd>
         </div>
       </dl>
@@ -1810,7 +1810,7 @@ function AwakeningChoiceBranches({
       <>
         <div className="awakening-choice-branches">
           <button type="button" onClick={() => onChooseName(session.nickname || session.username || "你")}>直接叫我名字</button>
-          <button type="button" onClick={() => onChooseName("主人")}>主人</button>
+          <button type="button" onClick={() => onChooseName("特别联系人")}>特别联系人</button>
           <button type="button" onClick={() => onChooseName("前辈")}>前辈</button>
           <button type="button" onClick={() => onOpenCustom("name")}>我自己说</button>
         </div>
@@ -2136,11 +2136,11 @@ function AccountSettingsModal({
           <div className="account-modal-title">
             <AccountAvatar session={{ ...session, nickname, avatar_url: avatarUrl }} />
             <div>
-              <span>Personal account</span>
+              <span>联系人账号</span>
               <h3 id="account-settings-title">@{session.username || session.nickname}</h3>
             </div>
           </div>
-          <button type="button" className="account-close-button" aria-label="Close account settings" onClick={onClose}>
+          <button type="button" className="account-close-button" aria-label="关闭账号设置" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
@@ -2150,7 +2150,7 @@ function AccountSettingsModal({
             <UserCircle size={17} />
             <div>
               <strong>Profile</strong>
-              <span>Nickname and avatar shown in the live room.</span>
+              <span>昵称和头像会显示在星见终端。</span>
             </div>
           </div>
           <label>
@@ -2190,7 +2190,7 @@ function AccountSettingsModal({
             <KeyRound size={17} />
             <div>
               <strong>Password</strong>
-              <span>Change the password for this private-room account.</span>
+              <span>修改这个私密联系入口账号的密码。</span>
             </div>
           </div>
           <label>
@@ -2429,7 +2429,7 @@ function DanmakuHistory({ messages, onMention }: { messages: LiveMessage[]; onMe
             type="button"
             className="mention-name"
             onClick={() => onMention(message.nickname || labelForRole(message.role))}
-            title={`Mention ${message.nickname || labelForRole(message.role)}`}
+            title={`提到 ${message.nickname || labelForRole(message.role)}`}
           >
             {message.nickname || labelForRole(message.role)}
           </button>
@@ -2520,8 +2520,8 @@ function BottomDock({
   const canSend = (socketStatus === "live" || socketStatus === "demo") && Boolean(text.trim());
 
   return (
-    <section className={`bottom-dock ${historyOpen ? "history-open" : ""} ${musicOpen ? "music-open" : ""}`} aria-label="Live chat dock">
-      <section className={`history-drawer ${historyOpen || musicOpen ? "open" : ""} ${musicOpen ? "music-active" : ""}`} aria-label="Message history">
+    <section className={`bottom-dock ${historyOpen ? "history-open" : ""} ${musicOpen ? "music-open" : ""}`} aria-label="留言栏">
+      <section className={`history-drawer ${historyOpen || musicOpen ? "open" : ""} ${musicOpen ? "music-active" : ""}`} aria-label="留言记录">
         <div className="history-header">
           <button
             type="button"
@@ -2538,7 +2538,7 @@ function BottomDock({
             }}
           >
             {historyOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-            <span>History</span>
+            <span>留言</span>
           </button>
           <button
             type="button"
@@ -2547,9 +2547,9 @@ function BottomDock({
             onClick={toggleMusic}
           >
             <Music size={15} />
-            <span>Music</span>
+            <span>音乐</span>
           </button>
-          <span className="history-count" aria-label={`${historyCount} of 100 history messages`}>
+          <span className="history-count" aria-label={`${historyCount} / 100 条留言`}>
             {historyCount}/100
           </span>
         </div>
@@ -2566,12 +2566,12 @@ function BottomDock({
           <DanmakuHistory messages={messages} onMention={insertMention} />
         ) : null}
       </section>
-      <section className="live-control" aria-label="Live controls">
+      <section className="live-control" aria-label="联系状态控制">
         <form className="sendbar" onSubmit={send}>
           <div className={`mention-combo ${mentionPickerOpen ? "open" : ""}`}>
             {mentionPickerOpen ? (
-              <div className="mention-picker" role="listbox" aria-label="Mention online member">
-                <span className="mention-picker-title">Mention online</span>
+              <div className="mention-picker" role="listbox" aria-label="提到已接入联系人">
+                <span className="mention-picker-title">提到联系人</span>
                 {onlineMembers.length ? onlineMembers.map((user) => (
                   <button
                     key={user.user_id}
@@ -2582,7 +2582,7 @@ function BottomDock({
                     <span>@{user.nickname}</span>
                   </button>
                 )) : (
-                  <span className="mention-picker-empty">No one else online</span>
+                  <span className="mention-picker-empty">暂无其他联系人接入</span>
                 )}
               </div>
             ) : null}
@@ -2590,8 +2590,8 @@ function BottomDock({
               type="button"
               className="mention-expand"
               onClick={() => setMentionPickerOpen((current) => !current)}
-              title="Mention online member"
-              aria-label="Mention online member"
+              title="提到已接入联系人"
+              aria-label="提到已接入联系人"
               aria-expanded={mentionPickerOpen}
               disabled={socketStatus !== "live" && socketStatus !== "demo"}
             >
@@ -2601,8 +2601,8 @@ function BottomDock({
               type="button"
               className="mention-hoshia"
               onClick={() => insertMention("Hoshia")}
-              title="Mention Hoshia"
-              aria-label="Mention Hoshia"
+              title="提到 Hoshia"
+              aria-label="提到 Hoshia"
               disabled={socketStatus !== "live" && socketStatus !== "demo"}
             >
               @
@@ -2613,9 +2613,9 @@ function BottomDock({
             value={text}
             maxLength={500}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Send a message or @Hoshia..."
+            placeholder="写一条留言或 @Hoshia..."
           />
-          <button type="submit" title="Send" disabled={!canSend}>
+          <button type="submit" title="发送留言" disabled={!canSend}>
             <Send size={20} />
           </button>
         </form>
@@ -2661,7 +2661,7 @@ function MusicRoomPanel({
   }
 
   return (
-    <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"} ${expanded ? "open" : ""}`} aria-label="Music room player">
+    <section className={`music-room ${musicState.enabled ? "enabled" : "disabled"} ${expanded ? "open" : ""}`} aria-label="音乐留言播放器">
       <div className="music-room-now">
         <div className="music-room-icon" aria-hidden="true">
           <Music size={16} />
@@ -2855,62 +2855,62 @@ function statusText(status: MusicState["status"]) {
 }
 
 function friendlyMusicNotice(error?: string) {
-  if (error === "music_disabled") return "Music room is not enabled yet.";
-  if (error === "music_provider_unavailable") return "Music service is not ready.";
-  if (error === "music_provider_timeout") return "Music service timed out.";
-  if (error === "music_not_found") return "Could not find that song.";
-  if (error === "music_unplayable") return "That song is not playable right now.";
-  if (error === "music_rate_limited") return "Too many song requests. Try again later.";
-  if (error === "music_queue_full") return "Song queue is full.";
-  if (error === "music_forbidden") return "Only the host can control playback.";
-  if (error === "music_target_not_found") return "Could not find that queued song.";
-  return error ? "Music request failed." : "";
+  if (error === "music_disabled") return "音乐留言还没有启用。";
+  if (error === "music_provider_unavailable") return "音乐服务还没有准备好。";
+  if (error === "music_provider_timeout") return "音乐服务响应超时。";
+  if (error === "music_not_found") return "没有找到这首歌。";
+  if (error === "music_unplayable") return "这首歌现在无法播放。";
+  if (error === "music_rate_limited") return "点歌太频繁了，稍后再试。";
+  if (error === "music_queue_full") return "音乐队列已满。";
+  if (error === "music_forbidden") return "只有特别联系人可以控制播放。";
+  if (error === "music_target_not_found") return "没有找到这首排队歌曲。";
+  return error ? "音乐请求失败。" : "";
 }
 
 function labelForRole(role: string) {
   if (role === "ai") return "hoshia";
-  if (role === "system") return "sys";
-  return "guest";
+  if (role === "system") return "系统";
+  return "特别联系人";
 }
 
 function friendlySocketStatus(status: string) {
-  if (status === "live") return "connected";
-  if (status === "connecting") return "opening room";
-  if (status === "reconnecting") return "reconnecting";
-  if (status === "closed") return "reconnecting";
-  if (status === "error") return "connection paused";
-  if (status === "demo") return "preview";
-  return "private";
+  if (status === "live") return "联系已接通";
+  if (status === "connecting") return "正在接入";
+  if (status === "reconnecting") return "正在重连";
+  if (status === "closed") return "正在重连";
+  if (status === "error") return "联系暂停";
+  if (status === "demo") return "预览";
+  return "私密联系";
 }
 
 function connectionNotice(status: string) {
-  if (status === "connecting") return "Opening the private room...";
-  if (status === "reconnecting" || status === "closed") return "Connection dropped. Trying to bring you back...";
-  if (status === "error") return "Connection paused. Keeping the room state visible.";
+  if (status === "connecting") return "正在打开私密联系入口...";
+  if (status === "reconnecting" || status === "closed") return "联系中断，正在尝试恢复...";
+  if (status === "error") return "联系暂停，当前状态仍会保留。";
   return "";
 }
 
 function friendlyError(error: unknown) {
-  if (error === "rate_limited") return "Messages are moving too fast. Please wait a moment.";
-  if (error === "message_invalid") return "That message could not be sent. Try a shorter one.";
-  return "Room signal had a small issue. Trying to recover.";
+  if (error === "rate_limited") return "留言发送太快了，请稍等一下。";
+  if (error === "message_invalid") return "这条留言无法发送，请试试短一点的内容。";
+  return "联系状态出现小问题，正在尝试恢复。";
 }
 
 function sessionCue(state: CharacterState, fallback: string) {
-  if (state === "IDLE") return "Waiting for your message";
-  if (state === "LISTENING") return "Reading your message";
-  if (state === "THINKING") return "Hoshia is thinking";
-  if (state === "SPEAKING") return "Hoshia is replying";
-  if (state === "ERROR") return "Recovering session";
+  if (state === "IDLE") return "等待你的留言";
+  if (state === "LISTENING") return "正在接收留言";
+  if (state === "THINKING") return "Hoshia 正在整理";
+  if (state === "SPEAKING") return "Hoshia 正在回应";
+  if (state === "ERROR") return "正在恢复联系状态";
   return fallback;
 }
 
 const seedMessages: LiveMessage[] = [
-  line("ai", "hoshia", "Hi, I am Hoshia. The 2.0 stage is warming up."),
-  line("user", "miruko2", "The room is friends-only, right?"),
-  line("ai", "hoshia", "Yes. I will keep the stage bright, private, and cozy."),
-  line("user", "miruko2", "Try the listening state."),
-  line("ai", "hoshia", "Ears forward. I am listening.")
+  line("ai", "hoshia", "你好，我是 Hoshia。星见终端已经准备好。"),
+  line("user", "miruko2", "这里是特别联系人入口，对吧？"),
+  line("ai", "hoshia", "对。我会把联系状态保持在私密、安静、明亮。"),
+  line("user", "miruko2", "试试接收留言的状态。"),
+  line("ai", "hoshia", "收到，我在认真接收。")
 ];
 
 function line(role: "user" | "ai" | "system", nickname: string, text: string): LiveMessage {
@@ -2932,7 +2932,7 @@ function localLine(role: "user" | "ai" | "system", nickname: string, text: strin
 function demoReply(text: string) {
   if (/断线|错误|error/i.test(text)) return "我看到连接提示了，会先稳住房间状态再继续陪你。";
   if (/你好|hi|hello/i.test(text)) return "我在这里，房间还是只对你和朋友开放。";
-  return `收到啦：${text.slice(0, 36)}。我会保持这个阳光一点的直播节奏。`;
+  return `收到啦：${text.slice(0, 36)}。我会保持这个阳光一点的聊天节奏。`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

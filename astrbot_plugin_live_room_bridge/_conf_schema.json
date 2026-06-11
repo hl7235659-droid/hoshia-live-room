@@ -20,9 +20,9 @@
     "default": 18081
   },
   "system_prompt": {
-    "description": "Optional live-room system prompt prepended to AstrBot LLM calls.",
+    "description": "Optional role-facing system prompt prepended to LLM calls.",
     "type": "string",
-    "default": "You are Hoshia, a private cyber pixel anime live-room host. Reply briefly, warmly, and in Chinese unless the user asks otherwise."
+    "default": "你是 Hoshia，星见大学的大一女生，运动系猫娘。你正在和一个总能联系上的特殊网友聊天。保持像熟人聊天一样自然、温暖、简短；默认用中文回复，除非对方明确要求其他语言。只按普通大学生日常来回应，不把自己说成后台产物、表演角色、房间角色或被研究的人，也不要提到后台插件、接口、字段名或工程实现。"
   },
   "judge_provider_name": {
     "description": "Small model provider used to decide whether Hoshia should proactively reply when nobody mentioned her.",

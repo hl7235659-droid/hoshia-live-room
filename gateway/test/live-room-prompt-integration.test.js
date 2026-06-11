@@ -10,21 +10,20 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /hostLifeContextLines = buildHostLifeContext/);
   assert.match(server, /Hoshia 是否真的想说/);
   assert.match(server, /不要像客服工单回复/);
-  assert.match(server, /日常弹幕也要有一个具体反应点/);
-  assert.match(server, /starport imagery, cat-ear\/tail body language/);
+  assert.match(server, /日常留言也要有一个具体反应点/);
+  assert.match(server, /星港画面、猫耳尾巴动作/);
   assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
   assert.match(server, /diaryEvent/);
-  assert.match(server, /Diary-related reply rule/);
-  assert.match(server, /lightly expand daily canon into a small in-character diary detail/);
+  assert.match(server, /日记类回复规则/);
+  assert.match(server, /可以轻轻扩写小记/);
   assert.match(server, /music_ack/);
 });
 
 test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to speak", () => {
   const bridge = readFileSync(new URL("../../astrbot_plugin_live_room_bridge/main.py", import.meta.url), "utf8");
 
-  assert.match(bridge, /would she genuinely want to speak/);
-  assert.match(bridge, /rather than merely fill silence or act available/);
-  assert.match(bridge, /Do not fill silence just to prove she is online or available/);
+  assert.match(bridge, /真的适合 Hoshia 接一句/);
+  assert.match(bridge, /不要为了证明自己在场而填补安静/);
   assert.match(bridge, /current_diary_event/);
   assert.match(bridge, /Current diary event/);
 });
@@ -56,19 +55,19 @@ test("AstrBot bridge has proactive idle topic strategy", () => {
 
   assert.match(bridge, /reply_mode == "proactive_idle"/);
   assert.match(bridge, /_build_proactive_idle_instruction/);
-  assert.match(bridge, /one concrete, easy-to-answer topic point/);
-  assert.match(bridge, /Prefer daily diary context from hoshia_life_system first/);
-  assert.match(bridge, /must not present them as verified real-world travel/);
-  assert.match(bridge, /only says the room is quiet/);
-  assert.match(bridge, /today light live-room chat topic/);
+  assert.match(bridge, /具体、容易接的话题点/);
+  assert.match(bridge, /今天的日常状态、最近经历、日记摘要/);
+  assert.match(bridge, /不要说成真实旅行/);
+  assert.match(bridge, /不要只说小房间很安静/);
+  assert.match(bridge, /today light campus chat topic/);
 });
 
 test("gateway proactive idle prompt prioritizes diary hooks over generic silence", () => {
   const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
-  assert.match(server, /Available proactive topic hooks, in priority order/);
+  assert.match(server, /可用的主动话题钩子，按优先级排序/);
   assert.match(server, /Daily diary: \$\{line\}/);
-  assert.match(server, /Prefer the first available daily diary hook from hoshia_life_system/);
-  assert.match(server, /Do not send a line that only says the room is quiet/);
-  assert.match(server, /If there is no concrete diary, news, music, or recent-chat hook/);
+  assert.match(server, /优先用日记钩子/);
+  assert.match(server, /不要只说小房间很安静/);
+  assert.match(server, /如果没有具体的日记、消息、音乐或近期聊天钩子/);
 });

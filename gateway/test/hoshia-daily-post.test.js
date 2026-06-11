@@ -302,7 +302,7 @@ test("repeated identical state uses diary detail instead of duplicating content"
     assert.equal(first.created, true);
     assert.equal(second.created, true);
     assert.notEqual(second.post.content, first.post.content);
-    assert.match(second.post.content, /直播间整理|小日记|状态/);
+    assert.match(second.post.content, /小房间整理|小日记|状态/);
     assert.doesNotMatch(second.post.content, /Stage notes|room setup|topic notes|wanted to say/);
     assert.doesNotMatch(second.post.content, /token=|\/home\/ubuntu|\.env/i);
   } finally {

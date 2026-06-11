@@ -15,6 +15,12 @@ Internal AstrBot bridge for `live-room-dev`.
 - Can optionally maintain a short-lived news topic pool by pulling configured RSSHub/RSS feeds, selectively enriching unclear topics with Tavily, asking AstrBot to turn them into Hoshia-style conversation cards, and writing them to the isolated LivingMemory news session. Topic cards include short safe fields such as meme hooks, reaction style, state signal, post seed, and reply hooks.
 - Returns only reply text, state, source, and latency. It never returns provider URLs or internal service addresses.
 
+## Role Boundary
+
+Engineering-side names such as AstrBot, gateway, live-room, module, event, LivingMemory, endpoint, provider, and field names are allowed in this README and in internal logs/configuration. They are not part of Hoshia's role-visible identity.
+
+Prompts sent to Hoshia should describe only what she can naturally know: recent chat, current room state, viewer preferences, topic inspiration, music state, and safe behavior signals. Do not expose backend component names, JSON field names, tokens, paths, IPs, provider URLs, or configuration details in role-facing prompt text.
+
 ## Config
 
 Set `bridge_token` in the plugin config to the same value as gateway `.env` `ASTRBOT_BRIDGE_TOKEN`.

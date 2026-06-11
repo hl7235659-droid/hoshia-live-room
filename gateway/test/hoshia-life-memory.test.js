@@ -47,7 +47,7 @@ test("life memory service records posts comments and builds a memory packet", ()
     });
     assert.equal(packet.some((line) => line.includes("post_comment")), false);
     assert.equal(packet.some((line) => line.includes("菜就多练")), true);
-    assert.equal(packet.some((line) => line.includes("Hoshia life memory")), true);
+    assert.equal(packet.some((line) => line.includes("Hoshia 生活记忆")), true);
 
     const listed = db.listHoshiaPosts({ viewerUserId: "user-1" }).map(publicPost);
     assert.equal(listed[0].interactions[0].content, "菜就多练，今天练了吗");

@@ -150,7 +150,7 @@ export function buildActiveContext({ visualState = null, audienceUsers = [], mod
     ].filter(Boolean).join("; "),
     current_activity: safeText(state.state_reason || state.visual_description || "", 180),
     current_diary_event: currentDiaryEvent,
-    active_event: latest?.text ? `${safeText(latest.session?.nickname || "viewer", 32)}: ${safeText(latest.text, 120)}` : "",
+    active_event: latest?.text ? `${safeText(latest.session?.nickname || "网友", 32)}: ${safeText(latest.text, 120)}` : "",
     recent_user_memory: userMemory,
     chat_hooks: hooks,
     tone_bias: toneBiasForState(state, audienceUsers)
@@ -162,7 +162,7 @@ export function pendingReplyNotice(route) {
   if (route === "diary_related") return "她翻了翻今天写下的小记。";
   if (route === "project_discussion") return "她把桌上的便签拖到面前。";
   if (route === "memory_related") return "她像是在回想你们之前聊过的事。";
-  if (route === "command") return "她很快看了一眼当前房间状态。";
+  if (route === "command") return "她很快看了一眼现在的情况。";
   return "她的耳朵动了一下，像是马上要接话。";
 }
 
@@ -291,28 +291,28 @@ function diaryEventLabel(type = "", title = "") {
   if (/anime|otaku|comment|thread|interest/.test(text)) return "看兴趣话题和二次元讨论";
   if (/game|match|replay/.test(text)) return "复盘游戏里的小决定";
   if (/song|music/.test(text)) return "听歌调整房间氛围";
-  if (/room|stage|live/.test(text)) return "整理直播间和准备话题";
-  if (/user_related/.test(text)) return "刚和观众聊过几句";
+  if (/room|stage|live/.test(text)) return "整理小房间和准备话题";
+  if (/user_related/.test(text)) return "刚和特殊网友聊过几句";
   if (/private_mood|emo/.test(text)) return "低电量地安静待一会儿";
   return "今天日记里的一件小事";
 }
 
 function diaryEventDetail(type = "", title = "") {
   const text = `${type} ${title}`.toLowerCase();
-  if (/room|stage|live/.test(text)) return "她现在更像是在检查房间状态、整理小话题，不是在做很大的事。";
+  if (/room|stage|live/.test(text)) return "她现在更像是在整理小房间状态和小话题，不是在做很大的事。";
   if (/anime|otaku|comment|thread|interest/.test(text)) return "她刚被一个兴趣点勾住，脑子里还在想要不要吐槽两句。";
   if (/game|match|replay/.test(text)) return "她在回想刚才的判断，带一点不服输的劲。";
   if (/run|sport|training/.test(text)) return "她身体有点累，但心情比之前清爽。";
   if (/class|work|campus|desk|notes/.test(text)) return "她在处理普通但真实的小安排，注意力还没完全散。";
-  if (/song|music/.test(text)) return "她在用歌单和声音把房间气氛垫起来。";
-  if (/user_related/.test(text)) return "她把观众出现这件事当成今天的一小段痕迹。";
+  if (/song|music/.test(text)) return "她在用歌单和声音把小房间气氛垫起来。";
+  if (/user_related/.test(text)) return "她把那个特殊网友出现这件事当成今天的一小段痕迹。";
   if (/wake|sleep|private_mood|emo/.test(text)) return "她现在动作慢一点，适合低声说几句。";
   return "她可以把它当成正在发生的生活细节来回答。";
 }
 
 function localizedDiaryHook(type = "", hook = "") {
   const text = `${type} ${hook}`.toLowerCase();
-  if (/viewer|room feels less empty|arrives/.test(text)) return "有人来以后房间没那么空。";
+  if (/viewer|room feels less empty|arrives/.test(text)) return "有人来以后小房间没那么空。";
   if (/song|loop/.test(text)) return "问问对方今晚会循环哪首歌。";
   if (/character|anime/.test(text)) return "问问对方怎么看角色讨论。";
   if (/training|rested/.test(text)) return "问问对方今天是训练还是休息。";
@@ -326,7 +326,7 @@ function toneBiasForState(state = {}, audienceUsers = []) {
   const mood = String(state.mood || "").toLowerCase();
   if (mood.includes("tired")) return "亲近、低声、短句，不要工具化";
   if (online <= 1) return "像熟人低声接话，轻微撒娇，短回复优先";
-  return "自然主播感，先接住重点，不要长篇解释";
+  return "自然朋友感，先接住重点，不要长篇解释";
 }
 
 function compactObject(value) {

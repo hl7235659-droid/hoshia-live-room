@@ -19,19 +19,19 @@ test("welcome greeting prompt includes account personalization", () => {
         preferred_name: "小艾",
         reply_style: "teasing_friend",
         reply_style_text: "像熟朋友一样轻松吐槽",
-        interests: "AI 和游戏",
+        interests: "游戏和老电影",
         memory_enabled: true
       }
     },
     room: { online: 2, registered: 4 },
     currentOnlineSeconds: 90,
     totalOnlineSeconds: 3690,
-    contextSummary: "Alice 最近在准备一次直播间演示。",
+    contextSummary: "Alice 最近在准备一次小房间演示。",
     realityContextLines: ["当前现实时间：2026-06-09 20:10:00，星期二，时区 Asia/Shanghai，晚上。"],
-    hostLifeContextLines: ["【Hoshia 当前状态】", "房间氛围：有人明确叫到 Hoshia；她会珍惜被叫到，但不用表现得像被启动的客服。"]
+    hostLifeContextLines: ["【Hoshia 当前状态】", "小房间氛围：有人明确叫到 Hoshia；她会珍惜被叫到，但不用表现得像被启动的客服。"]
   });
 
-  assert.match(prompt, /主动欢迎刚进入房间的观众/);
+  assert.match(prompt, /主动欢迎刚出现的特殊网友/);
   assert.match(prompt, /日常回复手感/);
   assert.match(prompt, /欢迎语也要带一点 Hoshia 的辨识度/);
   assert.match(prompt, /Alice/);
@@ -40,12 +40,13 @@ test("welcome greeting prompt includes account personalization", () => {
   assert.match(prompt, /1分钟/);
   assert.match(prompt, /1小时1分钟/);
   assert.match(prompt, /小艾/);
-  assert.match(prompt, /AI 和游戏/);
-  assert.match(prompt, /直播间演示/);
+  assert.match(prompt, /游戏和老电影/);
+  assert.match(prompt, /小房间演示/);
   assert.match(prompt, /当前在线 2 人/);
   assert.match(prompt, /Hoshia 当前状态/);
   assert.match(prompt, /客服/);
   assert.match(prompt, /不要说自己一直等着对方/);
+  assert.match(prompt, /不要把自己说成技术产物、荧幕角色、表演者或被研究对象/);
   assert.match(prompt, /不要暴露/);
 });
 

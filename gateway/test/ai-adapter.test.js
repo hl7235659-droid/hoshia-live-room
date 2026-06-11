@@ -35,7 +35,7 @@ test("mock mode returns local reply without bridge fetch", async () => {
 
   assert.equal(reply.source, "mock");
   assert.equal(reply.state, "SPEAKING");
-  assert.match(reply.text, /Tester|mock AI/);
+  assert.match(reply.text, /Tester|测试小房间/);
 });
 
 test("astrbot mode sends authenticated bridge request", async () => {
@@ -66,7 +66,7 @@ test("astrbot mode sends authenticated bridge request", async () => {
 
 test("astrbot room batch uses shared room session and reply targets", async () => {
   const reply = await generateAiReply(
-    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    { ...session, user_id: "room", nickname: "小房间留言" },
     "最近弹幕：\n[1] Alice @Hoshia: hi",
     baseConfig,
     async (_url, options) => {
@@ -74,7 +74,7 @@ test("astrbot room batch uses shared room session and reply targets", async () =
         session_id: "live-room-dev:room",
         room_id: "live-room-dev",
         user_id: "room",
-        nickname: "直播间弹幕",
+        nickname: "小房间留言",
         text: "最近弹幕：\n[1] Alice @Hoshia: hi",
         prompt: "最近弹幕：\n[1] Alice @Hoshia: hi",
         reply_targets: ["Alice"],
@@ -111,7 +111,7 @@ test("astrbot room batch uses shared room session and reply targets", async () =
 
 test("astrbot room batch can force single-viewer direct replies", async () => {
   const reply = await generateAiReply(
-    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    { ...session, user_id: "room", nickname: "小房间留言" },
     "最近弹幕：\n[1] Alice: 今天好累",
     baseConfig,
     async (_url, options) => {
@@ -119,7 +119,7 @@ test("astrbot room batch can force single-viewer direct replies", async () => {
         session_id: "live-room-dev:room",
         room_id: "live-room-dev",
         user_id: "room",
-        nickname: "直播间弹幕",
+        nickname: "小房间留言",
         text: "最近弹幕：\n[1] Alice: 今天好累",
         prompt: "最近弹幕：\n[1] Alice: 今天好累",
         reply_targets: [],
@@ -200,7 +200,7 @@ test("astrbot room batch can include module context and module events", async ()
       module_id: "music",
       enabled: true,
       current_state: ["当前播放：Purple Rain - Prince。", "待播 1 首。"],
-      capabilities: ["观众可通过弹幕点歌。"],
+      capabilities: ["特别联系人可以用留言点歌。"],
       limits: ["只能基于当前队列回答。"]
     }
   ];
@@ -605,7 +605,7 @@ test("music intent recognition safely returns none on bridge failure", async () 
 
 test("astrbot judge skip is returned without fallback", async () => {
   const reply = await generateAiReply(
-    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    { ...session, user_id: "room", nickname: "小房间留言" },
     "最近弹幕：\n[1] Bob: 哈哈",
     baseConfig,
     async () => responseJson(200, {
@@ -634,7 +634,7 @@ test("astrbot errors fall back to mock when enabled", async () => {
 
 test("astrbot room reply errors skip instead of posting mock fallback", async () => {
   const reply = await generateAiReply(
-    { ...session, user_id: "room", nickname: "直播间弹幕" },
+    { ...session, user_id: "room", nickname: "小房间留言" },
     "Recent danmaku:\n[1] 003: 你今天没事做吗",
     baseConfig,
     async () => responseJson(500, { ok: false }),
