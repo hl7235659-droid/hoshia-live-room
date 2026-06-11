@@ -26,6 +26,7 @@ import {
   buildModuleContext,
   createHoshiaCommentReplyEvent,
   createHoshiaInterestModuleProvider,
+  createHoshiaLifeModuleProvider,
   createHoshiaPostCreatedEvent,
   createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
@@ -50,6 +51,7 @@ import { createHoshiaNewsService } from "./hoshia-news-service.js";
 import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
+import { createHoshiaDailyCanonService } from "./hoshia-daily-canon.js";
 import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
 import {
   createProactiveReplyState,
@@ -148,6 +150,10 @@ const hoshiaInterestSystem = createHoshiaInterestSystem({
   lifeMemoryService: hoshiaLifeMemoryService,
   timeZone: config.realityContextTimezone || "Asia/Shanghai"
 });
+const hoshiaDailyCanonService = createHoshiaDailyCanonService({
+  db,
+  timeZone: config.realityContextTimezone || "Asia/Shanghai"
+});
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   db,
@@ -180,6 +186,7 @@ const hoshiaDailyPostService = createHoshiaDailyPostService({
 const moduleProviders = [
   createMusicModuleProvider(musicService),
   createHoshiaVisualModuleProvider(hoshiaVisualStateService),
+  createHoshiaLifeModuleProvider(hoshiaDailyCanonService),
   createHoshiaInterestModuleProvider(hoshiaInterestSystem),
   createHoshiaNewsModuleProvider(hoshiaNewsService)
 ];
@@ -792,6 +799,8 @@ const websocketHeartbeat = setInterval(() => {
 
 function runScheduledHoshiaVisualTick() {
   hoshiaVisualTickTimer = null;
+  hoshiaDailyCanonService.ensureTodayPlan();
+  hoshiaDailyCanonService.ensureActualDiary();
   const result = tickHoshiaVisualState({
     reason: "scheduled visual state refresh"
   });
@@ -812,6 +821,7 @@ function runScheduledHoshiaVisualTick() {
 }
 
 function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
+  hoshiaDailyCanonService.ensureTodayPlan();
   const selectedNewsTopic = newsTopic || selectCachedNewsTopicForPost();
   const newsState = selectedNewsTopic
     ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
@@ -849,6 +859,7 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
       applyNewsSignalFromTopic(selectedNewsTopic, session, "news_topic_post");
     }
     if (result.post.source_type !== "news_topic") {
+      hoshiaDailyCanonService.ensureActualDiary();
       const visualUpdate = updateHoshiaVisualState({
         body: {
           mood: result.post.mood,
@@ -1018,6 +1029,11 @@ async function handleDanmaku(session, payload) {
     session,
     text,
     messageId: userMessage.id
+  });
+  hoshiaDailyCanonService.recordUserInteraction({
+    session,
+    text,
+    now: new Date()
   });
   broadcast(userMessage);
   markUserActivityForProactive(proactiveReplyState);
@@ -2275,7 +2291,9 @@ function clampInt(value, min, max, fallback) {
 }
 
 function tickHoshiaVisualState({ reason = "scheduled visual refresh" } = {}) {
-  return hoshiaVisualStateService.tick({ reason });
+  const now = new Date();
+  const canonEvent = hoshiaDailyCanonService.getActiveEvent({ now, create: true });
+  return hoshiaVisualStateService.tick({ reason, now, canonEvent });
 }
 
 function stateReasonForPostSource(sourceType) {

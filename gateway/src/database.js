@@ -857,6 +857,82 @@ export class LiveRoomDatabase {
     return row ? normalizeLifeMemoryRow(row) : null;
   }
 
+  updateHoshiaLifeMemory({
+    id,
+    content,
+    importance = null,
+    emotion = null,
+    tags = null,
+    expires_at = null,
+    last_accessed_at = new Date().toISOString()
+  } = {}) {
+    const existing = this.getHoshiaLifeMemory(id);
+    if (!existing) return null;
+    this.db.prepare(`
+      UPDATE hoshia_life_memories
+      SET content = ?,
+          importance = ?,
+          emotion = ?,
+          tags_json = ?,
+          expires_at = ?,
+          last_accessed_at = ?
+      WHERE id = ?
+    `).run(
+      String(content || ""),
+      importance === null ? Number(existing.importance || 0.5) : Math.max(0, Math.min(Number(importance) || 0.5, 1)),
+      emotion === null ? (existing.emotion || null) : (emotion || null),
+      JSON.stringify(Array.isArray(tags) ? tags : existing.tags || []),
+      expires_at === null ? existing.expires_at || null : expires_at,
+      last_accessed_at || null,
+      id
+    );
+    return this.getHoshiaLifeMemory(id);
+  }
+
+  upsertHoshiaLifeMemory({
+    id,
+    character_id = "hoshia",
+    user_id = "",
+    type = "event",
+    source = "system",
+    source_id = "",
+    content = "",
+    importance = 0.5,
+    emotion = "",
+    tags = [],
+    created_at = new Date().toISOString(),
+    last_accessed_at = null,
+    expires_at = null
+  } = {}) {
+    const existing = this.getHoshiaLifeMemory(id);
+    if (existing) {
+      return this.updateHoshiaLifeMemory({
+        id,
+        content,
+        importance,
+        emotion,
+        tags,
+        expires_at,
+        last_accessed_at: last_accessed_at || created_at
+      });
+    }
+    return this.addHoshiaLifeMemory({
+      id,
+      character_id,
+      user_id,
+      type,
+      source,
+      source_id,
+      content,
+      importance,
+      emotion,
+      tags,
+      created_at,
+      last_accessed_at,
+      expires_at
+    });
+  }
+
   searchHoshiaLifeMemories({
     characterId = "hoshia",
     userId = "",

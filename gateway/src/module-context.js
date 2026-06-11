@@ -114,6 +114,15 @@ export function createHoshiaInterestModuleProvider(interestSystem) {
   };
 }
 
+export function createHoshiaLifeModuleProvider(lifeSystem) {
+  return {
+    moduleId: "hoshia_life_system",
+    getCapabilityContext(session) {
+      return buildHoshiaLifeModuleContext(lifeSystem, session);
+    }
+  };
+}
+
 export function buildMusicModuleContext(musicService, session) {
   const state = typeof musicService?.publicState === "function"
     ? musicService.publicState(session)
@@ -276,6 +285,55 @@ export function buildHoshiaInterestModuleContext(interestSystem, session) {
       "Do not claim to have read real sources unless a safe topic summary is provided by another module.",
       "Do not expose internal field names, raw chat logs, URLs, credentials, paths, provider names, or configuration.",
       "Do not turn one isolated user action into a permanent preference unless memory context explicitly supports it."
+    ]
+  });
+}
+
+export function buildHoshiaLifeModuleContext(lifeSystem, session) {
+  const state = typeof lifeSystem?.buildContext === "function"
+    ? lifeSystem.buildContext(session)
+    : null;
+
+  if (!state?.enabled) {
+    return sanitizeModuleContext({
+      module_id: "hoshia_life_system",
+      enabled: false,
+      current_state: ["Hoshia daily canon context is unavailable."],
+      capabilities: [],
+      limits: [
+        "Do not invent a full daily diary without safe canon context."
+      ]
+    });
+  }
+
+  const currentState = [
+    state.date ? `Diary date: ${state.date}.` : "",
+    state.theme ? `Daily theme: ${state.theme}.` : "",
+    state.diary_text ? `Diary summary: ${state.diary_text}.` : "",
+    state.emotional_arc ? `Emotional arc: ${formatArcLine(state.emotional_arc)}.` : "",
+    state.active_event ? `Current event: ${formatEventLine(state.active_event)}.` : ""
+  ].filter(Boolean);
+  const recentEvents = Array.isArray(state.recent_events) ? state.recent_events.slice(0, 3) : [];
+  for (const [index, event] of recentEvents.entries()) {
+    currentState.push(`Recent event ${index + 1}: ${formatEventLine(event)}.`);
+  }
+  if (Array.isArray(state.current_focus_candidates) && state.current_focus_candidates.length) {
+    currentState.push(`Focus hooks: ${state.current_focus_candidates.slice(0, 3).map((item) => cleanText(item, 80)).join("; ")}.`);
+  }
+
+  return sanitizeModuleContext({
+    module_id: "hoshia_life_system",
+    enabled: true,
+    current_state: currentState,
+    capabilities: [
+      "Hoshia can use the current day plan, active event, and recent event trail as lived context.",
+      "The diary context can shape mood, replies, and chat hooks without exposing raw logs.",
+      "User participation can become a short safe event in today's diary when relevant."
+    ],
+    limits: [
+      "Do not repeat internal field names or raw memory JSON.",
+      "Do not expose private logs, paths, tokens, or exact original user messages.",
+      "Treat the diary context as a safe summary, not as a guaranteed factual transcript of every event."
     ]
   });
 }
@@ -485,6 +543,23 @@ function publicNewsState(newsService, session) {
     recent_signal: cleanText(raw.recent_signal ?? raw.recentSignal, 140),
     safe_summary: cleanText(raw.safe_summary ?? raw.safeSummary ?? raw.summary, 160)
   };
+}
+
+function formatArcLine(arc = {}) {
+  return [
+    arc.morning ? `morning ${cleanText(arc.morning, 36)}` : "",
+    arc.afternoon ? `afternoon ${cleanText(arc.afternoon, 36)}` : "",
+    arc.evening ? `evening ${cleanText(arc.evening, 36)}` : "",
+    arc.late_night ? `late night ${cleanText(arc.late_night, 36)}` : ""
+  ].filter(Boolean).join("; ");
+}
+
+function formatEventLine(event = {}) {
+  return [
+    event.time_range ? cleanText(event.time_range, 16) : "",
+    event.title ? cleanText(event.title, 40) : "",
+    event.summary ? cleanText(event.summary, 90) : ""
+  ].filter(Boolean).join(" - ");
 }
 
 function assetLabelForPath(path) {

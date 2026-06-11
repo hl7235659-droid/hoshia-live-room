@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   buildModuleContext,
   buildHoshiaInterestModuleContext,
+  buildHoshiaLifeModuleContext,
   buildHoshiaNewsModuleContext,
   buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
   createHoshiaInterestModuleProvider,
+  createHoshiaLifeModuleProvider,
   createHoshiaNewsModuleProvider,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
@@ -275,6 +277,57 @@ test("hoshia interest module context exposes daily canon and shared topic hooks 
     providers: [createHoshiaInterestModuleProvider(interestSystem)]
   });
   assert.equal(contexts[0].module_id, "hoshia_interest_system");
+});
+
+test("hoshia life module context exposes only safe daily canon summaries", () => {
+  const lifeSystem = {
+    buildContext(session) {
+      return {
+        enabled: true,
+        date: "2026-06-11",
+        theme: "A quiet day that gets warmer at night.",
+        diary_text: "She keeps the day ordinary on purpose.",
+        emotional_arc: {
+          morning: "sleepy",
+          afternoon: "curious",
+          evening: "lighter",
+          late_night: "talkative"
+        },
+        active_event: {
+          time_range: "20:40-21:20",
+          title: "Looped one song",
+          summary: "She replayed one song because it matched the room mood."
+        },
+        recent_events: [
+          {
+            time_range: "17:40-18:30",
+            title: "Evening run",
+            summary: "She moved around enough to clear her head."
+          }
+        ],
+        current_focus_candidates: [
+          "ask what song the viewer would put on loop"
+        ],
+        session
+      };
+    }
+  };
+
+  const context = buildHoshiaLifeModuleContext(lifeSystem, { user_id: "user-1" });
+  const serialized = JSON.stringify(context);
+
+  assert.equal(context.module_id, "hoshia_life_system");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("Diary date")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Current event")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("active event")), true);
+  assert.equal(context.limits.some((line) => line.includes("raw memory JSON")), true);
+  assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
+
+  const contexts = buildModuleContext({
+    providers: [createHoshiaLifeModuleProvider(lifeSystem)]
+  });
+  assert.equal(contexts[0].module_id, "hoshia_life_system");
 });
 
 test("disabled hoshia news module context keeps capability surface closed", () => {

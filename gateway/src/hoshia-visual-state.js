@@ -1,3 +1,5 @@
+import { applyCanonEventToState } from "./hoshia-daily-canon.js";
+
 const characterId = "hoshia";
 const defaultTickMinMinutes = 20;
 const defaultTickMaxMinutes = 60;
@@ -58,8 +60,23 @@ export function createHoshiaVisualStateService({ db, clock = () => new Date() })
       };
     },
 
-    tick({ reason = "scheduled visual refresh", now = clock() } = {}) {
+    tick({ reason = "scheduled visual refresh", now = clock(), canonEvent = null } = {}) {
       const current = ensureState(db, () => now);
+      const canonState = applyCanonEventToState(current, canonEvent, now);
+      if (canonState) {
+        const next = normalizeState({
+          ...canonState,
+          state_reason: cleanStateReason(canonState.state_reason || reason),
+          updated_at: now.toISOString()
+        });
+        next.current_png = selectAssetForState(next, current.current_png).path;
+        db.upsertHoshiaState(next);
+        return {
+          changed: hasVisualStateChanged(current, next),
+          state: publicVisualState(next),
+          reason: next.state_reason
+        };
+      }
       const newsSignal = consumePendingNewsSignal(pendingNewsSignal, now);
       pendingNewsSignal = newsSignal.keep ? newsSignal.signal : null;
       const rhythm = applyNewsSignalToRhythm(rhythmForState(current, now), newsSignal.signal);

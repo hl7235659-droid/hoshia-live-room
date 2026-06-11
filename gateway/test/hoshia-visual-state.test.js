@@ -162,6 +162,40 @@ test("scheduled tick applies late-night rhythm and unmet social need", () => {
   }
 });
 
+test("scheduled tick applies active daily canon event before fallback rhythm", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+
+    const result = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-10T10:10:00.000Z"),
+      canonEvent: {
+        title: "Game replay in her head",
+        type: "anime_game",
+        state_delta: {
+          energy: -3,
+          social_need: 8,
+          mood: "competitive",
+          activity: "gaming"
+        }
+      }
+    });
+
+    assert.equal(result.state.activity, "gaming");
+    assert.equal(result.state.mood, "competitive");
+    assert.equal(result.state.energy, 69);
+    assert.equal(result.state.social_need, 56);
+    assert.match(result.state.state_reason, /daily canon/i);
+    assert.match(result.state.current_png, /gaming_competitive_01/);
+  } finally {
+    cleanup();
+  }
+});
+
 test("scheduled tick decays stale transient activities toward idle", () => {
   const { db, cleanup } = openTempDb();
   try {

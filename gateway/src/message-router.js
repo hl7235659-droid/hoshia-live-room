@@ -245,8 +245,10 @@ function chatHooksFromModules(moduleContext = [], moduleEvents = []) {
   const hooks = [];
   const music = moduleContext.find((item) => item?.module_id === "music" && item.enabled);
   if (music?.current_state?.length) hooks.push(safeText(music.current_state[0], 140));
-  const visual = moduleContext.find((item) => item?.module_id === "hoshia_visual" && item.enabled);
+  const visual = moduleContext.find((item) => (item?.module_id === "hoshia_visual" || item?.module_id === "hoshia_visual_state") && item.enabled);
   if (visual?.current_state?.length) hooks.push(safeText(visual.current_state[0], 140));
+  const life = moduleContext.find((item) => item?.module_id === "hoshia_life_system" && item.enabled);
+  if (life?.current_state?.length) hooks.push(safeText(life.current_state[0], 140));
   const event = moduleEvents.find((item) => item?.summary_hint);
   if (event) hooks.push(safeText(event.summary_hint, 140));
   return hooks.filter(Boolean).slice(0, 3);
