@@ -88,7 +88,7 @@ Important options:
 - `HOSHIACLAW_OPENAI_BASE_URL`: OpenAI-compatible base URL without `/chat/completions`, for example `https://opencode.ai/zen/go/v1` for OpenCode Go.
 - `HOSHIACLAW_OPENAI_API_KEY`: provider API key. Keep the real value only in private server `.env`.
 - `HOSHIACLAW_OPENAI_MODEL`: provider model id, for example `deepseek-v4-flash` on OpenCode Go.
-- `HOSHIACLAW_OPENAI_TIMEOUT_MS` / `HOSHIACLAW_OPENAI_MAX_TOKENS` / `HOSHIACLAW_OPENAI_TEMPERATURE`: sidecar model-call limits.
+- `HOSHIACLAW_OPENAI_TIMEOUT_MS` / `HOSHIACLAW_OPENAI_MAX_TOKENS` / `HOSHIACLAW_OPENAI_TEMPERATURE`: sidecar model-call limits. `deepseek-v4-flash` may need a larger token cap such as `1200` because reasoning tokens can consume part of the budget before the final JSON content.
 - `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
 - `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
 - `MUSIC_ENABLED`: enables the private-room music queue experiment.

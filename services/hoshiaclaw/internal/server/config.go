@@ -38,7 +38,7 @@ func ConfigFromEnv() Config {
 		OpenAICompatibleAPIKey:    os.Getenv("HOSHIACLAW_OPENAI_API_KEY"),
 		OpenAICompatibleModel:     os.Getenv("HOSHIACLAW_OPENAI_MODEL"),
 		OpenAICompatibleTimeout:   durationFromEnv("HOSHIACLAW_OPENAI_TIMEOUT_MS", 30*time.Second),
-		OpenAICompatibleMaxTokens: intFromEnv("HOSHIACLAW_OPENAI_MAX_TOKENS", 360),
+		OpenAICompatibleMaxTokens: intFromEnv("HOSHIACLAW_OPENAI_MAX_TOKENS", 1200),
 		OpenAICompatibleTemp:      floatFromEnv("HOSHIACLAW_OPENAI_TEMPERATURE", 0.7),
 	}
 }
