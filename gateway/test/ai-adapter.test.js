@@ -465,6 +465,38 @@ test("astrbot stream failure falls back to one-shot JSON reply", async () => {
   assert.equal(reply.streamed, undefined);
 });
 
+test("stream fallback log hides provider_failed details", async () => {
+  let calls = 0;
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    const reply = await generateAiReply(
+      session,
+      "hello",
+      baseConfig,
+      async (_url, options) => {
+        calls += 1;
+        const body = JSON.parse(options.body);
+        if (calls === 1) {
+          assert.equal(body.stream, true);
+          return responseNdjson([{ type: "error", ok: false, error: "provider_failed" }]);
+        }
+        return responseJson(200, { ok: true, text: "fallback reply", state: "SPEAKING", source: "astrbot" });
+      },
+      { onDelta: () => {} }
+    );
+
+    assert.equal(reply.text, "fallback reply");
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(calls, 2);
+  assert.equal(JSON.stringify(warnings).includes("provider_failed"), false);
+  assert.equal(warnings[0]?.[1]?.message, "bridge_stream_failed");
+});
+
 test("proactive idle reply mode is forwarded to astrbot bridge", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "Live room" },

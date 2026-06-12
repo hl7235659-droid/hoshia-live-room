@@ -68,7 +68,7 @@ async function requestBridgeReply(session, text, options, fetchImpl, metadata = 
     } catch (error) {
       console.warn(`${profile.kind}_stream_failed_falling_back`, {
         type: error.name || "Error",
-        message: error.message
+        message: safeBridgeLogMessage(error.message)
       });
     }
   }
@@ -625,6 +625,16 @@ function normalizeLatencyBreakdown(value) {
     if (Number.isFinite(number) && number >= 0) output[key] = Math.round(number);
   }
   return Object.keys(output).length ? output : undefined;
+}
+
+function safeBridgeLogMessage(message) {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  if (!text) return "bridge_stream_failed";
+  if (/provider_failed/i.test(text)) return "bridge_stream_failed";
+  if (/(?:token|secret|bearer|\.env|ssh|cloudflared|https?:\/\/|[A-Za-z]:\\|\/home\/|\/root\/|127\.0\.0\.1|localhost)/i.test(text)) {
+    return "bridge_stream_failed";
+  }
+  return text.slice(0, 120);
 }
 
 export function mockAiReply(text, nickname) {
