@@ -18,6 +18,7 @@ import {
 import { generateAiReply, recognizeMusicIntent, summarizeLiveRoomContext } from "./ai-adapter.js";
 import { isValidState, nextCharacterState } from "./state-machine.js";
 import { buildRealityContext } from "./reality-context.js";
+import { pickRuntimeRevision } from "./revision-utils.js";
 import { buildHostLifeContext } from "./host-life-context.js";
 import { hoshiaPersonaPrompt } from "./hoshia-persona.js";
 import {
@@ -2909,7 +2910,11 @@ function hasSensitiveMetricMarker(value) {
 }
 
 function safeRevision() {
-  return safeMetricIdentifier(process.env.SOURCE_REVISION || process.env.REVISION || readRevisionFile() || "unknown", 40) || "unknown";
+  return pickRuntimeRevision([
+    process.env.SOURCE_REVISION,
+    process.env.REVISION,
+    readRevisionFile()
+  ], (value) => safeMetricIdentifier(value, 40));
 }
 
 let cachedRevisionFileValue = null;
