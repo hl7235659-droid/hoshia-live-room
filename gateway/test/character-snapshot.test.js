@@ -32,8 +32,13 @@ test("character snapshot builds a safe public/private read model", () => {
 
   assert.equal(snapshot.public.presence.character_state, "SPEAKING");
   assert.equal(snapshot.public.expression.current_asset, "/assets/hoshia/stage-png/happy_happy_01.png");
+  assert.equal(snapshot.public.recent.interaction_source, "");
+  assert.equal(snapshot.public.stage.presentation_suggestion.mood, "happy");
   assert.equal(snapshot.private.axes.bond, 52);
   assert.equal(summarizeCharacterSnapshotForPrompt(snapshot).internal, undefined);
+  assert.equal(summarizeCharacterSnapshotForPrompt(snapshot).private, undefined);
+  assert.equal(summarizeCharacterSnapshotForPrompt(snapshot).recent, snapshot.public.recent);
+  assert.equal(summarizeCharacterSnapshotForPrompt(snapshot).stage, snapshot.public.stage);
 });
 
 test("character event normalization keeps summaries and drops sensitive data", () => {
@@ -64,6 +69,7 @@ test("character event normalization keeps safe ai reply route only", () => {
     data: {
       route: "smalltalk",
       source_type: "openai_compatible",
+      action: "pause",
       raw_response: "full reply should not persist",
       base_url: "https://example.test/v1"
     }
@@ -72,6 +78,31 @@ test("character event normalization keeps safe ai reply route only", () => {
 
   assert.equal(data.route, "smalltalk");
   assert.equal(data.source_type, "openai_compatible");
+  assert.equal(data.action, "pause");
   assert.equal(data.raw_response, undefined);
   assert.equal(data.base_url, undefined);
+});
+
+test("snapshot prompt summary only exposes public safe blocks", () => {
+  const snapshot = buildCharacterSnapshot({
+    visualState: {
+      mood: "focused",
+      activity: "reading",
+      state_reason: "C:\\secret\\raw.txt"
+    },
+    moduleEvents: [{
+      module_id: "music",
+      event_type: "music.control",
+      data: { raw_prompt: "hidden" }
+    }]
+  });
+  const summary = summarizeCharacterSnapshotForPrompt(snapshot);
+
+  assert.equal(summary.expression.mood, "focused");
+  assert.equal(summary.stage.presentation_suggestion.activity, "reading");
+  assert.equal(summary.recent.interaction_source, "music:music.control");
+  assert.equal(summary.private, undefined);
+  assert.equal(summary.internal, undefined);
+  assert.equal(JSON.stringify(summary).includes("raw_prompt"), false);
+  assert.equal(JSON.stringify(summary).includes("C:\\secret"), false);
 });

@@ -54,6 +54,21 @@ export function buildCharacterSnapshot({
         warmth_label: warmthLabel(bond),
         known_user_cues: sanitizeList([profile.summary, profile.preferred_topics, profile.interaction_style], 4, 140)
       },
+      recent: {
+        interaction_source: safeText(lastModuleEventSource(moduleEvents), 80),
+        last_music_request: null,
+        last_music_control: null,
+        last_timeline_post: null,
+        last_comment_reply: null,
+        last_visual_state_change: null
+      },
+      stage: {
+        presentation_suggestion: {
+          mood: safeText(safeVisual.mood || "calm", 40),
+          activity: safeText(safeVisual.activity || "idle", 40),
+          source: "snapshot_builder"
+        }
+      },
       explain: {
         state_reason: safeText(safeVisual.state_reason || "legacy visual state", 180),
         updated_at: safeText(safeVisual.updated_at || now, 40)
@@ -132,6 +147,8 @@ export function summarizeCharacterSnapshotForPrompt(snapshot = {}) {
     expression: pub.expression,
     today: pub.today,
     relationship: pub.relationship,
+    recent: pub.recent,
+    stage: pub.stage,
     explain: pub.explain
   };
 }
@@ -166,7 +183,7 @@ export function normalizeCharacterEvent(event = {}) {
 
 function sanitizeEventData(data = {}) {
   if (!data || typeof data !== "object") return {};
-  const allowed = new Set(["title", "artist", "activity", "mood", "source_type", "route", "topic", "category", "post_id", "comment_id", "status"]);
+  const allowed = new Set(["title", "artist", "activity", "mood", "source", "source_type", "route", "topic", "category", "post_id", "comment_id", "status", "action"]);
   const output = {};
   for (const [key, value] of Object.entries(data)) {
     if (!allowed.has(key)) continue;
@@ -174,6 +191,13 @@ function sanitizeEventData(data = {}) {
     if (text) output[key] = text;
   }
   return output;
+}
+
+function lastModuleEventSource(moduleEvents = []) {
+  if (!Array.isArray(moduleEvents) || !moduleEvents.length) return "";
+  const event = moduleEvents.findLast?.((item) => item?.event_type || item?.module_id)
+    || [...moduleEvents].reverse().find((item) => item?.event_type || item?.module_id);
+  return event ? `${event.module_id || "module"}:${event.event_type || "event"}` : "";
 }
 
 function normalizeCharacterState(value) {
