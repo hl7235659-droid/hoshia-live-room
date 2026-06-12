@@ -6,8 +6,8 @@ import { AccountAvatar, AccountSettingsModal, RoomSettingsModal } from "./compon
 import { HoshiaTimelineOverlay } from "./components/TimelineOverlay";
 import { GlobalMusicPlayer, MusicRoomPanel } from "./components/MusicPanels";
 import { colorForMessage } from "./messageColors";
-import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
-import { toCharacterState } from "./types";
+import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaPresentation, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
+import { isHoshiaPresentation, toCharacterState } from "./types";
 import "./styles.css";
 
 const appBase = import.meta.env.BASE_URL || "/";
@@ -169,6 +169,10 @@ function removePendingReply(current: LiveMessage[], traceId: string | undefined)
   return current.filter((item) => !(item.type === "ai_reply_pending" && item.latency_trace_id === traceId && !item.stream_started));
 }
 
+function toHoshiaPresentation(value: unknown) {
+  return isHoshiaPresentation(value) ? value : null;
+}
+
 function wsPath(path: string) {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   return `${protocol}://${window.location.host}${appPath(path)}`;
@@ -208,6 +212,7 @@ function App() {
   const [musicState, setMusicState] = useState<MusicState>(demoMusicState);
   const [characterState, setCharacterState] = useState<CharacterState>("IDLE");
   const [hoshiaState, setHoshiaState] = useState<HoshiaVisualState | null>(() => (isStageDemo ? demoHoshiaState : null));
+  const [hoshiaPresentation, setHoshiaPresentation] = useState<HoshiaPresentation | null>(null);
   const [socketStatus, setSocketStatus] = useState(isStageDemo ? "demo" : "locked");
   const [awakeningIntroOpen, setAwakeningIntroOpen] = useState(isAwakeningDemo);
   const [hoshiaPostsRefreshKey, setHoshiaPostsRefreshKey] = useState(0);
@@ -282,6 +287,7 @@ function App() {
         .then((payload) => {
           setRoom(payload.room);
           setCharacterState(toCharacterState(payload.state));
+          setHoshiaPresentation(toHoshiaPresentation(payload.hoshia_presentation));
           if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
           if (payload.messages?.length) setMessages(payload.messages.slice(-maxHistoryMessages));
         })
@@ -350,11 +356,13 @@ function App() {
       if (payload.type === "error") {
         setSocketStatus("error");
         setCharacterState("ERROR");
+        setHoshiaPresentation(null);
         setMessages((current) => appendRoomMessage(current, localLine("system", "room", friendlyError(payload.error))));
       }
       if (payload.type === "room_state") {
         setRoom(payload.room);
         setCharacterState(toCharacterState(payload.state));
+        setHoshiaPresentation(toHoshiaPresentation(payload.hoshia_presentation));
         if (payload.hoshia_state) setHoshiaState(payload.hoshia_state);
         if (payload.messages?.length) setMessages(payload.messages.slice(-maxHistoryMessages));
       }
@@ -369,6 +377,9 @@ function App() {
       }
       if (payload.type === "hoshia_state" && payload.state) {
         setHoshiaState(payload.state);
+      }
+      if (payload.type === "hoshia_presentation") {
+        setHoshiaPresentation(toHoshiaPresentation(payload.presentation ?? payload.hoshia_presentation ?? payload));
       }
       if (payload.type === "hoshia_posts_changed") {
         setHoshiaPostsRefreshKey((current) => current + 1);
@@ -460,6 +471,7 @@ function App() {
       messages={messages}
       characterState={characterState}
       hoshiaState={hoshiaState}
+      hoshiaPresentation={hoshiaPresentation}
       musicState={musicState}
       onMusicState={setMusicState}
       socketStatus={socketStatus}
@@ -467,11 +479,13 @@ function App() {
       isDemo={isStageDemo}
       hoshiaPostsRefreshKey={hoshiaPostsRefreshKey}
       onLocalSendStart={() => {
+        setHoshiaPresentation(null);
         setCharacterState("LISTENING");
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
       }}
       onDemoSend={isStageDemo ? (text) => {
         setMessages((current) => appendRoomMessage(current, localLine("user", session.nickname, text, { color: session.danmaku_color || undefined })));
+        setHoshiaPresentation(null);
         setCharacterState("LISTENING");
         window.setTimeout(() => setCharacterState((current) => (current === "LISTENING" ? "THINKING" : current)), 420);
         window.setTimeout(() => {
@@ -492,6 +506,7 @@ function App() {
         setSocketStatus("locked");
         setCharacterState("IDLE");
         setHoshiaState(null);
+        setHoshiaPresentation(null);
         setAwakeningIntroOpen(false);
       }}
     />
@@ -787,6 +802,7 @@ function LiveMobile({
   messages,
   characterState,
   hoshiaState,
+  hoshiaPresentation,
   musicState,
   onMusicState,
   socketStatus,
@@ -805,6 +821,7 @@ function LiveMobile({
   messages: LiveMessage[];
   characterState: CharacterState;
   hoshiaState: HoshiaVisualState | null;
+  hoshiaPresentation: HoshiaPresentation | null;
   musicState: MusicState;
   onMusicState: (state: MusicState) => void;
   socketStatus: string;
@@ -896,7 +913,7 @@ function LiveMobile({
   return (
     <main className="phone-shell">
       <section className="live-phone">
-        <CharacterStage state={characterState} messages={messages} visualState={hoshiaState} />
+        <CharacterStage state={characterState} messages={messages} visualState={hoshiaState} presentation={hoshiaPresentation} />
         <LiveOverlay
           state={characterState}
           session={session}

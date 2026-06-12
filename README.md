@@ -18,6 +18,7 @@ The current version is a 2.0 prototype. Real Live2D, TTS, account avatars, gifts
 |-- docs/                             # Frontend and Live2D planning notes
 |-- frontend/                         # React + Vite mobile live-room frontend
 |-- gateway/                          # Node.js API/WebSocket gateway
+|-- services/hoshiaclaw/              # Optional Go AI sidecar service
 |-- .env.example                      # Safe environment template
 |-- docker-compose.yml                # Sidecar deployment compose file
 `-- README.md
@@ -73,9 +74,16 @@ Important options:
 - `LIVE_ROOM_BIND_HOST`: defaults to `127.0.0.1` to avoid public exposure.
 - `LIVE_ROOM_PORT`: defaults to `18888`.
 - `SQLITE_DB_PATH`: defaults to `./data/live-room.sqlite` for local gateway runs.
-- `AI_MODE`: `mock` by default; set to `astrbot` only after the bridge is installed.
+- `AI_MODE`: `mock` by default; set to `astrbot` or `hoshiaclaw` only after that backend is installed.
 - `ASTRBOT_BRIDGE_TOKEN`: shared bearer token for gateway and AstrBot bridge.
 - `ASTRBOT_FALLBACK_TO_MOCK`: keeps the room usable when AstrBot is unavailable.
+- `HOSHIACLAW_BRIDGE_URL`: internal Compose URL for the optional Hoshiaclaw sidecar generate endpoint, normally `http://live-room-hoshiaclaw:8080/live-room/generate`.
+- `HOSHIACLAW_TOKEN`: shared internal token between the gateway and Hoshiaclaw. Use a generated secret in `.env`; never commit the real value.
+- `HOSHIACLAW_TIMEOUT_MS`: gateway timeout for Hoshiaclaw replies.
+- `HOSHIACLAW_FALLBACK_TO_MOCK`: keeps the room usable if Hoshiaclaw is unavailable.
+- `HOSHIACLAW_STREAMING_ENABLED`: enables streaming when the Hoshiaclaw backend supports it.
+- `HOSHIACLAW_LISTEN_ADDR`: Hoshiaclaw container listen address, normally `0.0.0.0:8080`.
+- `HOSHIACLAW_DATA_DIR` / `HOSHIACLAW_LOG_DIR`: container runtime paths for sidecar data and logs.
 - `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
 - `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
 - `MUSIC_ENABLED`: enables the private-room music queue experiment.
@@ -119,6 +127,32 @@ Open:
 ```text
 http://127.0.0.1:18888
 ```
+
+### Hoshiaclaw Sidecar
+
+Hoshiaclaw is designed to run side-by-side with the existing gateway as an internal Compose service. It is on the private `live_room_dev_network`, exposes port `8080` only to other containers, and has no host port by default.
+
+Keep the default room mode as `AI_MODE=mock` until the sidecar image and gateway integration are ready. To test the sidecar path in an isolated environment:
+
+```env
+AI_MODE=hoshiaclaw
+HOSHIACLAW_BRIDGE_URL=http://live-room-hoshiaclaw:8080/live-room/generate
+HOSHIACLAW_TOKEN=<generated-internal-token>
+```
+
+Start the optional profile:
+
+```bash
+docker compose --profile hoshiaclaw up -d --build live-room-hoshiaclaw live-room-gateway live-room-web
+```
+
+To roll back from Hoshiaclaw without changing persisted room data, set `AI_MODE=mock` or the previous backend mode in the server `.env`, then restart only the affected services:
+
+```bash
+docker compose up -d live-room-gateway live-room-web
+```
+
+The sidecar runtime mounts `data/hoshiaclaw`, `logs/hoshiaclaw`, and `private/hoshiaclaw`. These paths are ignored by Git and are for local/server runtime state only. Do not store raw user transcripts, real model provider tokens, private URLs, SSH details, or tunnel information in committed files.
 
 ### Local Development
 
@@ -189,6 +223,8 @@ curl http://127.0.0.1:18888/live/healthz
 ```
 
 Do not commit `REVISION`, server host details, SSH key paths, tunnel URLs, credentials, databases, or private runtime logs.
+
+If a deployment using `AI_MODE=hoshiaclaw` fails, roll back by restoring the previous `.env` AI mode and restarting the gateway/web containers. If the compose file itself is the problem, restore the latest backup of the runtime tree while preserving the server `.env`, `gateway/data`, and tunnel-specific compose entries.
 
 ## AstrBot Bridge
 

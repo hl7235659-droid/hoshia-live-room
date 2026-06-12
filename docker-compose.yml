@@ -24,6 +24,11 @@ services:
     environment:
       REDIS_URL: redis://live-room-redis:6379/0
       SQLITE_DB_PATH: /app/data/live-room.sqlite
+      HOSHIACLAW_BRIDGE_URL: http://live-room-hoshiaclaw:8080/live-room/generate
+      HOSHIACLAW_TOKEN: ${HOSHIACLAW_TOKEN:-}
+      HOSHIACLAW_TIMEOUT_MS: ${HOSHIACLAW_TIMEOUT_MS:-45000}
+      HOSHIACLAW_FALLBACK_TO_MOCK: ${HOSHIACLAW_FALLBACK_TO_MOCK:-true}
+      HOSHIACLAW_STREAMING_ENABLED: ${HOSHIACLAW_STREAMING_ENABLED:-true}
     volumes:
       - ./gateway/data:/app/data
     depends_on:
@@ -33,6 +38,27 @@ services:
     networks:
       - live_room_dev_network
       - astrbot_astrbot_network
+
+  live-room-hoshiaclaw:
+    profiles:
+      - hoshiaclaw
+    build:
+      context: ./services/hoshiaclaw
+    container_name: live-room-dev-hoshiaclaw
+    restart: unless-stopped
+    environment:
+      HOSHIACLAW_LISTEN_ADDR: ${HOSHIACLAW_LISTEN_ADDR:-0.0.0.0:8080}
+      HOSHIACLAW_DATA_DIR: ${HOSHIACLAW_DATA_DIR:-/app/data}
+      HOSHIACLAW_LOG_DIR: ${HOSHIACLAW_LOG_DIR:-/app/logs}
+      HOSHIACLAW_TOKEN: ${HOSHIACLAW_TOKEN:-}
+    expose:
+      - "8080"
+    volumes:
+      - ./data/hoshiaclaw:/app/data
+      - ./logs/hoshiaclaw:/app/logs
+      - ./private/hoshiaclaw:/app/private:ro
+    networks:
+      - live_room_dev_network
 
   live-room-redis:
     image: redis:7-alpine

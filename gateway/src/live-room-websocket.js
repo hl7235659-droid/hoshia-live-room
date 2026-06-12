@@ -12,6 +12,7 @@ export function attachLiveRoomWebSocket(server, deps) {
     db,
     handleDanmaku,
     hoshiaVisualStateService,
+    hoshiaPresentation,
     loadSessionFromReq,
     markUserOffline,
     markUserOnline,
@@ -59,6 +60,7 @@ export function attachLiveRoomWebSocket(server, deps) {
       room: roomInfo(),
       state: characterState(),
       hoshia_state: hoshiaVisualStateService.publicState(),
+      hoshia_presentation: typeof hoshiaPresentation === "function" ? hoshiaPresentation() : null,
       messages: db.listRecentRoomMessages(config.roomId, 100)
     }));
     ws.send(JSON.stringify({ type: "music_state", ...musicService.publicState(session) }));

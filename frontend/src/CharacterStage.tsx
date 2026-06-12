@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import type { CharacterState, HoshiaVisualState, LiveMessage } from "./types";
+import type { CharacterState, HoshiaPresentation, HoshiaVisualState, LiveMessage } from "./types";
 import { colorForMessage } from "./messageColors";
 
 const publicBase = import.meta.env.BASE_URL || "/";
@@ -63,6 +63,32 @@ const animatedLabels: Record<CharacterState, string> = {
   ERROR: "异常..."
 };
 
+const presentationDefaults: Record<HoshiaPresentation["action"], StagePresentation> = {
+  idle: stagePresentation.IDLE,
+  listen: stagePresentation.LISTENING,
+  think: stagePresentation.THINKING,
+  speak: stagePresentation.SPEAKING,
+  react_positive: {
+    label: stagePresentation.SPEAKING.label,
+    expression: "happy",
+    motion: "react_positive",
+    cue: stagePresentation.SPEAKING.cue
+  },
+  react_negative: {
+    label: stagePresentation.SPEAKING.label,
+    expression: "concerned",
+    motion: "react_negative",
+    cue: stagePresentation.SPEAKING.cue
+  },
+  react_surprised: {
+    label: stagePresentation.SPEAKING.label,
+    expression: "surprised",
+    motion: "react_surprised",
+    cue: stagePresentation.SPEAKING.cue
+  },
+  recover: stagePresentation.ERROR
+};
+
 export function getStagePresentation(state: CharacterState) {
   return stagePresentation[state];
 }
@@ -74,13 +100,16 @@ export function getAnimatedStageLabel(state: CharacterState) {
 export function CharacterStage({
   state,
   messages,
-  visualState
+  visualState,
+  presentation
 }: {
   state: CharacterState;
   messages: LiveMessage[];
   visualState: HoshiaVisualState | null;
+  presentation: HoshiaPresentation | null;
 }) {
-  const presentation = getStagePresentation(state);
+  const stagePresentation = getResolvedPresentation(state, presentation);
+  const pngUrl = presentation?.fallback_png || presentation?.current_png || visualState?.current_png || "";
 
   return (
     <section className={`character-stage state-${state.toLowerCase()}`} aria-label="星见终端角色台">
@@ -95,9 +124,10 @@ export function CharacterStage({
       <StageDanmaku messages={messages.slice(-5)} />
       <Live2DAdapter
         state={state}
-        expression={presentation.expression}
-        motion={presentation.motion}
-        pngUrl={visualState?.current_png || ""}
+        action={presentation?.action || ""}
+        expression={stagePresentation.expression}
+        motion={stagePresentation.motion}
+        pngUrl={pngUrl}
         modelUrl={live2dModelUrl}
         coreUrl={live2dCoreUrl}
       />
@@ -205,6 +235,18 @@ function StageDanmaku({ messages }: { messages: LiveMessage[] }) {
   );
 }
 
+function getResolvedPresentation(state: CharacterState, presentation: HoshiaPresentation | null) {
+  const fallback = getStagePresentation(state);
+  if (!presentation) return fallback;
+  const defaults = presentationDefaults[presentation.action] || fallback;
+  return {
+    label: presentation.label || defaults.label,
+    expression: presentation.expression || defaults.expression,
+    motion: presentation.motion || defaults.motion,
+    cue: presentation.cue || defaults.cue
+  };
+}
+
 function stableDanmakuLane(message: LiveMessage) {
   if (Number.isInteger(message.danmaku_lane)) {
     return Math.max(0, Math.min(stageDanmakuLaneCount - 1, Number(message.danmaku_lane)));
@@ -225,6 +267,7 @@ function stableHash(value: string) {
 
 function Live2DAdapter({
   state,
+  action,
   expression,
   motion,
   pngUrl,
@@ -232,6 +275,7 @@ function Live2DAdapter({
   coreUrl
 }: {
   state: CharacterState;
+  action: string;
   expression: string;
   motion: string;
   pngUrl: string;
@@ -292,6 +336,7 @@ function Live2DAdapter({
     <div
       className="live2d-adapter"
       data-state={state.toLowerCase()}
+      data-action={action}
       data-expression={expression}
       data-motion={motion}
       data-runtime={runtimeState}

@@ -73,6 +73,17 @@ import {
   pendingReplyNotice,
   quickReplyLead
 } from "./message-router.js";
+import {
+  normalizeHoshiaPresentation,
+  presentationFromCharacterState,
+  presentationFromClawEnvelope,
+  presentationFromVisualState
+} from "./hoshia-presentation.js";
+import {
+  buildCharacterSnapshot,
+  normalizeCharacterEvent,
+  summarizeCharacterSnapshotForPrompt
+} from "./character-snapshot.js";
 
 class MemoryStore {
   constructor() {
@@ -211,6 +222,7 @@ const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
 );
 let hoshiaVisualTickTimer = null;
 let hoshiaCommentReplyTimer = null;
+let currentHoshiaPresentation = null;
 
 app.use(express.json({ limit: "32kb" }));
 registerAccountRoutes(app, {
@@ -244,6 +256,7 @@ app.get("/api/room/state", requireSession, async (_req, res) => {
     room: roomInfo(),
     state: characterState,
     hoshia_state: hoshiaVisualStateService.publicState(),
+    hoshia_presentation: currentHoshiaPresentation || presentationFromCharacterState(characterState),
     messages: recent
   });
 });
@@ -252,6 +265,19 @@ app.get("/api/hoshia/state", requireSession, async (_req, res) => {
   res.json({
     ok: true,
     state: hoshiaVisualStateService.publicState()
+  });
+});
+
+app.get("/api/hoshia/snapshot", requireSession, async (req, res) => {
+  const snapshot = buildCurrentCharacterSnapshot(req.session);
+  db.upsertCharacterSnapshot({
+    roomId: config.roomId,
+    characterId: "hoshia",
+    snapshot
+  });
+  res.json({
+    ok: true,
+    snapshot
   });
 });
 
@@ -574,6 +600,7 @@ attachLiveRoomWebSocket(server, {
   db,
   handleDanmaku,
   hoshiaVisualStateService,
+  hoshiaPresentation: () => currentHoshiaPresentation || presentationFromCharacterState(characterState),
   loadSessionFromReq,
   markUserOffline,
   markUserOnline,
@@ -815,6 +842,17 @@ async function handleDanmaku(session, payload) {
 
   const userMessage = messageEvent("danmaku", "user", text, session);
   await storeMessage(userMessage);
+  appendCharacterEvent({
+    event_type: "user.message_received",
+    source_kind: "chat",
+    source_id: userMessage.id,
+    user_id: session.user_id,
+    nickname: session.nickname,
+    public_hint: `${session.nickname} sent a live room message`,
+    private_hint: `${session.nickname}: ${text}`,
+    reason: "viewer message",
+    data: { status: "received" }
+  });
   hoshiaLifeMemoryService.recordChatInteraction({
     session,
     text,
@@ -1184,6 +1222,12 @@ async function handleAiReplyBatch(batch) {
     batch,
     diaryEvent
   });
+  const characterSnapshot = buildCurrentCharacterSnapshot(batch[0]?.session);
+  db.upsertCharacterSnapshot({
+    roomId: config.roomId,
+    characterId: "hoshia",
+    snapshot: characterSnapshot
+  });
   const lifeMemoryPacket = contextPolicy.includeLifeMemory
     ? hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: contextPolicy.livingMemoryK || 3 })
     : [];
@@ -1207,6 +1251,7 @@ async function handleAiReplyBatch(batch) {
     latencyTraceId,
     recentContext: shortTermContext.recentContext,
     contextSummary: shortTermContext.contextSummary,
+    characterSnapshotContext: summarizeCharacterSnapshotForPrompt(characterSnapshot),
     moduleContext,
     moduleEvents,
     moduleMemoryEvents,
@@ -1272,6 +1317,11 @@ async function handleAiReplyBatch(batch) {
   });
   await storeMessage(aiMessage);
   broadcast(aiMessage);
+  broadcastHoshiaPresentation(presentationFromClawEnvelope(reply, {
+    traceId: latencyTraceId,
+    state: isValidState(reply.state) ? reply.state : "SPEAKING",
+    reason: reply.route || replyRoute
+  }));
   broadcastAiReplyDone({ traceId: latencyTraceId, route: reply.route || replyRoute });
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
@@ -2024,7 +2074,9 @@ async function broadcastSystemText(text) {
 
 async function setCharacterState(state) {
   characterState = state;
-  broadcast({ type: "character_state", room_id: config.roomId, state, timestamp: new Date().toISOString() });
+  const timestamp = new Date().toISOString();
+  broadcast({ type: "character_state", room_id: config.roomId, state, timestamp });
+  broadcastHoshiaPresentation(presentationFromCharacterState(state, { now: timestamp }));
 }
 
 function scheduleCharacterIdleFromListening() {
@@ -2056,6 +2108,13 @@ function broadcastAiReplyPending({ traceId, route, batch = [] } = {}) {
     reply_targets: replyTargets(batch),
     source_message_id: latest?.id || ""
   });
+  broadcastHoshiaPresentation(normalizeHoshiaPresentation({
+    action: "think",
+    fallback_state: "THINKING",
+    source: "system",
+    trace_id: traceId,
+    reason: route || "reply_pending"
+  }));
 }
 
 function broadcastAiReplyDelta({ traceId, route, text = "", deltaMode = "append", stage = "" } = {}) {
@@ -2223,6 +2282,62 @@ function broadcastHoshiaState(state = hoshiaVisualStateService.publicState()) {
     state,
     timestamp: new Date().toISOString()
   });
+  broadcastHoshiaPresentation(presentationFromVisualState(state, { characterState }));
+}
+
+function broadcastHoshiaPresentation(presentation) {
+  currentHoshiaPresentation = normalizeHoshiaPresentation(presentation, {
+    state: characterState,
+    source: presentation?.source || "system"
+  });
+  broadcast({
+    type: "hoshia_presentation",
+    room_id: config.roomId,
+    presentation: currentHoshiaPresentation,
+    timestamp: currentHoshiaPresentation.timestamp
+  });
+}
+
+function buildCurrentCharacterSnapshot(session = null) {
+  const visualState = hoshiaVisualStateService.publicState();
+  const dailyContext = hoshiaDailyCanonService.buildContext(session, { now: new Date(), create: true });
+  const roomSummary = db.getRoomContextSummary(config.roomId);
+  const userProfile = session?.user_id ? db.getUserCharacterProfile(session.user_id, "hoshia") : null;
+  const lifeMemories = session?.user_id
+    ? db.searchHoshiaLifeMemories({
+        characterId: "hoshia",
+        userId: session.user_id,
+        query: `${session.nickname || ""} ${visualState.mood || ""} ${visualState.activity || ""}`,
+        limit: 6
+      })
+    : [];
+  return buildCharacterSnapshot({
+    roomId: config.roomId,
+    characterId: "hoshia",
+    characterState,
+    visualState,
+    dailyContext,
+    userProfile,
+    roomSummary,
+    lifeMemories,
+    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 })
+  });
+}
+
+function appendCharacterEvent(event = {}) {
+  try {
+    return db.insertCharacterEvent(normalizeCharacterEvent({
+      ...event,
+      room_id: config.roomId,
+      character_id: "hoshia"
+    }));
+  } catch (error) {
+    console.warn("character_event_append_failed", {
+      type: error?.name || "Error",
+      message: error?.message || String(error)
+    });
+    return null;
+  }
 }
 
 function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {

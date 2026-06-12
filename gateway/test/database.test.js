@@ -390,6 +390,56 @@ test("user profile and password can be updated", () => {
   }
 });
 
+test("character events are idempotent and snapshots are cached", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const first = db.insertCharacterEvent({
+      event_id: "evt-1",
+      idempotency_key: "room:user.message:msg-1",
+      room_id: "room",
+      character_id: "hoshia",
+      event_type: "user.message_received",
+      actor_type: "user",
+      user_id: "user-1",
+      nickname: "Tester",
+      source_kind: "chat",
+      source_id: "msg-1",
+      occurred_at: "2026-06-12T00:00:00.000Z",
+      public_hint: "Tester sent a message",
+      private_hint: "Tester greeted Hoshia",
+      reason: "viewer message",
+      data_json: "{\"status\":\"received\"}"
+    });
+    const duplicate = db.insertCharacterEvent({
+      event_id: "evt-duplicate",
+      idempotency_key: "room:user.message:msg-1",
+      room_id: "room",
+      character_id: "hoshia",
+      event_type: "user.message_received",
+      occurred_at: "2026-06-12T00:00:01.000Z"
+    });
+
+    assert.equal(first.event_id, "evt-1");
+    assert.equal(duplicate.event_id, "evt-1");
+    assert.equal(db.listRecentCharacterEvents({ roomId: "room" }).length, 1);
+
+    db.upsertCharacterSnapshot({
+      roomId: "room",
+      snapshot: {
+        schema_version: 1,
+        character_id: "hoshia",
+        snapshot_id: "snap-1",
+        generated_at: "2026-06-12T00:00:02.000Z",
+        source_revision: "rev-1",
+        public: { presence: { character_state: "IDLE" } }
+      }
+    });
+    assert.equal(db.getLatestCharacterSnapshot({ roomId: "room" }).snapshot_id, "snap-1");
+  } finally {
+    cleanup();
+  }
+});
+
 test("onboarding profile can be completed or skipped", () => {
   const { db, cleanup } = openTempDb();
   try {

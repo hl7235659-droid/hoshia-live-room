@@ -263,10 +263,14 @@ export function normalizeHoshiaNewsConfig(config = {}) {
     maxAgeMinutes,
     maxAgeMs: maxAgeMinutes * 60 * 1000,
     bridgeOptions: {
+      aiMode: String(config.aiMode || config.AI_MODE || "mock"),
       roomId: String(config.roomId || config.ROOM_ID || "private-pixel-live").slice(0, 80),
       astrbotBridgeUrl: String(config.astrbotBridgeUrl || config.ASTRBOT_BRIDGE_URL || ""),
       astrbotBridgeToken: String(config.astrbotBridgeToken || config.ASTRBOT_BRIDGE_TOKEN || ""),
-      astrbotTimeoutMs: clampInt(config.astrbotTimeoutMs || config.ASTRBOT_TIMEOUT_MS, 100, 120000, 15000)
+      astrbotTimeoutMs: clampInt(config.astrbotTimeoutMs || config.ASTRBOT_TIMEOUT_MS, 100, 120000, 15000),
+      hoshiaClawBridgeUrl: String(config.hoshiaClawBridgeUrl || config.HOSHIACLAW_BRIDGE_URL || ""),
+      hoshiaClawBridgeToken: String(config.hoshiaClawBridgeToken || config.HOSHIACLAW_TOKEN || ""),
+      hoshiaClawTimeoutMs: clampInt(config.hoshiaClawTimeoutMs || config.HOSHIACLAW_TIMEOUT_MS, 100, 120000, 15000)
     }
   };
 }

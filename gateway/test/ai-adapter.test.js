@@ -157,6 +157,42 @@ test("astrbot room batch can force single-viewer direct replies", async () => {
   assert.equal(reply.source, "astrbot");
 });
 
+test("hoshiaclaw mode sends authenticated compatible bridge request", async () => {
+  const config = {
+    ...baseConfig,
+    aiMode: "hoshiaclaw",
+    hoshiaClawBridgeUrl: "http://hoshiaclaw:8080/live-room/generate",
+    hoshiaClawBridgeToken: "claw-token",
+    hoshiaClawTimeoutMs: 100,
+    hoshiaClawFallbackToMock: true,
+    hoshiaClawStreamingEnabled: false
+  };
+  const reply = await generateAiReply(session, "ping", config, async (url, options) => {
+    assert.equal(url, config.hoshiaClawBridgeUrl);
+    assert.equal(options.headers.Authorization, "Bearer claw-token");
+    assert.equal(options.headers["Content-Type"], "application/json");
+    const body = JSON.parse(options.body);
+    assert.equal(body.session_id, "live-room-dev:user-1");
+    assert.equal(body.room_id, "live-room-dev");
+    assert.equal(body.user_id, "user-1");
+    assert.equal(body.nickname, "Tester");
+    assert.equal(body.text, "ping");
+    assert.equal(body.prompt, "ping");
+    return responseJson(200, {
+      ok: true,
+      text: "HoshiaClaw says hi",
+      state: "SPEAKING",
+      source: "hoshiaclaw",
+      latency_ms: 9,
+      presentation: { action: "speak", expression: "happy" }
+    });
+  });
+
+  assert.equal(reply.source, "hoshiaclaw");
+  assert.equal(reply.text, "HoshiaClaw says hi");
+  assert.deepEqual(reply.presentation, { action: "speak", expression: "happy" });
+});
+
 test("astrbot single-target replies strip duplicate display alias mentions", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "小房间留言" },

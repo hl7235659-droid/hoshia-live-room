@@ -140,3 +140,62 @@ export type CharacterState = (typeof characterStates)[number];
 export function toCharacterState(value: unknown): CharacterState {
   return characterStates.includes(value as CharacterState) ? (value as CharacterState) : "IDLE";
 }
+
+export const hoshiaPresentationActions = [
+  "idle",
+  "listen",
+  "think",
+  "speak",
+  "react_positive",
+  "react_negative",
+  "react_surprised",
+  "recover"
+] as const;
+
+export type HoshiaPresentationAction = (typeof hoshiaPresentationActions)[number];
+
+export type HoshiaPresentation = {
+  version?: 1;
+  action: HoshiaPresentationAction;
+  intensity?: "low" | "normal" | "high";
+  duration_ms?: number;
+  label?: string;
+  expression?: string;
+  motion?: string;
+  fallback_state?: CharacterState;
+  fallback_png?: string;
+  cue?: string;
+  current_png?: string;
+  source?: "ai_reply" | "character_state" | "hoshia_state" | "system";
+  trace_id?: string;
+  reason?: string;
+  timestamp?: string;
+  updated_at?: string;
+};
+
+function optionalString(value: unknown) {
+  return value === undefined || typeof value === "string";
+}
+
+function optionalNumber(value: unknown) {
+  return value === undefined || typeof value === "number";
+}
+
+export function isHoshiaPresentation(value: unknown): value is HoshiaPresentation {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return hoshiaPresentationActions.includes(candidate.action as HoshiaPresentationAction) &&
+    optionalNumber(candidate.duration_ms) &&
+    optionalString(candidate.label) &&
+    optionalString(candidate.expression) &&
+    optionalString(candidate.motion) &&
+    optionalString(candidate.fallback_state) &&
+    optionalString(candidate.fallback_png) &&
+    optionalString(candidate.cue) &&
+    optionalString(candidate.current_png) &&
+    optionalString(candidate.source) &&
+    optionalString(candidate.trace_id) &&
+    optionalString(candidate.reason) &&
+    optionalString(candidate.timestamp) &&
+    optionalString(candidate.updated_at);
+}

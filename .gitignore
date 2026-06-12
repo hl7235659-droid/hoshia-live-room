@@ -5,6 +5,11 @@ node_modules/
 dist/
 build/
 coverage/
+data/
+private/
+logs/
+tmp/
+bin/
 .DS_Store
 Thumbs.db
 *.log
@@ -22,7 +27,6 @@ gateway/audio-cache/
 gateway/data/
 __pycache__/
 *.pyc
-tmp/
 frontend/src/assets/*-chroma.png
 frontend/src/assets/*-green.png
 frontend/src/assets/*-placeholder.png
@@ -30,3 +34,8 @@ frontend/public/live2d/runtime/live2dcubismcore.min.js
 
 services/qqmusic-resolver/private/
 qqmusic-resolver/private/
+services/*/data/
+services/*/private/
+services/*/logs/
+services/*/tmp/
+services/*/bin/

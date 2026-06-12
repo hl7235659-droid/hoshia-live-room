@@ -3,32 +3,33 @@ import { isValidState } from "./state-machine.js";
 const safeStates = new Set(["IDLE", "LISTENING", "THINKING", "SPEAKING", "ERROR"]);
 
 export async function generateAiReply(session, text, options, fetchImpl = globalThis.fetch, metadata = {}) {
-  if (options.aiMode !== "astrbot") {
+  const profile = bridgeProfile(options);
+  if (!profile) {
     return mockAiReply(text, session.nickname);
   }
 
   try {
-    const reply = await requestAstrBotReply(session, text, options, fetchImpl, metadata);
-    return normalizeReply(reply, "astrbot");
+    const reply = await requestBridgeReply(session, text, options, fetchImpl, metadata, profile);
+    return normalizeReply(reply, profile.kind);
   } catch (error) {
-    console.error("astrbot_bridge_failed", {
+    console.error(`${profile.kind}_bridge_failed`, {
       type: error.name || "Error",
       message: error.message,
-      fallback: options.astrbotFallbackToMock
+      fallback: profile.fallbackToMock
     });
 
-    if (options.astrbotFallbackToMock && isRoomReply(metadata)) {
+    if (profile.fallbackToMock && isRoomReply(metadata)) {
       return {
         ok: true,
         skipped: true,
         text: "",
         state: "IDLE",
-        source: "astrbot_error_skipped",
+        source: `${profile.kind}_error_skipped`,
         error: error.message
       };
     }
 
-    if (options.astrbotFallbackToMock) {
+    if (profile.fallbackToMock) {
       return {
         ...mockAiReply(text, session.nickname),
         source: "mock_fallback"
@@ -46,13 +47,13 @@ function isRoomReply(metadata = {}) {
   return metadata.roomSession === true || Array.isArray(metadata.messages);
 }
 
-async function requestAstrBotReply(session, text, options, fetchImpl, metadata = {}) {
+async function requestBridgeReply(session, text, options, fetchImpl, metadata = {}, profile = bridgeProfile(options)) {
   if (!fetchImpl) throw new Error("fetch_unavailable");
-  if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
-  if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
+  if (!profile?.bridgeUrl) throw new Error(`${profile?.kind || "ai"}_bridge_url_missing`);
+  if (!profile?.bridgeToken) throw new Error(`${profile?.kind || "ai"}_bridge_token_missing`);
 
   const body = astrBotReplyBody(session, text, options, metadata);
-  const shouldStream = options.astrbotStreamingEnabled !== false && typeof metadata.onDelta === "function";
+  const shouldStream = profile.streamingEnabled !== false && typeof metadata.onDelta === "function";
   const targetNormalizer = createSingleTargetPrefixNormalizer(metadata.replyTargets);
   const onDelta = shouldStream
     ? (event) => {
@@ -62,17 +63,17 @@ async function requestAstrBotReply(session, text, options, fetchImpl, metadata =
     : null;
   if (shouldStream) {
     try {
-      const reply = await requestAstrBotStream(options, fetchImpl, { ...body, stream: true }, onDelta);
+      const reply = await requestBridgeStream(profile, fetchImpl, { ...body, stream: true }, onDelta);
       return normalizeSingleTargetReplyText(reply, targetNormalizer);
     } catch (error) {
-      console.warn("astrbot_stream_failed_falling_back", {
+      console.warn(`${profile.kind}_stream_failed_falling_back`, {
         type: error.name || "Error",
         message: error.message
       });
     }
   }
 
-  const reply = await requestAstrBotJsonReply(options, fetchImpl, body);
+  const reply = await requestBridgeJsonReply(profile, fetchImpl, body);
   return normalizeSingleTargetReplyText(reply, targetNormalizer);
 }
 
@@ -96,6 +97,9 @@ function astrBotReplyBody(session, text, options, metadata = {}) {
   if (metadata.contextPolicy && typeof metadata.contextPolicy === "object") body.context_policy = metadata.contextPolicy;
   if (Array.isArray(metadata.recentContext) && metadata.recentContext.length) body.recent_context = metadata.recentContext;
   if (metadata.contextSummary) body.context_summary = String(metadata.contextSummary).slice(0, 4000);
+  if (metadata.characterSnapshotContext && typeof metadata.characterSnapshotContext === "object") {
+    body.character_snapshot_context = metadata.characterSnapshotContext;
+  }
   if (Array.isArray(metadata.moduleContext) && metadata.moduleContext.length) body.module_context = metadata.moduleContext;
   if (Array.isArray(metadata.moduleEvents) && metadata.moduleEvents.length) body.module_events = metadata.moduleEvents;
   if (Array.isArray(metadata.moduleMemoryEvents) && metadata.moduleMemoryEvents.length) body.module_memory_events = metadata.moduleMemoryEvents;
@@ -116,15 +120,15 @@ function bridgeVisibleText(metadata = {}, fallback = "") {
   return value.slice(0, 2800);
 }
 
-async function requestAstrBotJsonReply(options, fetchImpl, body) {
+async function requestBridgeJsonReply(profile, fetchImpl, body) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profile.timeoutMs);
 
   try {
-    const response = await fetchImpl(options.astrbotBridgeUrl, {
+    const response = await fetchImpl(profile.bridgeUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Authorization": `Bearer ${profile.bridgeToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body),
@@ -132,12 +136,12 @@ async function requestAstrBotJsonReply(options, fetchImpl, body) {
     });
 
     if (!response.ok) {
-      throw new Error(`astrbot_bridge_http_${response.status}`);
+      throw new Error(`${profile.kind}_bridge_http_${response.status}`);
     }
 
     const payload = await response.json();
     if (!payload?.ok) {
-      throw new Error(`astrbot_bridge_${payload?.error || "failed"}`);
+      throw new Error(`${profile.kind}_bridge_${payload?.error || "failed"}`);
     }
     return payload;
   } finally {
@@ -145,15 +149,15 @@ async function requestAstrBotJsonReply(options, fetchImpl, body) {
   }
 }
 
-async function requestAstrBotStream(options, fetchImpl, body, onDelta) {
+async function requestBridgeStream(profile, fetchImpl, body, onDelta) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profile.timeoutMs);
 
   try {
-    const response = await fetchImpl(options.astrbotBridgeUrl, {
+    const response = await fetchImpl(profile.bridgeUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Authorization": `Bearer ${profile.bridgeToken}`,
         "Content-Type": "application/json",
         "Accept": "application/x-ndjson"
       },
@@ -162,22 +166,22 @@ async function requestAstrBotStream(options, fetchImpl, body, onDelta) {
     });
 
     if (!response.ok) {
-      throw new Error(`astrbot_bridge_http_${response.status}`);
+      throw new Error(`${profile.kind}_bridge_http_${response.status}`);
     }
     const contentType = String(response.headers?.get?.("content-type") || "");
     if (!contentType.includes("application/x-ndjson")) {
       const payload = await response.json();
-      if (!payload?.ok) throw new Error(`astrbot_bridge_${payload?.error || "failed"}`);
+      if (!payload?.ok) throw new Error(`${profile.kind}_bridge_${payload?.error || "failed"}`);
       return payload;
     }
-    return parseAstrBotNdjson(response, onDelta);
+    return parseBridgeNdjson(response, onDelta, profile.kind);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function parseAstrBotNdjson(response, onDelta) {
-  if (!response.body?.getReader) throw new Error("astrbot_stream_body_unavailable");
+async function parseBridgeNdjson(response, onDelta, source = "ai") {
+  if (!response.body?.getReader) throw new Error(`${source}_stream_body_unavailable`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -202,7 +206,7 @@ async function parseAstrBotNdjson(response, onDelta) {
         } else if (event.type === "done" || event.type === "skipped") {
           donePayload = event;
         } else if (event.type === "error") {
-          throw new Error(`astrbot_stream_${event.error || "failed"}`);
+          throw new Error(`${source}_stream_${event.error || "failed"}`);
         }
       }
     }
@@ -220,11 +224,11 @@ async function parseAstrBotNdjson(response, onDelta) {
   } else if (tail?.type === "done" || tail?.type === "skipped") {
     donePayload = tail;
   } else if (tail?.type === "error") {
-    throw new Error(`astrbot_stream_${tail.error || "failed"}`);
+    throw new Error(`${source}_stream_${tail.error || "failed"}`);
   }
 
-  if (!donePayload) throw new Error("astrbot_stream_missing_done");
-  if (!donePayload.ok) throw new Error(`astrbot_bridge_${donePayload.error || "failed"}`);
+  if (!donePayload) throw new Error(`${source}_stream_missing_done`);
+  if (!donePayload.ok) throw new Error(`${source}_bridge_${donePayload.error || "failed"}`);
   return { ...donePayload, streamed };
 }
 
@@ -293,18 +297,20 @@ function escapeRegExp(value) {
 }
 
 export async function summarizeLiveRoomContext(options, payload, fetchImpl = globalThis.fetch) {
+  const profile = bridgeProfile(options);
+  if (!profile) return "";
   if (!fetchImpl) throw new Error("fetch_unavailable");
-  if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
-  if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
+  if (!profile.bridgeUrl) throw new Error(`${profile.kind}_bridge_url_missing`);
+  if (!profile.bridgeToken) throw new Error(`${profile.kind}_bridge_token_missing`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profile.timeoutMs);
 
   try {
-    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, "/live-room/context/summarize"), {
+    const response = await fetchImpl(bridgeEndpoint(profile.bridgeUrl, "/live-room/context/summarize"), {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Authorization": `Bearer ${profile.bridgeToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -316,12 +322,12 @@ export async function summarizeLiveRoomContext(options, payload, fetchImpl = glo
     });
 
     if (!response.ok) {
-      throw new Error(`astrbot_context_summary_http_${response.status}`);
+      throw new Error(`${profile.kind}_context_summary_http_${response.status}`);
     }
 
     const body = await response.json();
     if (!body?.ok) {
-      throw new Error(`astrbot_context_summary_${body?.error || "failed"}`);
+      throw new Error(`${profile.kind}_context_summary_${body?.error || "failed"}`);
     }
     return String(body.summary || "").trim().slice(0, 4000);
   } finally {
@@ -330,7 +336,7 @@ export async function summarizeLiveRoomContext(options, payload, fetchImpl = glo
 }
 
 export async function refreshNewsTopics(options, payload = {}, fetchImpl = globalThis.fetch) {
-  const body = await requestAstrBotJson(
+  const body = await requestBridgeEndpointJson(
     options,
     "/live-room/capabilities/news/refresh",
     {
@@ -339,7 +345,7 @@ export async function refreshNewsTopics(options, payload = {}, fetchImpl = globa
       reason: String(payload?.reason || "gateway_manual").slice(0, 80)
     },
     fetchImpl,
-    "astrbot_news_refresh"
+    "news_refresh"
   );
   if (!body?.ok) {
     throw new Error(`astrbot_news_refresh_${body?.error || "failed"}`);
@@ -348,7 +354,7 @@ export async function refreshNewsTopics(options, payload = {}, fetchImpl = globa
 }
 
 export async function getNewsRefreshStatus(options, payload = {}, fetchImpl = globalThis.fetch) {
-  return requestAstrBotJson(
+  return requestBridgeEndpointJson(
     options,
     "/live-room/capabilities/news/status",
     {
@@ -356,13 +362,13 @@ export async function getNewsRefreshStatus(options, payload = {}, fetchImpl = gl
       include_recent: payload?.includeRecent !== false
     },
     fetchImpl,
-    "astrbot_news_status"
+    "news_status"
   );
 }
 
 export async function listNewsTopics(options, payload = {}, fetchImpl = globalThis.fetch) {
   const limit = Math.max(1, Math.min(Number(payload?.limit) || 10, 30));
-  const body = await requestAstrBotJson(
+  const body = await requestBridgeEndpointJson(
     options,
     "/live-room/capabilities/news/topics",
     {
@@ -371,7 +377,7 @@ export async function listNewsTopics(options, payload = {}, fetchImpl = globalTh
       limit
     },
     fetchImpl,
-    "astrbot_news_topics"
+    "news_topics"
   );
   if (!body?.ok) {
     throw new Error(`astrbot_news_topics_${body?.error || "failed"}`);
@@ -380,19 +386,20 @@ export async function listNewsTopics(options, payload = {}, fetchImpl = globalTh
 }
 
 export async function recognizeMusicIntent(session, text, options, fetchImpl = globalThis.fetch, metadata = {}) {
-  if (options.aiMode !== "astrbot") return noneMusicIntent("ai_mode_not_astrbot");
-  if (!fetchImpl || !options.astrbotBridgeUrl || !options.astrbotBridgeToken) {
-    return noneMusicIntent("astrbot_bridge_unavailable");
+  const profile = bridgeProfile(options);
+  if (!profile) return noneMusicIntent("ai_mode_not_bridge");
+  if (!fetchImpl || !profile.bridgeUrl || !profile.bridgeToken) {
+    return noneMusicIntent(`${profile.kind}_bridge_unavailable`);
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profile.timeoutMs);
 
   try {
-    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, "/live-room/music/intent"), {
+    const response = await fetchImpl(bridgeEndpoint(profile.bridgeUrl, "/live-room/music/intent"), {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Authorization": `Bearer ${profile.bridgeToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -407,10 +414,10 @@ export async function recognizeMusicIntent(session, text, options, fetchImpl = g
       signal: controller.signal
     });
 
-    if (!response.ok) return noneMusicIntent(`astrbot_music_intent_http_${response.status}`);
+    if (!response.ok) return noneMusicIntent(`${profile.kind}_music_intent_http_${response.status}`);
     const payload = await response.json();
-    if (!payload?.ok) return noneMusicIntent(`astrbot_music_intent_${payload?.error || "failed"}`);
-    return normalizeMusicIntent(payload.intent || payload);
+    if (!payload?.ok) return noneMusicIntent(`${profile.kind}_music_intent_${payload?.error || "failed"}`);
+    return normalizeMusicIntent(payload.intent || payload, profile.kind);
   } catch (error) {
     console.warn("music_intent_recognition_failed", {
       type: error.name || "Error",
@@ -422,19 +429,21 @@ export async function recognizeMusicIntent(session, text, options, fetchImpl = g
   }
 }
 
-async function requestAstrBotJson(options, pathname, body, fetchImpl, errorPrefix) {
+async function requestBridgeEndpointJson(options, pathname, body, fetchImpl, errorPrefix) {
+  const profile = bridgeProfile(options);
+  if (!profile) throw new Error(`ai_mode_not_bridge_${errorPrefix}`);
   if (!fetchImpl) throw new Error("fetch_unavailable");
-  if (!options.astrbotBridgeUrl) throw new Error("astrbot_bridge_url_missing");
-  if (!options.astrbotBridgeToken) throw new Error("astrbot_bridge_token_missing");
+  if (!profile.bridgeUrl) throw new Error(`${profile.kind}_bridge_url_missing`);
+  if (!profile.bridgeToken) throw new Error(`${profile.kind}_bridge_token_missing`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.astrbotTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profile.timeoutMs);
 
   try {
-    const response = await fetchImpl(bridgeEndpoint(options.astrbotBridgeUrl, pathname), {
+    const response = await fetchImpl(bridgeEndpoint(profile.bridgeUrl, pathname), {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${options.astrbotBridgeToken}`,
+        "Authorization": `Bearer ${profile.bridgeToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body || {}),
@@ -442,7 +451,7 @@ async function requestAstrBotJson(options, pathname, body, fetchImpl, errorPrefi
     });
 
     if (!response.ok) {
-      throw new Error(`${errorPrefix}_http_${response.status}`);
+      throw new Error(`${profile.kind}_${errorPrefix}_http_${response.status}`);
     }
 
     return response.json();
@@ -462,7 +471,7 @@ function bridgeEndpoint(baseUrl, pathname) {
 const musicIntents = new Set(["request", "request_many", "pause", "resume", "next", "previous", "remove", "status", "none"]);
 const musicTargetKinds = new Set(["", "queue_index", "requested_by_self"]);
 
-function normalizeMusicIntent(value) {
+function normalizeMusicIntent(value, source = "astrbot") {
   if (!value || typeof value !== "object") return noneMusicIntent("bad_music_intent");
   const intent = String(value.intent || "none").trim().toLowerCase();
   const normalizedIntent = musicIntents.has(intent) ? intent : "none";
@@ -478,7 +487,7 @@ function normalizeMusicIntent(value) {
     count: clampMusicIntentCount(value.count),
     target,
     reply_hint: String(value.reply_hint || "").trim().slice(0, 160),
-    source: String(value.source || "astrbot_music_intent").slice(0, 80)
+    source: String(value.source || `${source}_music_intent`).slice(0, 80)
   };
 }
 
@@ -580,7 +589,32 @@ function optionalReplyMetadata(reply) {
   const route = String(reply?.route || "").trim().slice(0, 48);
   if (route) metadata.route = route;
   if (reply?.streamed === true) metadata.streamed = true;
+  if (reply?.presentation && typeof reply.presentation === "object") metadata.presentation = reply.presentation;
   return metadata;
+}
+
+function bridgeProfile(options = {}) {
+  if (options.aiMode === "astrbot") {
+    return {
+      kind: "astrbot",
+      bridgeUrl: options.astrbotBridgeUrl || "",
+      bridgeToken: options.astrbotBridgeToken || "",
+      timeoutMs: Number(options.astrbotTimeoutMs || 45000),
+      fallbackToMock: options.astrbotFallbackToMock !== false,
+      streamingEnabled: options.astrbotStreamingEnabled !== false
+    };
+  }
+  if (options.aiMode === "hoshiaclaw") {
+    return {
+      kind: "hoshiaclaw",
+      bridgeUrl: options.hoshiaClawBridgeUrl || options.hoshiaclawBridgeUrl || "",
+      bridgeToken: options.hoshiaClawBridgeToken || options.hoshiaclawToken || "",
+      timeoutMs: Number(options.hoshiaClawTimeoutMs || options.hoshiaclawTimeoutMs || 45000),
+      fallbackToMock: options.hoshiaClawFallbackToMock !== false && options.hoshiaclawFallbackToMock !== false,
+      streamingEnabled: options.hoshiaClawStreamingEnabled !== false && options.hoshiaclawStreamingEnabled !== false
+    };
+  }
+  return null;
 }
 
 function normalizeLatencyBreakdown(value) {

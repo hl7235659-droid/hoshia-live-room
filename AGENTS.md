@@ -47,6 +47,15 @@
 - 模块事件里的 `data` 必须使用短文本白名单字段，不允许塞路径、token、密钥、内部地址、原始日志或隐私数据。
 - 新模块的 Release 说明要用外行能理解的话说明：这个模块让用户体验有什么变化。
 
+## Hoshiaclaw side-by-side 规则
+
+- `live-room-hoshiaclaw` 是可选内网 sidecar 服务，通过 Compose profile `hoshiaclaw` 启动。
+- 默认不要把房间切到 Hoshiaclaw；只有确认服务和网关集成可用后，才在私有 `.env` 中设置 `AI_MODE=hoshiaclaw`。
+- Hoshiaclaw 只能暴露在 Compose 内网，不要添加公网端口或把内部 URL 写入前端。
+- `HOSHIACLAW_*` 示例值必须是占位符或 Compose 内网服务名，不得包含真实 token、供应商密钥、服务器地址、隧道地址或本地绝对路径。
+- Hoshiaclaw 的 `data/`、`private/`、`logs/`、`tmp/`、`bin/` 属于运行时目录，必须保持 Git 忽略。
+- 回滚优先改回 `.env` 里的 `AI_MODE=mock` 或上一套后端模式，然后重启 gateway/web；不要为了回滚删除数据库或覆盖服务器专属配置。
+
 ## 记忆与隐私规则
 
 - Hoshia 可以知道直播间公开状态、模块能力、当前播放/队列、观众公开配置、在线状态和用户允许记忆的偏好。
@@ -70,6 +79,13 @@ git diff --check
 
 ```bash
 git diff --check
+```
+
+如果修改了 compose/config/CI，还要按影响范围运行：
+
+```bash
+docker compose config
+docker compose --profile hoshiaclaw config
 ```
 
 如果修改了依赖，还要运行：
