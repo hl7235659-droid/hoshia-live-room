@@ -4,8 +4,10 @@ import {
   createProactiveReplyState,
   markUserActivityForProactive,
   nextProactiveDelayMs,
+  normalizeProactiveLiveConfig,
   normalizeProactiveReplyConfig,
   rememberProactiveReply,
+  shouldRunHoshiaClawProactiveLive,
   shouldRunProactiveReply
 } from "../src/proactive-reply.js";
 
@@ -13,6 +15,8 @@ test("HoshiaClaw proactive shadow is disabled by default", async () => {
   process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
   const { config } = await import(`../src/config.js?proactive_shadow_default=${Date.now()}`);
   assert.equal(config.hoshiaClawProactiveShadowEnabled, false);
+  assert.equal(config.hoshiaClawProactiveLiveEnabled, false);
+  assert.equal(config.hoshiaClawProactiveLivePercent, 0);
 });
 
 test("HoshiaClaw remaining shadow rollouts are conservative by default", async () => {
@@ -45,6 +49,51 @@ test("proactive reply config is disabled by default and clamps idle window", () 
     PROACTIVE_REPLY_MAX_IDLE_SECONDS: "300"
   });
   assert.equal(clamped.maxIdleSeconds, 900);
+});
+
+test("proactive live config defaults closed and clamps rollout percent", () => {
+  assert.deepEqual(normalizeProactiveLiveConfig({}), {
+    enabled: false,
+    percent: 0
+  });
+  assert.deepEqual(normalizeProactiveLiveConfig({
+    HOSHIACLAW_PROACTIVE_LIVE_ENABLED: "true",
+    HOSHIACLAW_PROACTIVE_LIVE_PERCENT: "150"
+  }), {
+    enabled: true,
+    percent: 100
+  });
+});
+
+test("proactive live rollout requires HoshiaClaw mode flag and stable bucket hit", () => {
+  const session = { user_id: "viewer-1", nickname: "Viewer" };
+  assert.equal(shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "astrbot", hoshiaClawProactiveLiveEnabled: true, hoshiaClawProactiveLivePercent: 100 },
+    session
+  }).reason, "ai_mode_not_hoshiaclaw");
+  assert.equal(shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "hoshiaclaw", hoshiaClawProactiveLiveEnabled: false, hoshiaClawProactiveLivePercent: 100 },
+    session
+  }).reason, "proactive_live_disabled");
+  assert.equal(shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "hoshiaclaw", hoshiaClawProactiveLiveEnabled: true, hoshiaClawProactiveLivePercent: 0 },
+    session
+  }).reason, "proactive_live_percent_zero");
+  assert.equal(shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "hoshiaclaw", hoshiaClawProactiveLiveEnabled: true, hoshiaClawProactiveLivePercent: 100 },
+    session
+  }).ok, true);
+
+  const first = shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "hoshiaclaw", roomId: "room", hoshiaClawProactiveLiveEnabled: true, hoshiaClawProactiveLivePercent: 50 },
+    session
+  });
+  const second = shouldRunHoshiaClawProactiveLive({
+    config: { aiMode: "hoshiaclaw", roomId: "room", hoshiaClawProactiveLiveEnabled: true, hoshiaClawProactiveLivePercent: 50 },
+    session
+  });
+  assert.equal(first.reason, second.reason);
+  assert.equal(first.bucket, second.bucket);
 });
 
 test("proactive delay is selected inside configured idle window", () => {

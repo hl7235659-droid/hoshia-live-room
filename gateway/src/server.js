@@ -64,9 +64,11 @@ import {
   markUserActivityForProactive,
   nextProactiveDelayMs,
   rememberProactiveReply,
+  shouldRunHoshiaClawProactiveLive,
   shouldRunProactiveReply
 } from "./proactive-reply.js";
 import { runHoshiaClawProactiveShadow } from "./proactive-shadow.js";
+import { runHoshiaClawProactiveLive } from "./proactive-live.js";
 import {
   runDailyPostShadow,
   runNewsTopicGenerateShadow
@@ -1776,8 +1778,9 @@ async function handleProactiveReplyCheck() {
     return;
   }
 
-  await runProactiveReplyShadow(decision.idleMs || 0);
-  await sendProactiveIdleReply(decision.idleMs || 0);
+  const liveDecision = shouldRunHoshiaClawProactiveLive({ config, session: firstActiveSession() });
+  if (!liveDecision.ok) await runProactiveReplyShadow(decision.idleMs || 0);
+  await sendProactiveIdleReply(decision.idleMs || 0, liveDecision);
 }
 
 async function runProactiveReplyShadow(idleMs) {
@@ -1823,7 +1826,13 @@ async function runProactiveReplyShadow(idleMs) {
   }
 }
 
-async function sendProactiveIdleReply(idleMs) {
+async function sendProactiveIdleReply(idleMs, liveDecision = null) {
+  liveDecision = liveDecision || shouldRunHoshiaClawProactiveLive({ config, session: firstActiveSession() });
+  if (liveDecision.ok) {
+    await sendHoshiaClawProactiveLiveReply(idleMs, liveDecision);
+    return;
+  }
+
   if (config.aiMode !== "astrbot") {
     scheduleProactiveReplyCheck();
     return;
@@ -1882,6 +1891,121 @@ async function sendProactiveIdleReply(idleMs) {
     setTimeout(() => void setCharacterState("IDLE"), 1400);
   } catch (error) {
     console.warn("proactive_reply_failed", {
+      type: error.name || "Error",
+      message: error.message
+    });
+    await setCharacterState("IDLE");
+  } finally {
+    proactiveReplyState.generating = false;
+    scheduleProactiveReplyCheck();
+  }
+}
+
+async function sendHoshiaClawProactiveLiveReply(idleMs, liveDecision = {}) {
+  const session = firstActiveSession();
+  if (!session) {
+    scheduleProactiveReplyCheck();
+    return;
+  }
+
+  const startedAfterUserMessageAt = proactiveReplyState.lastUserMessageAtMs;
+  proactiveReplyState.generating = true;
+  try {
+    await setCharacterState("THINKING");
+    const {
+      shortTermContext,
+      moduleContext,
+      moduleEvents,
+      recentMessages,
+      characterSnapshotContext,
+      prompt
+    } = await buildProactiveReplyContext({ session, idleMs });
+
+    const latencyTraceId = nanoid(10);
+    const reply = await runHoshiaClawProactiveLive({
+      enabled: true,
+      session,
+      prompt,
+      roomSession: roomAiSession([{ session }]),
+      config,
+      generateAiReply,
+      fetchImpl: globalThis.fetch,
+      metadata: {
+        roomSession: true,
+        forceReply: true,
+        replyMode: "proactive_idle_live",
+        recentContext: shortTermContext.recentContext,
+        contextSummary: shortTermContext.contextSummary,
+        characterSnapshotContext,
+        moduleContext,
+        moduleEvents,
+        messages: recentMessages,
+        latencyTraceId
+      },
+      logger: console
+    });
+
+    if (proactiveReplyState.lastUserMessageAtMs !== startedAfterUserMessageAt) {
+      recordProactiveLiveMetric({
+        eventType: "hoshiaclaw.proactive_live.skip",
+        status: "skip",
+        reason: "user_activity_changed",
+        source: "gateway"
+      });
+      await setCharacterState("IDLE");
+      return;
+    }
+
+    recordProactiveLiveMetric(reply);
+    if (reply?.status !== "success" || !reply.text || reply.source !== "openai_compatible") {
+      await setCharacterState("IDLE");
+      return;
+    }
+
+    const route = reply.route || "proactive_idle_live";
+    const aiMessage = messageEvent("ai_reply", "ai", reply.text, {
+      user_id: "ai-host",
+      nickname: "Hoshia"
+    }, {
+      source: reply.source,
+      latency_ms: reply.latencyMs,
+      proactive_idle: true,
+      route,
+      rollout_bucket: liveDecision.bucket ?? null
+    });
+    await storeMessage(aiMessage);
+    appendCharacterEvent({
+      event_type: "ai.reply_sent",
+      actor_type: "ai",
+      source_kind: "ai_reply",
+      source_id: aiMessage.id,
+      public_hint: "Hoshia sent a proactive live room reply",
+      private_hint: "Hoshia sent a proactive live room reply",
+      reason: route,
+      data: {
+        route,
+        source_type: reply.source || "unknown",
+        status: "sent"
+      }
+    });
+    broadcast(aiMessage);
+    broadcastHoshiaPresentation(presentationFromClawEnvelope(reply, {
+      traceId: latencyTraceId,
+      state: isValidState(reply.state) ? reply.state : "SPEAKING",
+      reason: route
+    }));
+    broadcastAiReplyDone({ traceId: latencyTraceId, route });
+    rememberProactiveReply(proactiveReplyState, aiMessage.text);
+    await setCharacterState(isValidState(reply.state) ? reply.state : "SPEAKING");
+    setTimeout(() => void setCharacterState("IDLE"), 1400);
+  } catch (error) {
+    recordProactiveLiveMetric({
+      eventType: "hoshiaclaw.proactive_live.failed",
+      status: "failed",
+      reason: error?.message || "proactive_live_failed",
+      source: "gateway"
+    });
+    console.warn("hoshiaclaw_proactive_live_failed", {
       type: error.name || "Error",
       message: error.message
     });
@@ -1971,6 +2095,39 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
   });
   const previousLines = proactiveReplyState.recentTexts.map((text, index) => `${index + 1}. ${text}`);
   const topicHooks = proactiveTopicHooks({ moduleContext, moduleEvents, recentMessages });
+  const safeLine = (value, limit = 180) => cleanProactiveText(value, limit);
+
+  return [
+    hoshiaPersonaPrompt,
+    "Hoshia is preparing one proactive line because at least one viewer is online and the room has been idle for a while.",
+    `Idle time: about ${idleMinutes} minutes.`,
+    `Online viewers: ${Number(room.online || 0)}.`,
+    `Unanswered proactive count: ${Number(proactiveReplyState.unansweredCount || 0)}.`,
+    "Use only the safe public context below. Do not mention system detection, internal routing, logs, secrets, tokens, URLs, file paths, or private configuration.",
+    ...(realityContextLines.length ? ["Reality context:", ...realityContextLines.map((line) => safeLine(line, 220))] : []),
+    ...(hostLifeContextLines.length ? ["Host life context:", ...hostLifeContextLines.map((line) => safeLine(line, 220))] : []),
+    ...(previousLines.length ? [
+      "Previous proactive lines. Do not repeat their topic or structure:",
+      ...previousLines.map((line) => safeLine(line, 180))
+    ] : []),
+    ...(recentLines.length ? [
+      "Recent room messages:",
+      ...recentLines.map((line) => safeLine(line, 180))
+    ] : ["Recent room messages: none."]),
+    ...(topicHooks.length ? [
+      "Available concrete topic hooks, ordered by priority:",
+      ...topicHooks.map((hook, index) => `${index + 1}. ${safeLine(hook, 180)}`)
+    ] : [
+      "Available concrete topic hooks: none. If there is no concrete diary, chat, music, time-of-day, or safe module hook, choose skip instead of filling silence."
+    ]),
+    "Task:",
+    "- Write one natural proactive opening line in Chinese.",
+    "- Prefer a concrete diary or module hook; otherwise use recent chat, music, or current time context.",
+    "- Include a clear conversational handle that a viewer can respond to.",
+    "- Keep Hoshia's tone: light, familiar, slightly playful, and tied to her current state.",
+    "- Do not only say the room is quiet, do not scold viewers, and do not ask a generic customer-service question.",
+    "- Output only Hoshia's spoken line, 1 to 2 short sentences, at most 90 Chinese characters."
+  ].join("\n");
 
   return [
     hoshiaPersonaPrompt,
@@ -2855,6 +3012,11 @@ function recordProactiveShadowMetric(metric = {}) {
   return recordShadowMetricEvent({ ...metric, route: "proactive_idle_shadow" });
 }
 
+function recordProactiveLiveMetric(metric = {}) {
+  if (!String(metric?.eventType || "").startsWith("hoshiaclaw.proactive_live.")) return null;
+  return recordShadowMetricEvent({ ...metric, route: "proactive_idle_live" });
+}
+
 function recordCommentReplyShadowMetric(metric = {}) {
   if (!String(metric?.eventType || "").startsWith("hoshiaclaw.comment_reply_shadow.")) return null;
   return recordShadowMetricEvent({ ...metric, route: "post_comment_reply_shadow" });
@@ -2894,6 +3056,7 @@ function statusFromShadowEvent(eventType = "") {
 function routeFromShadowEvent(eventType = "") {
   const text = String(eventType || "");
   if (text.includes(".proactive_shadow.")) return "proactive_idle_shadow";
+  if (text.includes(".proactive_live.")) return "proactive_idle_live";
   if (text.includes(".comment_reply_shadow.")) return "post_comment_reply_shadow";
   if (text.includes(".daily_post_shadow.")) return "daily_post_shadow";
   if (text.includes(".news_topic_generate_shadow.")) return "news_topic_generate_shadow";
@@ -2954,6 +3117,8 @@ function safeRuntimeModes() {
     character_state_authority: ["legacy", "event_log"].includes(config.characterStateAuthority) ? config.characterStateAuthority : "legacy",
     comment_reply_rollout_mode: ["live", "shadow", "off"].includes(config.hoshiaCommentReplyRolloutMode) ? config.hoshiaCommentReplyRolloutMode : "live",
     proactive_shadow_enabled: Boolean(config.hoshiaClawProactiveShadowEnabled),
+    proactive_live_enabled: Boolean(config.hoshiaClawProactiveLiveEnabled),
+    proactive_live_percent: Math.max(0, Math.min(100, Number(config.hoshiaClawProactiveLivePercent || 0))),
     daily_post_shadow_enabled: Boolean(config.hoshiaClawDailyPostShadowEnabled),
     news_topic_shadow_enabled: Boolean(config.hoshiaClawNewsTopicGenerateShadowEnabled)
   };

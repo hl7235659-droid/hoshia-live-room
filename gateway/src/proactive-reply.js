@@ -16,6 +16,13 @@ export function normalizeProactiveReplyConfig(env = process.env) {
   };
 }
 
+export function normalizeProactiveLiveConfig(env = process.env) {
+  return {
+    enabled: parseBool(env.HOSHIACLAW_PROACTIVE_LIVE_ENABLED, false),
+    percent: clampInt(env.HOSHIACLAW_PROACTIVE_LIVE_PERCENT, 0, 0, 100)
+  };
+}
+
 export function createProactiveReplyState(now = Date.now()) {
   return {
     lastUserMessageAtMs: now,
@@ -73,6 +80,32 @@ export function rememberProactiveReply(state, text, now = Date.now(), limit = 5)
 export function markUserActivityForProactive(state, now = Date.now()) {
   state.lastUserMessageAtMs = now;
   state.unansweredCount = 0;
+}
+
+export function shouldRunHoshiaClawProactiveLive({
+  config = {},
+  session = null,
+  bucketKey = ""
+} = {}) {
+  if (config.aiMode !== "hoshiaclaw") return { ok: false, reason: "ai_mode_not_hoshiaclaw" };
+  if (!config.hoshiaClawProactiveLiveEnabled) return { ok: false, reason: "proactive_live_disabled" };
+  const percent = clampInt(config.hoshiaClawProactiveLivePercent, 0, 0, 100);
+  if (percent <= 0) return { ok: false, reason: "proactive_live_percent_zero" };
+  if (percent >= 100) return { ok: true, reason: "proactive_live_enabled", bucket: 0 };
+  const key = bucketKey || `${config.roomId || "room"}:${session?.user_id || session?.nickname || "anonymous"}`;
+  const bucket = stablePercentBucket(key);
+  if (bucket >= percent) return { ok: false, reason: "proactive_live_bucket_miss", bucket };
+  return { ok: true, reason: "proactive_live_enabled", bucket };
+}
+
+export function stablePercentBucket(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 100;
 }
 
 function clampInt(value, fallback, min, max) {

@@ -1,4 +1,4 @@
-import { normalizeProactiveReplyConfig } from "./proactive-reply.js";
+import { normalizeProactiveLiveConfig, normalizeProactiveReplyConfig } from "./proactive-reply.js";
 
 export const config = {
   port: Number(process.env.PORT || 3000),
@@ -27,6 +27,7 @@ export const config = {
   hoshiaClawFallbackToMock: parseBool(process.env.HOSHIACLAW_FALLBACK_TO_MOCK, true),
   hoshiaClawStreamingEnabled: parseBool(process.env.HOSHIACLAW_STREAMING_ENABLED, true),
   hoshiaClawProactiveShadowEnabled: parseBool(process.env.HOSHIACLAW_PROACTIVE_SHADOW_ENABLED, false),
+  ...proactiveLiveSettings(process.env),
   hoshiaClawDailyPostShadowEnabled: parseBool(process.env.HOSHIACLAW_DAILY_POST_SHADOW_ENABLED, false),
   hoshiaClawNewsTopicGenerateShadowEnabled: parseBool(process.env.HOSHIACLAW_NEWS_TOPIC_GENERATE_SHADOW_ENABLED, false),
   characterStateAuthority: enumValue(process.env.CHARACTER_STATE_AUTHORITY || "legacy", ["legacy", "event_log"], "legacy"),
@@ -101,4 +102,12 @@ function clampNumber(value, min, max, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, number));
+}
+
+function proactiveLiveSettings(env) {
+  const live = normalizeProactiveLiveConfig(env);
+  return {
+    hoshiaClawProactiveLiveEnabled: live.enabled,
+    hoshiaClawProactiveLivePercent: live.percent
+  };
 }
