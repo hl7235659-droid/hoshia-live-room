@@ -9,6 +9,12 @@ import {
   shouldRunProactiveReply
 } from "../src/proactive-reply.js";
 
+test("HoshiaClaw proactive shadow is disabled by default", async () => {
+  process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
+  const { config } = await import(`../src/config.js?proactive_shadow_default=${Date.now()}`);
+  assert.equal(config.hoshiaClawProactiveShadowEnabled, false);
+});
+
 test("proactive reply config is disabled by default and clamps idle window", () => {
   assert.equal(normalizeProactiveReplyConfig({}).enabled, false);
   assert.deepEqual(normalizeProactiveReplyConfig({

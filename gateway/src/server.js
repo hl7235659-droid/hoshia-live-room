@@ -58,6 +58,7 @@ import {
   rememberProactiveReply,
   shouldRunProactiveReply
 } from "./proactive-reply.js";
+import { runHoshiaClawProactiveShadow } from "./proactive-shadow.js";
 import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
 import {
   buildWelcomeGreetingPrompt,
@@ -1517,7 +1518,51 @@ async function handleProactiveReplyCheck() {
     return;
   }
 
+  await runProactiveReplyShadow(decision.idleMs || 0);
   await sendProactiveIdleReply(decision.idleMs || 0);
+}
+
+async function runProactiveReplyShadow(idleMs) {
+  if (!config.hoshiaClawProactiveShadowEnabled) return;
+  const session = firstActiveSession();
+  if (!session) return;
+
+  try {
+    const context = await buildProactiveReplyContext({ session, idleMs });
+    await runHoshiaClawProactiveShadow({
+      enabled: true,
+      session,
+      prompt: context.prompt,
+      roomSession: roomAiSession([{ session }]),
+      config,
+      generateAiReply,
+      fetchImpl: globalThis.fetch,
+      metadata: {
+        roomSession: true,
+        forceReply: true,
+        replyMode: "proactive_idle_shadow",
+        recentContext: context.shortTermContext.recentContext,
+        contextSummary: context.shortTermContext.contextSummary,
+        characterSnapshotContext: context.characterSnapshotContext,
+        moduleContext: context.moduleContext,
+        moduleEvents: context.moduleEvents,
+        messages: context.recentMessages
+      },
+      recordMetric: recordProactiveShadowMetric,
+      logger: console
+    });
+  } catch (error) {
+    recordProactiveShadowMetric({
+      eventType: "hoshiaclaw.proactive_shadow.failed",
+      status: "failed",
+      reason: error?.message || "shadow_context_failed",
+      source: "gateway"
+    });
+    console.warn("hoshiaclaw_proactive_shadow_context_failed", {
+      type: error?.name || "Error",
+      message: error?.message || String(error)
+    });
+  }
 }
 
 async function sendProactiveIdleReply(idleMs) {
@@ -1536,19 +1581,13 @@ async function sendProactiveIdleReply(idleMs) {
   proactiveReplyState.generating = true;
   try {
     await setCharacterState("THINKING");
-    const shortTermContext = await buildProactiveShortTermContext();
-    const moduleContext = buildModuleContext({ providers: moduleProviders, session });
-    const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
-    const recentMessages = db
-      .listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages)
-      .map(contextPayloadMessage);
-    const prompt = formatProactiveIdlePrompt({
-      session,
-      idleMs,
-      recentMessages,
+    const {
+      shortTermContext,
       moduleContext,
-      moduleEvents
-    });
+      moduleEvents,
+      recentMessages,
+      prompt
+    } = await buildProactiveReplyContext({ session, idleMs });
 
     const reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
       roomSession: true,
@@ -1593,6 +1632,33 @@ async function sendProactiveIdleReply(idleMs) {
     proactiveReplyState.generating = false;
     scheduleProactiveReplyCheck();
   }
+}
+
+async function buildProactiveReplyContext({ session, idleMs } = {}) {
+  const shortTermContext = await buildProactiveShortTermContext();
+  const moduleContext = buildModuleContext({ providers: moduleProviders, session });
+  const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
+  const recentMessages = db
+    .listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages)
+    .map(contextPayloadMessage);
+  const characterSnapshot = config.characterStateAuthority === "event_log"
+    ? buildEventLogCharacterSnapshot({ roomId: config.roomId, characterId: "hoshia" }) || buildCurrentCharacterSnapshot(session)
+    : buildCurrentCharacterSnapshot(session);
+  const prompt = formatProactiveIdlePrompt({
+    session,
+    idleMs,
+    recentMessages,
+    moduleContext,
+    moduleEvents
+  });
+  return {
+    shortTermContext,
+    moduleContext,
+    moduleEvents,
+    recentMessages,
+    characterSnapshotContext: summarizeCharacterSnapshotForPrompt(characterSnapshot),
+    prompt
+  };
 }
 
 async function buildProactiveShortTermContext() {
@@ -2513,6 +2579,25 @@ function appendTimelineCommentReplyCharacterEvent({ post, comment, reply, status
       post_id: post?.id || "",
       comment_id: comment?.id || "",
       status
+    }
+  });
+}
+
+function recordProactiveShadowMetric({ eventType = "", status = "", reason = "", source = "", latencyMs = undefined } = {}) {
+  if (!String(eventType || "").startsWith("hoshiaclaw.proactive_shadow.")) return null;
+  return appendCharacterEvent({
+    event_type: eventType,
+    actor_type: "system",
+    source_kind: "hoshiaclaw",
+    source_id: "proactive_shadow",
+    public_hint: `HoshiaClaw proactive shadow ${status || "updated"}`,
+    private_hint: `HoshiaClaw proactive shadow ${status || "updated"}`,
+    reason: reason || status || "proactive_shadow",
+    data: {
+      status,
+      source_type: source || "hoshiaclaw",
+      route: "proactive_idle_shadow",
+      ...(latencyMs !== undefined ? { latency_ms: latencyMs } : {})
     }
   });
 }

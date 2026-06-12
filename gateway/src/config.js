@@ -26,6 +26,7 @@ export const config = {
   hoshiaClawTimeoutMs: Number(process.env.HOSHIACLAW_TIMEOUT_MS || 45000),
   hoshiaClawFallbackToMock: parseBool(process.env.HOSHIACLAW_FALLBACK_TO_MOCK, true),
   hoshiaClawStreamingEnabled: parseBool(process.env.HOSHIACLAW_STREAMING_ENABLED, true),
+  hoshiaClawProactiveShadowEnabled: parseBool(process.env.HOSHIACLAW_PROACTIVE_SHADOW_ENABLED, false),
   characterStateAuthority: enumValue(process.env.CHARACTER_STATE_AUTHORITY || "legacy", ["legacy", "event_log"], "legacy"),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
   singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),
