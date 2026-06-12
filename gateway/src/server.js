@@ -1060,7 +1060,7 @@ async function generatePostCommentReplyShadow({
   moduleContext = [],
   moduleEvents = []
 } = {}) {
-  const prompt = formatPostCommentReplyPrompt({ post, comment, memoryPacket, visualState });
+  const prompt = formatPostCommentReplyShadowPrompt({ post, comment, memoryPacket, visualState });
   return runCommentReplyShadowProvider({
     session: {
       user_id: comment?.user_id || "post-comment-viewer",
@@ -1101,6 +1101,26 @@ async function runCommentReplyShadowProvider({ session, prompt, moduleContext = 
     latency_ms: reply.latency_ms
   };
 }
+
+function formatPostCommentReplyShadowPrompt({ post, comment, memoryPacket = [], visualState = null } = {}) {
+  const state = visualState || {};
+  const safeLine = (value, limit = 220) => String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+  return [
+    "You are Hoshia in a private live-room staging shadow check.",
+    "Generate one short candidate reply to a viewer comment on Hoshia's timeline post.",
+    "This is shadow mode: do not publish, do not claim actions, and do not include secrets, URLs, paths, tokens, raw logs, or internal notes.",
+    "Return only the candidate reply text, or an explicit skip if a reply would be unsafe.",
+    "reply_mode: post_comment_reply_shadow",
+    `post_activity: ${safeLine(post?.activity, 48) || "chatting"}`,
+    `post_mood: ${safeLine(post?.mood, 48) || "calm"}`,
+    `post_summary: ${safeLine(post?.content, 360) || "timeline post"}`,
+    `viewer: ${safeLine(comment?.nickname, 48) || "viewer"}`,
+    `comment_summary: ${safeLine(comment?.content, 360) || "viewer comment"}`,
+    `current_state: activity=${safeLine(state.activity, 48) || "idle"}; mood=${safeLine(state.mood, 48) || "calm"}; energy=${Number(state.energy || 0)}; social_need=${Number(state.social_need || 0)}`,
+    ...(Array.isArray(memoryPacket) ? memoryPacket.slice(0, 4).map((line) => `memory_summary: ${safeLine(line, 180)}`).filter(Boolean) : [])
+  ].filter(Boolean).join("\n");
+}
+
 function formatPostCommentReplyPrompt({ post, comment, memoryPacket = [], visualState = null } = {}) {
   const state = visualState || {};
   return [
