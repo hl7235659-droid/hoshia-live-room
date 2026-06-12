@@ -1,6 +1,11 @@
 const USER_MESSAGE_RECEIVED = "user.message_received";
 const AI_REPLY_SENT = "ai.reply_sent";
 const MUSIC_SONG_REQUESTED = "module.music.song_requested";
+const MUSIC_CONTROL = "module.music.control";
+const VISUAL_STATE_CHANGED = "hoshia_visual_state.changed";
+const TIMELINE_POST_CREATED = "hoshia_timeline.post_created";
+const COMMENT_REPLY_PENDING = "hoshia_timeline.comment_reply_pending";
+const COMMENT_REPLIED = "hoshia_timeline.comment_replied";
 const MAX_APPLIED_EVENT_IDS = 20;
 
 export function projectCharacterEvent(snapshot = {}, event = {}) {
@@ -8,6 +13,10 @@ export function projectCharacterEvent(snapshot = {}, event = {}) {
   if (eventType === USER_MESSAGE_RECEIVED) return projectUserMessageReceivedEvent(snapshot, event);
   if (eventType === AI_REPLY_SENT) return projectAiReplySentEvent(snapshot, event);
   if (eventType === MUSIC_SONG_REQUESTED) return projectMusicSongRequestedEvent(snapshot, event);
+  if (eventType === MUSIC_CONTROL) return projectMusicControlEvent(snapshot, event);
+  if (eventType === VISUAL_STATE_CHANGED) return projectVisualStateChangedEvent(snapshot, event);
+  if (eventType === TIMELINE_POST_CREATED) return projectTimelinePostCreatedEvent(snapshot, event);
+  if (eventType === COMMENT_REPLY_PENDING || eventType === COMMENT_REPLIED) return projectTimelineCommentReplyEvent(snapshot, event);
   return clonePlainObject(snapshot);
 }
 
@@ -70,6 +79,124 @@ export function projectMusicSongRequestedEvent(snapshot = {}, event = {}) {
   return next;
 }
 
+export function projectMusicControlEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  if (safeText(event.event_type || event.eventType, 80) !== MUSIC_CONTROL) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const action = safeText(data.action || event.reason, 40);
+  const status = safeText(data.status || "done", 40);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  recent.last_music_control = {
+    ...(action ? { action } : {}),
+    ...(status ? { status } : {}),
+    ...(occurredAt ? { controlled_at: occurredAt } : {})
+  };
+  derived.last_music_event_id = eventIdentifier(event);
+
+  return next;
+}
+
+export function projectVisualStateChangedEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  if (safeText(event.event_type || event.eventType, 80) !== VISUAL_STATE_CHANGED) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const expression = ensureObject(publicBlock, "expression");
+  const recent = ensureObject(publicBlock, "recent");
+  const stage = ensureObject(publicBlock, "stage");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const mood = safeText(data.mood, 40);
+  const activity = safeText(data.activity, 40);
+  const source = safeText(data.source || data.source_type || event.source_kind || event.sourceKind, 60);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  if (mood) expression.mood = mood;
+  if (activity) expression.activity = activity;
+  recent.last_visual_state_change = {
+    ...(mood ? { mood } : {}),
+    ...(activity ? { activity } : {}),
+    ...(source ? { source } : {}),
+    ...(occurredAt ? { changed_at: occurredAt } : {})
+  };
+  stage.presentation_suggestion = buildPresentationSuggestion(expression);
+  derived.last_visual_event_id = eventIdentifier(event);
+
+  return next;
+}
+
+export function projectTimelinePostCreatedEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  if (safeText(event.event_type || event.eventType, 80) !== TIMELINE_POST_CREATED) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const today = ensureObject(publicBlock, "today");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const activity = safeText(data.activity, 40);
+  const mood = safeText(data.mood, 40);
+  const sourceType = safeText(data.source_type || data.source || event.source_kind || event.sourceKind, 60);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  today.last_activity = activity || today.last_activity || "";
+  recent.last_timeline_post = {
+    ...(activity ? { activity } : {}),
+    ...(mood ? { mood } : {}),
+    ...(sourceType ? { source_type: sourceType } : {}),
+    ...(occurredAt ? { posted_at: occurredAt } : {})
+  };
+  derived.last_daily_event_id = eventIdentifier(event);
+
+  return next;
+}
+
+export function projectTimelineCommentReplyEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  const eventType = safeText(event.event_type || event.eventType, 80);
+  if (eventType !== COMMENT_REPLY_PENDING && eventType !== COMMENT_REPLIED) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const status = safeText(data.status || (eventType === COMMENT_REPLY_PENDING ? "pending" : "replied"), 40);
+  const mood = safeText(data.mood, 40);
+  const activity = safeText(data.activity, 40);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  recent.last_comment_reply = {
+    status,
+    ...(activity ? { activity } : {}),
+    ...(mood ? { mood } : {}),
+    ...(occurredAt ? { updated_at: occurredAt } : {})
+  };
+  derived.last_comment_event_id = eventIdentifier(event);
+
+  return next;
+}
+
 function applyEventMetadata(snapshot, event) {
   const publicBlock = ensureObject(snapshot, "public");
   const explain = ensureObject(publicBlock, "explain");
@@ -120,6 +247,16 @@ function ensureObject(target, key) {
 function clonePlainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return JSON.parse(JSON.stringify(value));
+}
+
+function buildPresentationSuggestion(expression = {}) {
+  const mood = safeText(expression.mood, 40) || "calm";
+  const activity = safeText(expression.activity, 40) || "idle";
+  return {
+    mood,
+    activity,
+    source: "character_snapshot"
+  };
 }
 
 function safeTimestamp(value) {

@@ -391,6 +391,33 @@ export function createMusicSongRequestedEvent(track, session, {
   });
 }
 
+export function createMusicControlEvent(action, session, {
+  roomId = "",
+  status = "done",
+  sourceKind = "manual"
+} = {}) {
+  const safeAction = cleanIdentifier(action, 40);
+  if (!safeAction) return null;
+  const nickname = cleanText(session?.nickname, 32) || "viewer";
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "music",
+    event_type: "music.control",
+    user_id: session?.user_id || "",
+    nickname,
+    summary_hint: `${nickname} used music control ${safeAction}`,
+    memory_eligible: false,
+    memory_kind: "music_control",
+    retention_days: 7,
+    occurred_at: new Date().toISOString(),
+    data: {
+      action: safeAction,
+      status,
+      source_kind: sourceKind
+    }
+  });
+}
+
 export function createHoshiaVisualStateChangedEvent(state, session, {
   roomId = "",
   reason = "",
@@ -527,7 +554,7 @@ function formatTrackLine(track) {
 
 function sanitizeEventData(data) {
   const allowed = {};
-  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status", "category", "topic", "matched_alias", "source_kind"]) {
+  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status", "category", "topic", "matched_alias", "source_kind", "action"]) {
     const value = cleanText(data[key], key === "source" || key === "category" || key === "source_kind" ? 40 : 120);
     if (value) allowed[key] = value;
   }
