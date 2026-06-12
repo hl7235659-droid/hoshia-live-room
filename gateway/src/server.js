@@ -29,6 +29,7 @@ import {
   createHoshiaVisualStateChangedEvent,
   createMusicModuleProvider,
   createModuleEventStore,
+  createMusicControlEvent,
   createMusicSongRequestedEvent
 } from "./module-context.js";
 import {
@@ -87,6 +88,8 @@ import {
 import { projectCharacterEvent } from "./character-event-projector.js";
 import {
   buildHoshiaReplyMetadata,
+  buildShortTermAiContext,
+  contextPayloadMessage as centerContextPayloadMessage,
   prepareHoshiaCenterContext
 } from "./hoshia-center-context.js";
 
@@ -367,6 +370,7 @@ app.post("/api/hoshia/posts", requireSession, async (req, res) => {
     roomId: config.roomId,
     reason: post.source_type || "manual"
   }));
+  appendTimelinePostCreatedCharacterEvent(post, req.session, { reason: post.source_type || "manual" });
   const result = updateHoshiaVisualState({
     body: {
       mood: post.mood,
@@ -376,7 +380,18 @@ app.post("/api/hoshia/posts", requireSession, async (req, res) => {
     session: req.session,
     reason: "Hoshia posted an update"
   });
-  if (result.changed) broadcastHoshiaState(result.state);
+  if (result.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, req.session, {
+      roomId: config.roomId,
+      reason: result.reason,
+      source: "manual_post"
+    }));
+    appendVisualStateChangedCharacterEvent(result.state, req.session, {
+      reason: result.reason,
+      source: "manual_post"
+    });
+    broadcastHoshiaState(result.state);
+  }
   res.status(201).json({
     ok: true,
     post: publicPost({
@@ -408,7 +423,18 @@ app.post("/api/hoshia/posts/:id/like", requireSession, async (req, res) => {
       text: "nice",
       session: req.session
     });
-    if (visualUpdate.changed) broadcastHoshiaState(visualUpdate.state);
+    if (visualUpdate.changed) {
+      moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, req.session, {
+        roomId: config.roomId,
+        reason: "timeline post like",
+        source: "post_like"
+      }));
+      appendVisualStateChangedCharacterEvent(visualUpdate.state, req.session, {
+        reason: "timeline post like",
+        source: "post_like"
+      });
+      broadcastHoshiaState(visualUpdate.state);
+    }
   }
   res.json({
     ok: true,
@@ -441,13 +467,25 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
     }, {
       roomId: config.roomId
     }));
+    appendTimelineCommentReplyCharacterEvent({ post, comment: interaction, status: "pending" });
     scheduleCommentReplyTick();
   }
   const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
     text: input.content,
     session: req.session
   });
-  if (visualUpdate.changed) broadcastHoshiaState(visualUpdate.state);
+  if (visualUpdate.changed) {
+    moduleEventStore.append(createHoshiaVisualStateChangedEvent(visualUpdate.state, req.session, {
+      roomId: config.roomId,
+      reason: "timeline comment",
+      source: "post_comment"
+    }));
+    appendVisualStateChangedCharacterEvent(visualUpdate.state, req.session, {
+      reason: "timeline comment",
+      source: "post_comment"
+    });
+    broadcastHoshiaState(visualUpdate.state);
+  }
   res.status(201).json({
     ok: true,
     interaction,
@@ -512,6 +550,10 @@ app.post("/api/hoshia/state/update", requireSession, async (req, res) => {
       reason: result.reason,
       source: "manual"
     }));
+    appendVisualStateChangedCharacterEvent(result.state, req.session, {
+      reason: result.reason,
+      source: "manual"
+    });
     broadcastHoshiaState(result.state);
   }
   scheduleNextHoshiaVisualTick();
@@ -541,6 +583,10 @@ app.post("/api/hoshia/state/tick", requireSession, async (req, res) => {
       reason: result.reason,
       source: "manual_tick"
     }));
+    appendVisualStateChangedCharacterEvent(result.state, req.session, {
+      reason: result.reason,
+      source: "manual_tick"
+    });
     broadcastHoshiaState(result.state);
   }
   scheduleNextHoshiaVisualTick();
@@ -569,6 +615,12 @@ app.post("/api/music/request", requireSession, async (req, res) => {
     broadcastMusicState(req.session);
     return res.status(musicStatusCode(result.error)).json(result);
   }
+  moduleEventStore.append(createMusicSongRequestedEvent(result.track, req.session, {
+    roomId: config.roomId,
+    memoryEligible: normalizeStoredAiProfile(req.session.ai_profile)?.memory_enabled === true,
+    retentionDays: 30
+  }));
+  appendMusicSongRequestedCharacterEvent(result.track, req.session);
   await broadcastSystemText(`♪ ${req.session.nickname} 点歌《${result.track.title}》已加入播放。`);
   broadcastMusicState(req.session);
   res.json(result);
@@ -578,6 +630,12 @@ app.post("/api/music/control", requireSession, async (req, res) => {
   const result = musicService.control(req.body?.action, req.session, req.body || {});
   broadcastMusicState(req.session);
   if (!result.ok) return res.status(musicStatusCode(result.error)).json(result);
+  moduleEventStore.append(createMusicControlEvent(req.body?.action, req.session, {
+    roomId: config.roomId,
+    status: "done",
+    sourceKind: "manual"
+  }));
+  appendMusicControlCharacterEvent(req.body?.action, req.session, { sourceKind: "manual" });
   res.json(result);
 });
 
@@ -636,6 +694,10 @@ function runScheduledHoshiaVisualTick() {
       reason: result.reason,
       source: "scheduled_tick"
     }));
+    appendVisualStateChangedCharacterEvent(result.state, null, {
+      reason: result.reason,
+      source: "scheduled_tick"
+    });
     broadcastHoshiaState(result.state);
   }
   runDailyPostTick({
@@ -673,6 +735,9 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
       roomId: config.roomId,
       reason: result.post.source_type || "daily_state"
     }));
+    appendTimelinePostCreatedCharacterEvent(result.post, session, {
+      reason: result.post.source_type || "daily_state"
+    });
     if (result.post.source_type === "news_topic") {
       appendHoshiaNewsEvent({
         eventType: "hoshia_news.topic_post_created",
@@ -703,6 +768,10 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
           reason: visualUpdate.reason,
           source: source === "manual" ? "daily_post" : source
         }));
+        appendVisualStateChangedCharacterEvent(visualUpdate.state, session, {
+          reason: visualUpdate.reason,
+          source: source === "manual" ? "daily_post" : source
+        });
         broadcastHoshiaState(visualUpdate.state);
       }
     }
@@ -730,6 +799,7 @@ function getHoshiaOpsSummary(now = new Date()) {
 async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit, force = false } = {}) {
   const result = await hoshiaCommentReplyService.processDueComments({ limit, force });
   if (result.processed_count > 0) {
+    appendTimelineCommentReplyCharacterEvent({ status: "replied" });
     const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
       text: "Hoshia replied to timeline comments",
       session: { user_id: "hoshia", nickname: "Hoshia" }
@@ -740,6 +810,10 @@ async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit,
         reason: "timeline comment reply",
         source: "comment_reply"
       }));
+      appendVisualStateChangedCharacterEvent(visualUpdate.state, null, {
+        reason: "timeline comment reply",
+        source: "comment_reply"
+      });
       broadcastHoshiaState(visualUpdate.state);
     }
     broadcast({
@@ -882,6 +956,10 @@ async function handleDanmaku(session, payload) {
       reason: visualUpdate.reason,
       source: "chat"
     }));
+    appendVisualStateChangedCharacterEvent(visualUpdate.state, session, {
+      reason: visualUpdate.reason,
+      source: "chat"
+    });
     broadcastHoshiaState(visualUpdate.state);
   }
   await setCharacterState(nextCharacterState("user_message", text));
@@ -962,6 +1040,12 @@ async function handleActionableMusicIntent(session, intent, musicState, original
   });
   broadcastMusicState(session);
   if (result.ok) {
+    moduleEventStore.append(createMusicControlEvent(intentToMusicControl(intent.intent), session, {
+      roomId: config.roomId,
+      status: "done",
+      sourceKind: "natural_language"
+    }));
+    appendMusicControlCharacterEvent(intentToMusicControl(intent.intent), session, { sourceKind: "natural_language" });
     await broadcastSystemText(intent.reply_hint || formatMusicControlSuccess(session, intent));
   } else {
     await broadcastSystemText(`♪ 音乐操作失败：${friendlyMusicError(result.error)}`);
@@ -1246,7 +1330,16 @@ async function handleAiReplyBatch(batch) {
     });
   }
   const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket, { activeContext, contextPolicy, moduleContext, moduleEvents });
-  const shortTermContext = await buildShortTermAiContext(batch, contextPolicy);
+  const shortTermContext = await buildShortTermAiContext({
+    batch,
+    contextPolicy,
+    roomId: config.roomId,
+    db,
+    config,
+    summarizeLiveRoomContext,
+    fetchImpl: globalThis.fetch,
+    logger: console
+  });
   const moduleMemoryEvents = contextPolicy.consumeModuleMemoryEvents
     ? moduleEventStore.consumeMemoryEvents({ roomId: config.roomId, limit: 24 })
     : [];
@@ -1503,13 +1596,20 @@ async function sendProactiveIdleReply(idleMs) {
 }
 
 async function buildProactiveShortTermContext() {
-  await refreshRoomContextSummary(config.roomId);
-  const messages = db.listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages);
-  const summary = db.getRoomContextSummary(config.roomId);
-  return {
-    recentContext: messages.map(contextPayloadMessage),
-    contextSummary: summary?.summary_text || ""
-  };
+  return buildShortTermAiContext({
+    batch: [],
+    contextPolicy: {
+      includeContextSummary: true,
+      refreshSummarySync: true,
+      recentContextLimit: config.proactiveReply.contextMessages
+    },
+    roomId: config.roomId,
+    db,
+    config,
+    summarizeLiveRoomContext,
+    fetchImpl: globalThis.fetch,
+    logger: console
+  });
 }
 
 function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleContext, moduleEvents }) {
@@ -1759,23 +1859,6 @@ async function handleWelcomeGreeting(session) {
   }
 }
 
-async function buildShortTermAiContext(batch, contextPolicy = {}) {
-  if (contextPolicy.refreshSummarySync) {
-    await refreshRoomContextSummary(config.roomId);
-  } else if (contextPolicy.includeContextSummary) {
-    void refreshRoomContextSummary(config.roomId);
-  }
-  const maxMessages = positiveInt(contextPolicy.recentContextLimit || config.shortTermContextMaxMessages, 100, 1, 500);
-  const fetchLimit = Math.min(Math.max(maxMessages * 2, maxMessages), 1000);
-  const messages = db.listRecentContextMessages(config.roomId, fetchLimit);
-  const focusedMessages = selectContextMessagesForBatch(messages, batch, maxMessages);
-  const summary = db.getRoomContextSummary(config.roomId);
-  return {
-    recentContext: focusedMessages.map(contextPayloadMessage),
-    contextSummary: contextPolicy.includeContextSummary ? summary?.summary_text || "" : ""
-  };
-}
-
 function moduleContextForRoute(moduleContext = [], contextPolicy = {}, batch = []) {
   if (!contextPolicy.fastLane) return moduleContext;
   const allowed = new Set(["hoshia_visual_state", "hoshia_visual", "hoshia_interest_system", "hoshia_interest_knowledge"]);
@@ -1803,66 +1886,8 @@ function batchMentionsMusic(batch = []) {
   return (Array.isArray(batch) ? batch : []).some((item) => /(音乐|歌|歌曲|点歌|播放|暂停|下一首|上一首|队列|music|song|playlist|play|pause|queue)/i.test(String(item?.text || "")));
 }
 
-async function refreshRoomContextSummary(roomId) {
-  if (config.aiMode !== "astrbot") return;
-  const maxMessages = positiveInt(config.shortTermContextMaxMessages, 100, 20, 500);
-  const lookbackMessages = positiveInt(config.contextSummaryLookbackMessages, 600, maxMessages + 20, 2000);
-  const compressMessages = positiveInt(config.contextSummaryCompressMessages, 20, 1, 200);
-  try {
-    const existing = db.getRoomContextSummary(roomId);
-    const messages = db.listContextMessagesAfter(
-      roomId,
-      existing?.summarized_until_created_at || "",
-      existing?.summarized_until_id || "",
-      lookbackMessages
-    );
-    if (messages.length <= maxMessages) return;
-
-    const overflowCount = messages.length - maxMessages;
-    const toSummarize = messages.slice(0, Math.min(compressMessages, overflowCount));
-    if (!toSummarize.length) return;
-
-    const summaryText = await summarizeLiveRoomContext(config, {
-      previousSummary: existing?.summary_text || "",
-      messages: toSummarize.map(contextPayloadMessage)
-    }, globalThis.fetch);
-    if (!summaryText) return;
-
-    const first = toSummarize[0];
-    const last = toSummarize[toSummarize.length - 1];
-    db.upsertRoomContextSummary({
-      roomId,
-      summaryText,
-      summarizedUntilCreatedAt: last.created_at,
-      summarizedUntilId: last.id,
-      coverageStartTimestamp: existing?.coverage_start_timestamp || first.timestamp || first.created_at,
-      coverageEndTimestamp: last.timestamp || last.created_at
-    });
-  } catch (error) {
-    console.warn("context_summary_refresh_failed", {
-      type: error.name || "Error",
-      message: error.message
-    });
-  }
-}
-
-function selectContextMessagesForBatch(messages, batch, limit) {
-  if (!batch.some((item) => item.forceReply)) {
-    return messages.slice(-limit);
-  }
-  const userId = String(batch[0]?.session?.user_id || "");
-  const focused = messages.filter((message) => message.role === "ai" || message.user_id === userId);
-  return focused.slice(-limit);
-}
-
 function contextPayloadMessage(message) {
-  return {
-    role: message.role,
-    user_id: message.user_id || "",
-    nickname: message.nickname || "",
-    text: String(message.text || "").slice(0, config.maxMessageLength),
-    timestamp: message.timestamp || message.created_at || ""
-  };
+  return centerContextPayloadMessage(message, { maxMessageLength: config.maxMessageLength });
 }
 
 function positiveInt(value, fallback, min, max) {
@@ -2400,6 +2425,94 @@ function appendMusicSongRequestedCharacterEvent(track, session) {
       artist: track.artist || "",
       source_type: track.source || "",
       status: "requested"
+    }
+  });
+}
+
+function appendMusicControlCharacterEvent(action, session, { sourceKind = "manual" } = {}) {
+  const safeAction = String(action || "").slice(0, 40);
+  if (!safeAction) return null;
+  return appendCharacterEvent({
+    event_type: "module.music.control",
+    actor_type: "user",
+    user_id: session?.user_id || "",
+    nickname: session?.nickname || "",
+    source_kind: "music",
+    source_id: safeAction,
+    public_hint: "Viewer used a music control",
+    private_hint: "Viewer used a music control",
+    reason: safeAction,
+    data: {
+      action: safeAction,
+      status: "done",
+      source: sourceKind
+    }
+  });
+}
+
+function appendVisualStateChangedCharacterEvent(state, session, { reason = "", source = "interaction" } = {}) {
+  if (!state) return null;
+  return appendCharacterEvent({
+    event_type: "hoshia_visual_state.changed",
+    actor_type: session?.user_id ? "user" : "system",
+    user_id: session?.user_id || "",
+    nickname: session?.nickname || "",
+    source_kind: "hoshia_visual_state",
+    source_id: source,
+    occurred_at: state.updated_at || new Date().toISOString(),
+    public_hint: "Hoshia visual state changed",
+    private_hint: "Hoshia visual state changed",
+    reason: reason || source,
+    data: {
+      activity: state.activity || "",
+      mood: state.mood || "",
+      source,
+      status: "changed"
+    }
+  });
+}
+
+function appendTimelinePostCreatedCharacterEvent(post, session, { reason = "daily_post" } = {}) {
+  if (!post) return null;
+  return appendCharacterEvent({
+    event_type: "hoshia_timeline.post_created",
+    actor_type: session?.user_id ? "user" : "system",
+    user_id: session?.user_id || "",
+    nickname: session?.nickname || "",
+    source_kind: "hoshia_timeline",
+    source_id: post.id || "",
+    occurred_at: post.created_at || new Date().toISOString(),
+    public_hint: "Hoshia created a timeline post",
+    private_hint: "Hoshia created a timeline post",
+    reason,
+    data: {
+      activity: post.activity || "",
+      mood: post.mood || "",
+      source_type: post.source_type || reason,
+      post_id: post.id || "",
+      status: "created"
+    }
+  });
+}
+
+function appendTimelineCommentReplyCharacterEvent({ post, comment, reply, status = "replied" } = {}) {
+  return appendCharacterEvent({
+    event_type: status === "pending" ? "hoshia_timeline.comment_reply_pending" : "hoshia_timeline.comment_replied",
+    actor_type: status === "pending" ? "user" : "ai",
+    user_id: comment?.user_id || "",
+    nickname: comment?.nickname || "",
+    source_kind: "hoshia_timeline",
+    source_id: comment?.id || reply?.id || "",
+    occurred_at: reply?.created_at || comment?.created_at || new Date().toISOString(),
+    public_hint: status === "pending" ? "Viewer left a timeline comment" : "Hoshia replied to a timeline comment",
+    private_hint: status === "pending" ? "Viewer left a timeline comment" : "Hoshia replied to a timeline comment",
+    reason: `timeline comment ${status}`,
+    data: {
+      activity: post?.activity || "",
+      mood: post?.mood || "",
+      post_id: post?.id || "",
+      comment_id: comment?.id || "",
+      status
     }
   });
 }

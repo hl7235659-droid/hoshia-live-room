@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   buildHoshiaReplyMetadata,
+  buildShortTermAiContext,
+  contextPayloadMessage,
   moduleContextForRoute,
   moduleEventsForRoute,
-  prepareHoshiaCenterContext
+  prepareHoshiaCenterContext,
+  refreshRoomContextSummary,
+  selectContextMessagesForBatch
 } from "../src/hoshia-center-context.js";
 
 test("fast-lane module context keeps only safe compact modules", () => {
@@ -56,6 +60,116 @@ test("fast-lane module events keep only short summary hints", () => {
   ], { fastLane: true });
 
   assert.deepEqual(result, [{ summary_hint: "first" }, { summary_hint: "second" }]);
+});
+
+test("short-term context keeps recent messages for normal batches", async () => {
+  const db = {
+    listRecentContextMessages() {
+      return [
+        { role: "user", user_id: "u1", nickname: "A", text: "one", timestamp: "t1" },
+        { role: "ai", user_id: "ai", nickname: "Hoshia", text: "two", timestamp: "t2" },
+        { role: "user", user_id: "u2", nickname: "B", text: "three", timestamp: "t3" }
+      ];
+    },
+    getRoomContextSummary() {
+      return { summary_text: "safe summary" };
+    }
+  };
+
+  const result = await buildShortTermAiContext({
+    batch: [{ session: { user_id: "u1" }, text: "hello" }],
+    contextPolicy: { includeContextSummary: true, recentContextLimit: 2 },
+    roomId: "room",
+    db,
+    config: { aiMode: "mock", maxMessageLength: 10 },
+    summarizeLiveRoomContext() {
+      throw new Error("should not summarize in mock mode");
+    }
+  });
+
+  assert.deepEqual(result.recentContext.map((item) => item.text), ["two", "three"]);
+  assert.equal(result.contextSummary, "safe summary");
+});
+
+test("short-term context focuses forced replies on target user and ai messages", () => {
+  const messages = [
+    { role: "user", user_id: "u1", text: "from u1" },
+    { role: "user", user_id: "u2", text: "from u2" },
+    { role: "ai", user_id: "ai", text: "from ai" }
+  ];
+
+  const result = selectContextMessagesForBatch(messages, [{ forceReply: true, session: { user_id: "u1" } }], 10);
+
+  assert.deepEqual(result.map((item) => item.text), ["from u1", "from ai"]);
+});
+
+test("context payload message truncates text without adding raw fields", () => {
+  const result = contextPayloadMessage({
+    role: "user",
+    user_id: "u1",
+    nickname: "viewer",
+    text: "abcdefghijklmnopqrstuvwxyz",
+    raw_prompt: "hidden",
+    timestamp: "2026-06-12T00:00:00.000Z"
+  }, { maxMessageLength: 5 });
+
+  assert.deepEqual(result, {
+    role: "user",
+    user_id: "u1",
+    nickname: "viewer",
+    text: "abcde",
+    timestamp: "2026-06-12T00:00:00.000Z"
+  });
+});
+
+test("room context summary refresh compresses overflow messages", async () => {
+  const upserts = [];
+  const db = {
+    getRoomContextSummary() {
+      return {
+        summary_text: "previous",
+        summarized_until_created_at: "c0",
+        summarized_until_id: "m0",
+        coverage_start_timestamp: "t0"
+      };
+    },
+    listContextMessagesAfter() {
+      return Array.from({ length: 25 }, (_, index) => ({
+        id: `m${index + 1}`,
+        role: index % 2 ? "ai" : "user",
+        user_id: `u${index}`,
+        nickname: `n${index}`,
+        text: `message ${index}`,
+        timestamp: `t${index + 1}`,
+        created_at: `c${index + 1}`
+      }));
+    },
+    upsertRoomContextSummary(payload) {
+      upserts.push(payload);
+    }
+  };
+
+  await refreshRoomContextSummary({
+    roomId: "room",
+    db,
+    config: {
+      aiMode: "astrbot",
+      shortTermContextMaxMessages: 20,
+      contextSummaryLookbackMessages: 25,
+      contextSummaryCompressMessages: 2,
+      maxMessageLength: 20
+    },
+    async summarizeLiveRoomContext(_config, payload) {
+      assert.equal(payload.previousSummary, "previous");
+      assert.deepEqual(payload.messages.map((item) => item.text), ["message 0", "message 1"]);
+      return "new summary";
+    },
+    logger: { warn() {} }
+  });
+
+  assert.equal(upserts.length, 1);
+  assert.equal(upserts[0].summaryText, "new summary");
+  assert.equal(upserts[0].summarizedUntilId, "m2");
 });
 
 test("prepareHoshiaCenterContext aggregates route-scoped context", () => {
