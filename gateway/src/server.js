@@ -84,6 +84,7 @@ import {
   normalizeCharacterEvent,
   summarizeCharacterSnapshotForPrompt
 } from "./character-snapshot.js";
+import { projectUserMessageReceivedEvent } from "./character-event-projector.js";
 import {
   buildHoshiaReplyMetadata,
   prepareHoshiaCenterContext
@@ -1233,7 +1234,7 @@ async function handleAiReplyBatch(batch) {
     buildModuleContext,
     buildActiveContext,
     buildCharacterSnapshot: buildCurrentCharacterSnapshot,
-    getLatestCharacterSnapshot: ({ roomId, characterId }) => db.getLatestCharacterSnapshot({ roomId, characterId })
+    getLatestCharacterSnapshot: ({ roomId, characterId }) => buildEventLogCharacterSnapshot({ roomId, characterId })
   });
   if (characterSnapshotSource !== "persisted") {
     db.upsertCharacterSnapshot({
@@ -2331,6 +2332,22 @@ function buildCurrentCharacterSnapshot(session = null) {
     lifeMemories,
     moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 })
   });
+}
+
+function buildEventLogCharacterSnapshot({ roomId, characterId = "hoshia" } = {}) {
+  const current = db.getLatestCharacterSnapshot({ roomId, characterId });
+  if (!current) return null;
+
+  const events = db.listRecentCharacterEvents({ roomId, characterId, limit: 100 }).slice().reverse();
+  let projected = current;
+  for (const event of events) {
+    projected = projectUserMessageReceivedEvent(projected, event);
+  }
+
+  if (JSON.stringify(projected) !== JSON.stringify(current)) {
+    db.upsertCharacterSnapshot({ roomId, characterId, snapshot: projected });
+  }
+  return projected;
 }
 
 function appendCharacterEvent(event = {}) {
