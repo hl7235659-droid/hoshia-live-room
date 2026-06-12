@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { Gamepad2, Pause, Play, RotateCcw, Trophy, X } from "lucide-react";
 import type {
   HoshiaVisualState,
@@ -26,6 +26,39 @@ type Props = {
 };
 
 const baseUrl = import.meta.env.BASE_URL || "/";
+const visualImageExtension = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i;
+const upgradeTagVisuals: Record<string, { group: "drops" | "starterWeapons" | "weapons"; id: string }> = {
+  blade: { group: "weapons", id: "neon_blade" },
+  chain: { group: "weapons", id: "packet_drone" },
+  charm: { group: "weapons", id: "synth_charm" },
+  control: { group: "weapons", id: "static_broom" },
+  counter: { group: "starterWeapons", id: "bullet_shield" },
+  crit: { group: "weapons", id: "neon_blade" },
+  damage: { group: "weapons", id: "signal_mic" },
+  dash: { group: "starterWeapons", id: "lunar_booster" },
+  data: { group: "weapons", id: "packet_drone" },
+  director: { group: "starterWeapons", id: "cutboard_remote" },
+  dream: { group: "weapons", id: "afterimage_wheel" },
+  glitch: { group: "weapons", id: "static_broom" },
+  guard: { group: "drops", id: "shield_chip" },
+  luck: { group: "drops", id: "boss_cache" },
+  machine: { group: "starterWeapons", id: "junk_turret" },
+  mark: { group: "starterWeapons", id: "packet_spike" },
+  mobility: { group: "starterWeapons", id: "lunar_booster" },
+  orbit: { group: "starterWeapons", id: "antenna_ofuda" },
+  pickup: { group: "drops", id: "magnet_tape" },
+  recovery: { group: "drops", id: "heal_heart" },
+  resonance: { group: "weapons", id: "relay_tower" },
+  risk: { group: "weapons", id: "signal_mic" },
+  shield: { group: "drops", id: "shield_chip" },
+  signal: { group: "starterWeapons", id: "antenna_ofuda" },
+  sound: { group: "starterWeapons", id: "sparkle_mic" },
+  summon: { group: "weapons", id: "repair_turret" },
+  supply: { group: "drops", id: "supply_box" },
+  survival: { group: "drops", id: "heal_heart" },
+  tempo: { group: "weapons", id: "chat_barrage" },
+  utility: { group: "drops", id: "xp_large" }
+};
 const defaultSnapshot: PixelGameSnapshot = {
   status: "idle",
   hp: 1,
@@ -208,22 +241,29 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
     }
 
     if (!playing) {
+      const menuStageId = serverState?.active_run?.stage_id || stageForDemo(hoshiaState);
       return (
         <div className="pixel-game-menu">
           <section className="pixel-game-hero-card">
-            <span>HOSHIA PIXEL SURVIVOR</span>
-            <h2>Radio Pixel Mowdown</h2>
-            <p>Starting a run locks Hoshia mood, activity, energy, and social need into the stage director.</p>
-            <div className="pixel-game-state-line">
-              <b>Locked signal</b>
-              <em>{hoshiaState?.activity || "idle"} / {hoshiaState?.mood || "calm"}</em>
-              <em>Energy {hoshiaState?.energy ?? "?"}</em>
+            <div className="pixel-game-hero-copy">
+              <span>HOSHIA PIXEL SURVIVOR</span>
+              <h2>Radio Pixel Mowdown</h2>
+              <p>Starting a run locks Hoshia mood, activity, energy, and social need into the stage director.</p>
+              <div className="pixel-game-state-line">
+                <b>Locked signal</b>
+                <em>{hoshiaState?.activity || "idle"} / {hoshiaState?.mood || "calm"}</em>
+                <em>Energy {hoshiaState?.energy ?? "?"}</em>
+              </div>
             </div>
+            <BiomePreview data={data} stageId={menuStageId} label={serverState?.active_run ? "ACTIVE BIOME" : "NEXT BIOME"} />
           </section>
 
           <section className="pixel-game-class-grid" aria-label="Class selection">
             {jobs.map((job) => {
               const locked = !isDemo && !unlocked.has(job.id);
+              const jobVisual = data.visuals?.entities.jobs?.[job.id];
+              const portrait = visualAssetUrl(data, jobVisual?.portrait);
+              const icon = visualAssetUrl(data, jobVisual?.icon, data.visuals?.fallbacks?.missingIcon);
               return (
                 <button
                   key={job.id}
@@ -232,6 +272,10 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
                   disabled={locked}
                   onClick={() => setSelectedClassId(job.id)}
                 >
+                  <div className="pixel-game-class-visual" aria-hidden="true">
+                    <VisualImage src={portrait} alt="" className="pixel-game-class-portrait" />
+                    <VisualImage src={icon} alt="" className="pixel-game-class-icon" />
+                  </div>
                   <span>{locked ? "Locked" : job.role || "Mood class"}</span>
                   <strong>{job.name}</strong>
                   <small>{job.tagline || job.passive || "Pixel avatar ready."}</small>
@@ -284,7 +328,7 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
             onFinish={(payload) => void finishRun(payload)}
           />
         ) : null}
-        <PixelGameHud snapshot={snapshot} run={run} paused={paused} onPauseToggle={() => {
+        <PixelGameHud data={data} snapshot={snapshot} run={run} paused={paused} onPauseToggle={() => {
           if (phase === "playing") setPaused((current) => !current);
         }} />
         {paused && phase === "playing" ? (
@@ -294,8 +338,8 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
             <button type="button" onClick={() => setPaused(false)}><Play size={16} />Resume</button>
           </div>
         ) : null}
-        {phase === "upgrade" ? <UpgradeChoiceModal options={upgradeOptions} onChoose={chooseUpgrade} /> : null}
-        {phase === "class_select" ? <ClassChoiceModal options={classOptions} onChoose={chooseClass} /> : null}
+        {phase === "upgrade" ? <UpgradeChoiceModal data={data} options={upgradeOptions} onChoose={chooseUpgrade} /> : null}
+        {phase === "class_select" ? <ClassChoiceModal data={data} options={classOptions} onChoose={chooseClass} /> : null}
         {phase === "settling" ? <div className="pixel-game-loading over">Sending battle report to Hoshia...</div> : null}
       </div>
     );
@@ -316,6 +360,8 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
       {renderBody()}
       {phase === "result" ? (
         <ResultPanel
+          data={data}
+          run={finishResult?.run || run}
           result={finishResult}
           payload={finishPayload}
           leaderboard={leaderboard}
@@ -327,9 +373,21 @@ export function HoshiaGameOverlay({ session, isDemo, hoshiaState, onClose }: Pro
   );
 }
 
-function PixelGameHud({ snapshot, run, paused, onPauseToggle }: { snapshot: PixelGameSnapshot; run: PixelGamePublicRun | null; paused: boolean; onPauseToggle: () => void }) {
+function PixelGameHud({ data, snapshot, run, paused, onPauseToggle }: {
+  data: PixelGameDataBundle | null;
+  snapshot: PixelGameSnapshot;
+  run: PixelGamePublicRun | null;
+  paused: boolean;
+  onPauseToggle: () => void;
+}) {
   const hpRatio = Math.max(0, Math.min(1, snapshot.hp / Math.max(1, snapshot.maxHp)));
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / Math.max(1, snapshot.xpToNext)));
+  const classId = snapshot.specializationId || snapshot.chosenClassId || run?.class_id || "";
+  const jobVisual = data?.visuals?.entities.jobs?.[classId];
+  const stageVisual = data?.visuals?.entities.biomes?.[run?.stage_id || ""];
+  const classIcon = visualAssetUrl(data, jobVisual?.icon, data?.visuals?.fallbacks?.missingIcon);
+  const stageIcon = visualAssetUrl(data, stageVisual?.icon);
+  const stagePreview = visualAssetUrl(data, stageVisual?.preview);
   return (
     <aside className="pixel-game-hud" aria-label="Game status">
       <div className="pixel-game-hud-row primary">
@@ -341,6 +399,14 @@ function PixelGameHud({ snapshot, run, paused, onPauseToggle }: { snapshot: Pixe
       </div>
       <div className="pixel-game-meter hp"><i style={{ width: `${hpRatio * 100}%` }} /></div>
       <div className="pixel-game-meter xp"><i style={{ width: `${xpRatio * 100}%` }} /></div>
+      <div className="pixel-game-hud-signal">
+        <VisualImage src={classIcon} alt="" className="pixel-game-hud-class-icon" />
+        <div>
+          <b>{jobName(data, classId)}</b>
+          <em>{biomeName(data, run?.stage_id) || run?.stage_id || "stage"}</em>
+        </div>
+        <VisualImage src={stagePreview || stageIcon} alt="" className="pixel-game-hud-biome" />
+      </div>
       <div className="pixel-game-hud-grid">
         <span>Score <b>{snapshot.score}</b></span>
         <span>Kills <b>{snapshot.kills}</b></span>
@@ -356,27 +422,41 @@ function PixelGameHud({ snapshot, run, paused, onPauseToggle }: { snapshot: Pixe
   );
 }
 
-function UpgradeChoiceModal({ options, onChoose }: { options: PixelGameUpgradeOption[]; onChoose: (option: PixelGameUpgradeOption) => void }) {
+function UpgradeChoiceModal({ data, options, onChoose }: {
+  data: PixelGameDataBundle | null;
+  options: PixelGameUpgradeOption[];
+  onChoose: (option: PixelGameUpgradeOption) => void;
+}) {
   return (
     <div className="pixel-game-choice-backdrop">
       <section className="pixel-game-choice-card">
         <span>LEVEL UP</span>
         <h3>Choose one upgrade</h3>
         <div className="pixel-game-choice-grid">
-          {options.map((option) => (
-            <button key={option.id} type="button" className={`upgrade-rarity-${option.rarity || "common"}`} onClick={() => onChoose(option)}>
-              <em>{rarityLabel(option.rarity)}</em>
-              <strong>{option.name || option.title}</strong>
-              <small>{option.effect || option.description || option.flavor || "Upgrade this run."}</small>
-            </button>
-          ))}
+          {options.map((option) => {
+            const icon = upgradeIconUrl(data, option);
+            return (
+              <button key={option.id} type="button" className={`upgrade-rarity-${option.rarity || "common"}`} onClick={() => onChoose(option)}>
+                <div className="pixel-game-choice-head">
+                  <VisualImage src={icon} alt="" className="pixel-game-choice-icon" />
+                  <em>{rarityLabel(option.rarity)}</em>
+                </div>
+                <strong>{option.name || option.title}</strong>
+                <small>{option.effect || option.description || option.flavor || "Upgrade this run."}</small>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>
   );
 }
 
-function ClassChoiceModal({ options, onChoose }: { options: PixelGameJob[]; onChoose: (option: PixelGameJob) => void }) {
+function ClassChoiceModal({ data, options, onChoose }: {
+  data: PixelGameDataBundle | null;
+  options: PixelGameJob[];
+  onChoose: (option: PixelGameJob) => void;
+}) {
   return (
     <div className="pixel-game-choice-backdrop">
       <section className="pixel-game-choice-card class-choice">
@@ -384,20 +464,31 @@ function ClassChoiceModal({ options, onChoose }: { options: PixelGameJob[]; onCh
         <h3>Level 5 specialization</h3>
         <p>Pick an extra class route for the rest of this run.</p>
         <div className="pixel-game-choice-grid">
-          {options.map((job) => (
-            <button key={job.id} type="button" onClick={() => onChoose(job)}>
-              <em>{job.role || "Specialty"}</em>
-              <strong>{job.name}</strong>
-              <small>{job.passive || job.tagline || "Gain this route bonus for the run."}</small>
-            </button>
-          ))}
+          {options.map((job) => {
+            const jobVisual = data?.visuals?.entities.jobs?.[job.id];
+            const portrait = visualAssetUrl(data, jobVisual?.portrait);
+            const icon = visualAssetUrl(data, jobVisual?.icon, data?.visuals?.fallbacks?.missingIcon);
+            return (
+              <button key={job.id} type="button" className="pixel-game-choice-class" onClick={() => onChoose(job)}>
+                <div className="pixel-game-choice-class-visual" aria-hidden="true">
+                  <VisualImage src={portrait} alt="" className="pixel-game-choice-portrait" />
+                  <VisualImage src={icon} alt="" className="pixel-game-choice-icon badge" />
+                </div>
+                <em>{job.role || "Specialty"}</em>
+                <strong>{job.name}</strong>
+                <small>{job.passive || job.tagline || "Gain this route bonus for the run."}</small>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>
   );
 }
 
-function ResultPanel({ result, payload, leaderboard, onRestart, onClose }: {
+function ResultPanel({ data, run, result, payload, leaderboard, onRestart, onClose }: {
+  data: PixelGameDataBundle | null;
+  run: PixelGamePublicRun | null;
   result: PixelGameFinishResponse | null;
   payload: PixelGameFinishPayload | null;
   leaderboard: PixelGameLeaderboardEntry[];
@@ -405,11 +496,29 @@ function ResultPanel({ result, payload, leaderboard, onRestart, onClose }: {
   onClose: () => void;
 }) {
   const accepted = result?.accepted !== false && !result?.suspicious;
+  const settledRun = result?.run || run;
+  const jobVisual = data?.visuals?.entities.jobs?.[settledRun?.class_id || ""];
+  const stageVisual = data?.visuals?.entities.biomes?.[settledRun?.stage_id || ""];
+  const portrait = visualAssetUrl(data, jobVisual?.portrait);
+  const icon = visualAssetUrl(data, jobVisual?.icon, data?.visuals?.fallbacks?.missingIcon);
+  const stagePreview = visualAssetUrl(data, stageVisual?.preview);
+  const stageIcon = visualAssetUrl(data, stageVisual?.icon);
   return (
     <div className="pixel-game-result-backdrop">
       <section className="pixel-game-result-card">
         <span>{accepted ? "BATTLE REPORT" : "CHECKED"}</span>
         <h3>{accepted ? "Battle settled" : "Report needs review"}</h3>
+        <div className="pixel-game-result-visuals">
+          <div className="pixel-game-result-portrait">
+            <VisualImage src={portrait} alt="" className="pixel-game-result-portrait-img" />
+            <VisualImage src={icon} alt="" className="pixel-game-result-icon" />
+            <strong>{jobName(data, settledRun?.class_id)}</strong>
+          </div>
+          <div className="pixel-game-result-biome">
+            <VisualImage src={stagePreview || stageIcon} alt="" className="pixel-game-result-biome-img" />
+            <span>{biomeName(data, settledRun?.stage_id) || "Signal biome"}</span>
+          </div>
+        </div>
         <div className="pixel-game-result-stats">
           <b>{result?.run?.score ?? payload?.score ?? 0}</b>
           <em>Tier {result?.run?.score_tier || "C"}</em>
@@ -433,6 +542,88 @@ function ResultPanel({ result, payload, leaderboard, onRestart, onClose }: {
       </section>
     </div>
   );
+}
+
+function BiomePreview({ data, stageId, label }: { data: PixelGameDataBundle | null; stageId: string; label: string }) {
+  const stageVisual = data?.visuals?.entities.biomes?.[stageId];
+  const preview = visualAssetUrl(data, stageVisual?.preview);
+  const icon = visualAssetUrl(data, stageVisual?.icon);
+  const name = biomeName(data, stageId) || humanizeId(stageId);
+  return (
+    <aside className="pixel-game-biome-preview" aria-label={`${label}: ${name}`}>
+      <VisualImage src={preview} alt="" className="pixel-game-biome-preview-img" />
+      <div className="pixel-game-biome-preview-chip">
+        <VisualImage src={icon} alt="" className="pixel-game-biome-preview-icon" />
+        <span>{label}</span>
+        <strong>{name}</strong>
+      </div>
+    </aside>
+  );
+}
+
+function VisualImage({ src, alt, className }: { src: string; alt: string; className: string }) {
+  if (!src) return null;
+  return <img src={src} alt={alt} className={className} draggable={false} loading="lazy" onError={hideBrokenVisual} />;
+}
+
+function visualAssetUrl(data: PixelGameDataBundle | null, asset: string | undefined, fallback?: string) {
+  const manifest = data?.visuals;
+  if (!manifest) return "";
+  const cleanedAsset = cleanVisualAsset(asset) || cleanVisualAsset(fallback);
+  if (!cleanedAsset) return "";
+  const base = cleanVisualAsset(manifest.assetBase || "assets/game/") || "assets/game/";
+  return apiPath(`${withTrailingSlash(base)}${withImageExtension(cleanedAsset)}`);
+}
+
+function cleanVisualAsset(value: string | undefined) {
+  const trimmed = String(value || "").trim().replace(/\\/g, "/");
+  if (!trimmed || trimmed.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return "";
+  return trimmed.replace(/^\/+/, "").replace(/(?:^|\/)\.\.(?=\/|$)/g, "").replace(/^\/+/, "");
+}
+
+function withTrailingSlash(value: string) {
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function withImageExtension(value: string) {
+  return visualImageExtension.test(value) ? value : `${value}.png`;
+}
+
+function hideBrokenVisual(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.hidden = true;
+}
+
+function upgradeIconUrl(data: PixelGameDataBundle | null, option: PixelGameUpgradeOption) {
+  const manifest = data?.visuals;
+  const entities = manifest?.entities;
+  if (!entities) return "";
+  const directIcon =
+    entities.weapons?.[option.id]?.icon ||
+    entities.starterWeapons?.[option.id]?.icon ||
+    entities.drops?.[option.id]?.icon ||
+    (option.jobId ? entities.jobs?.[option.jobId]?.icon : undefined);
+  const tagIcon = option.tags?.map((tag) => {
+    const match = upgradeTagVisuals[tag];
+    if (!match) return undefined;
+    if (match.group === "drops") return entities.drops?.[match.id]?.icon;
+    if (match.group === "starterWeapons") return entities.starterWeapons?.[match.id]?.icon;
+    return entities.weapons?.[match.id]?.icon;
+  }).find(Boolean);
+  return visualAssetUrl(data, directIcon || tagIcon, manifest.fallbacks?.missingIcon);
+}
+
+function jobName(data: PixelGameDataBundle | null, classId: string | undefined) {
+  const job = data?.jobs.find((item) => item.id === classId);
+  return job?.name || humanizeId(classId || "Hoshia");
+}
+
+function biomeName(data: PixelGameDataBundle | null, stageId: string | undefined) {
+  const biome = data?.biomes.find((item) => item.id === stageId);
+  return biome?.name || (stageId ? humanizeId(stageId) : "");
+}
+
+function humanizeId(value: string) {
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function demoGameState(session: Session, hoshiaState: HoshiaVisualState | null, data: PixelGameDataBundle): PixelGameStatePayload {

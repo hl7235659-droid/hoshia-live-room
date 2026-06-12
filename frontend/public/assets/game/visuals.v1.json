@@ -1,0 +1,1999 @@
+{
+  "schemaVersion": 1,
+  "kind": "visuals",
+  "packId": "hoshia-radio-cyber-pixel-mowdown",
+  "packVersion": "1.0.0",
+  "assetBase": "assets/game/",
+  "pixelSpec": {
+    "tileSize": 16,
+    "actorCell": 32,
+    "enemyCell": 32,
+    "bossCell": 96,
+    "iconSize": 32,
+    "filter": "nearest",
+    "defaultAnchor": [
+      0.5,
+      0.5
+    ]
+  },
+  "atlases": [
+    {
+      "id": "actors",
+      "image": "sprites/atlases/actors.v1.png",
+      "data": "sprites/atlases/actors.v1.json"
+    },
+    {
+      "id": "combat",
+      "image": "sprites/atlases/combat.v1.png",
+      "data": "sprites/atlases/combat.v1.json"
+    },
+    {
+      "id": "biomes",
+      "image": "sprites/atlases/biomes.v1.png",
+      "data": "sprites/atlases/biomes.v1.json"
+    },
+    {
+      "id": "ui-icons",
+      "image": "sprites/atlases/ui-icons.v1.png",
+      "data": "sprites/atlases/ui-icons.v1.json"
+    }
+  ],
+  "entities": {
+    "hoshia": {
+      "icon": "ui/hoshia/icon",
+      "portrait": "sprites/portraits/hoshia.png",
+      "sprite": {
+        "atlas": "actors",
+        "prefix": "actor/hoshia",
+        "animations": {
+          "idle": {
+            "atlas": "actors",
+            "frames": [
+              "actor/hoshia/idle_0",
+              "actor/hoshia/idle_1"
+            ],
+            "fps": 4,
+            "loop": true,
+            "scale": 2,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "run": {
+            "atlas": "actors",
+            "frames": [
+              "actor/hoshia/run_0",
+              "actor/hoshia/run_1",
+              "actor/hoshia/run_2",
+              "actor/hoshia/run_3"
+            ],
+            "fps": 8,
+            "loop": true,
+            "scale": 2,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "hurt": {
+            "atlas": "actors",
+            "frames": [
+              "actor/hoshia/hurt_0",
+              "actor/hoshia/hurt_1"
+            ],
+            "fps": 10,
+            "loop": false,
+            "scale": 2,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "level_up": {
+            "atlas": "actors",
+            "frames": [
+              "actor/hoshia/level_up_0",
+              "actor/hoshia/level_up_1",
+              "actor/hoshia/level_up_2"
+            ],
+            "fps": 8,
+            "loop": false,
+            "scale": 2,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "ko": {
+            "atlas": "actors",
+            "frames": [
+              "actor/hoshia/ko_0",
+              "actor/hoshia/ko_1"
+            ],
+            "fps": 5,
+            "loop": false,
+            "scale": 2,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          }
+        }
+      }
+    },
+    "jobs": {
+      "star_idol": {
+        "icon": "ui/jobs/star_idol",
+        "portrait": "sprites/portraits/jobs/star_idol.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/star_idol",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/star_idol/idle_0",
+                "job/star_idol/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/star_idol/run_0",
+                "job/star_idol/run_1",
+                "job/star_idol/run_2",
+                "job/star_idol/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/star_idol/hurt_0",
+                "job/star_idol/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/star_idol/level_up_0",
+                "job/star_idol/level_up_1",
+                "job/star_idol/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/star_idol/ko_0",
+                "job/star_idol/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "sparkle_mic",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "neon_samurai": {
+        "icon": "ui/jobs/neon_samurai",
+        "portrait": "sprites/portraits/jobs/neon_samurai.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/neon_samurai",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/neon_samurai/idle_0",
+                "job/neon_samurai/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/neon_samurai/run_0",
+                "job/neon_samurai/run_1",
+                "job/neon_samurai/run_2",
+                "job/neon_samurai/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/neon_samurai/hurt_0",
+                "job/neon_samurai/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/neon_samurai/level_up_0",
+                "job/neon_samurai/level_up_1",
+                "job/neon_samurai/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/neon_samurai/ko_0",
+                "job/neon_samurai/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "neon_katana",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "stream_hacker": {
+        "icon": "ui/jobs/stream_hacker",
+        "portrait": "sprites/portraits/jobs/stream_hacker.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/stream_hacker",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/stream_hacker/idle_0",
+                "job/stream_hacker/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/stream_hacker/run_0",
+                "job/stream_hacker/run_1",
+                "job/stream_hacker/run_2",
+                "job/stream_hacker/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/stream_hacker/hurt_0",
+                "job/stream_hacker/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/stream_hacker/level_up_0",
+                "job/stream_hacker/level_up_1",
+                "job/stream_hacker/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/stream_hacker/ko_0",
+                "job/stream_hacker/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "packet_spike",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "radio_miko": {
+        "icon": "ui/jobs/radio_miko",
+        "portrait": "sprites/portraits/jobs/radio_miko.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/radio_miko",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/radio_miko/idle_0",
+                "job/radio_miko/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/radio_miko/run_0",
+                "job/radio_miko/run_1",
+                "job/radio_miko/run_2",
+                "job/radio_miko/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/radio_miko/hurt_0",
+                "job/radio_miko/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/radio_miko/level_up_0",
+                "job/radio_miko/level_up_1",
+                "job/radio_miko/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/radio_miko/ko_0",
+                "job/radio_miko/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "antenna_ofuda",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "pixel_nekomata": {
+        "icon": "ui/jobs/pixel_nekomata",
+        "portrait": "sprites/portraits/jobs/pixel_nekomata.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/pixel_nekomata",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/pixel_nekomata/idle_0",
+                "job/pixel_nekomata/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/pixel_nekomata/run_0",
+                "job/pixel_nekomata/run_1",
+                "job/pixel_nekomata/run_2",
+                "job/pixel_nekomata/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/pixel_nekomata/hurt_0",
+                "job/pixel_nekomata/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/pixel_nekomata/level_up_0",
+                "job/pixel_nekomata/level_up_1",
+                "job/pixel_nekomata/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/pixel_nekomata/ko_0",
+                "job/pixel_nekomata/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "cat_cursor",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "quantum_tuner": {
+        "icon": "ui/jobs/quantum_tuner",
+        "portrait": "sprites/portraits/jobs/quantum_tuner.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/quantum_tuner",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/quantum_tuner/idle_0",
+                "job/quantum_tuner/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/quantum_tuner/run_0",
+                "job/quantum_tuner/run_1",
+                "job/quantum_tuner/run_2",
+                "job/quantum_tuner/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/quantum_tuner/hurt_0",
+                "job/quantum_tuner/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/quantum_tuner/level_up_0",
+                "job/quantum_tuner/level_up_1",
+                "job/quantum_tuner/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/quantum_tuner/ko_0",
+                "job/quantum_tuner/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "phase_tuning_fork",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "barrage_knight": {
+        "icon": "ui/jobs/barrage_knight",
+        "portrait": "sprites/portraits/jobs/barrage_knight.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/barrage_knight",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/barrage_knight/idle_0",
+                "job/barrage_knight/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/barrage_knight/run_0",
+                "job/barrage_knight/run_1",
+                "job/barrage_knight/run_2",
+                "job/barrage_knight/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/barrage_knight/hurt_0",
+                "job/barrage_knight/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/barrage_knight/level_up_0",
+                "job/barrage_knight/level_up_1",
+                "job/barrage_knight/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/barrage_knight/ko_0",
+                "job/barrage_knight/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "bullet_shield",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "scrap_engineer": {
+        "icon": "ui/jobs/scrap_engineer",
+        "portrait": "sprites/portraits/jobs/scrap_engineer.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/scrap_engineer",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/scrap_engineer/idle_0",
+                "job/scrap_engineer/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/scrap_engineer/run_0",
+                "job/scrap_engineer/run_1",
+                "job/scrap_engineer/run_2",
+                "job/scrap_engineer/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/scrap_engineer/hurt_0",
+                "job/scrap_engineer/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/scrap_engineer/level_up_0",
+                "job/scrap_engineer/level_up_1",
+                "job/scrap_engineer/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/scrap_engineer/ko_0",
+                "job/scrap_engineer/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "junk_turret",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "moon_courier": {
+        "icon": "ui/jobs/moon_courier",
+        "portrait": "sprites/portraits/jobs/moon_courier.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/moon_courier",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/moon_courier/idle_0",
+                "job/moon_courier/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/moon_courier/run_0",
+                "job/moon_courier/run_1",
+                "job/moon_courier/run_2",
+                "job/moon_courier/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/moon_courier/hurt_0",
+                "job/moon_courier/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/moon_courier/level_up_0",
+                "job/moon_courier/level_up_1",
+                "job/moon_courier/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/moon_courier/ko_0",
+                "job/moon_courier/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "lunar_booster",
+          "levelUp": "effect/level_up"
+        }
+      },
+      "dream_director": {
+        "icon": "ui/jobs/dream_director",
+        "portrait": "sprites/portraits/jobs/dream_director.png",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "job/dream_director",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "job/dream_director/idle_0",
+                "job/dream_director/idle_1"
+              ],
+              "fps": 4,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run": {
+              "atlas": "actors",
+              "frames": [
+                "job/dream_director/run_0",
+                "job/dream_director/run_1",
+                "job/dream_director/run_2",
+                "job/dream_director/run_3"
+              ],
+              "fps": 8,
+              "loop": true,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "job/dream_director/hurt_0",
+                "job/dream_director/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "level_up": {
+              "atlas": "actors",
+              "frames": [
+                "job/dream_director/level_up_0",
+                "job/dream_director/level_up_1",
+                "job/dream_director/level_up_2"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "ko": {
+              "atlas": "actors",
+              "frames": [
+                "job/dream_director/ko_0",
+                "job/dream_director/ko_1"
+              ],
+              "fps": 5,
+              "loop": false,
+              "scale": 2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "starterWeapon": "cutboard_remote",
+          "levelUp": "effect/level_up"
+        }
+      }
+    },
+    "starterWeapons": {
+      "sparkle_mic": {
+        "icon": "ui/starter_weapons/sparkle_mic",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/sparkle_mic/projectile_note"
+        },
+        "effects": {
+          "hit": "effect/hit_charm"
+        }
+      },
+      "neon_katana": {
+        "icon": "ui/starter_weapons/neon_katana",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "slash/neon_katana/arc"
+        },
+        "effects": {
+          "hit": "effect/hit_cut"
+        }
+      },
+      "packet_spike": {
+        "icon": "ui/starter_weapons/packet_spike",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/packet_spike/spike"
+        },
+        "effects": {
+          "hit": "effect/hit_data_burst"
+        }
+      },
+      "antenna_ofuda": {
+        "icon": "ui/starter_weapons/antenna_ofuda",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "orbit/antenna_ofuda/ofuda"
+        },
+        "effects": {
+          "hit": "effect/hit_purify"
+        }
+      },
+      "cat_cursor": {
+        "icon": "ui/starter_weapons/cat_cursor",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/cat_cursor/claw"
+        },
+        "effects": {
+          "hit": "effect/hit_scratch"
+        }
+      },
+      "phase_tuning_fork": {
+        "icon": "ui/starter_weapons/phase_tuning_fork",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "zone/phase_tuning_fork/ring"
+        },
+        "effects": {
+          "hit": "effect/hit_resonance"
+        }
+      },
+      "bullet_shield": {
+        "icon": "ui/starter_weapons/bullet_shield",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "guard/bullet_shield/shield"
+        },
+        "effects": {
+          "hit": "effect/hit_counter_star"
+        }
+      },
+      "junk_turret": {
+        "icon": "ui/starter_weapons/junk_turret",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "summon/junk_turret/body"
+        },
+        "effects": {
+          "hit": "effect/hit_machine"
+        }
+      },
+      "lunar_booster": {
+        "icon": "ui/starter_weapons/lunar_booster",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "dash/lunar_booster/flame"
+        },
+        "effects": {
+          "hit": "effect/hit_fire"
+        }
+      },
+      "cutboard_remote": {
+        "icon": "ui/starter_weapons/cutboard_remote",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "zone/cutboard_remote/frame"
+        },
+        "effects": {
+          "hit": "effect/hit_dream_cut"
+        }
+      }
+    },
+    "weapons": {
+      "signal_mic": {
+        "icon": "ui/weapons/signal_mic",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/signal_mic/projectile"
+        },
+        "effects": {
+          "cast": "weapon/signal_mic/cast",
+          "hit": "effect/hit_sound"
+        }
+      },
+      "neon_blade": {
+        "icon": "ui/weapons/neon_blade",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/neon_blade/projectile"
+        },
+        "effects": {
+          "cast": "weapon/neon_blade/cast",
+          "hit": "effect/hit_blade"
+        }
+      },
+      "packet_drone": {
+        "icon": "ui/weapons/packet_drone",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/packet_drone/projectile"
+        },
+        "effects": {
+          "cast": "weapon/packet_drone/cast",
+          "hit": "effect/hit_data"
+        }
+      },
+      "synth_charm": {
+        "icon": "ui/weapons/synth_charm",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/synth_charm/projectile"
+        },
+        "effects": {
+          "cast": "weapon/synth_charm/cast",
+          "hit": "effect/hit_signal"
+        }
+      },
+      "chat_barrage": {
+        "icon": "ui/weapons/chat_barrage",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/chat_barrage/projectile"
+        },
+        "effects": {
+          "cast": "weapon/chat_barrage/cast",
+          "hit": "effect/hit_cute"
+        }
+      },
+      "repair_turret": {
+        "icon": "ui/weapons/repair_turret",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/repair_turret/projectile"
+        },
+        "effects": {
+          "cast": "weapon/repair_turret/cast",
+          "hit": "effect/hit_machine"
+        }
+      },
+      "heart_pulse": {
+        "icon": "ui/weapons/heart_pulse",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/heart_pulse/projectile"
+        },
+        "effects": {
+          "cast": "weapon/heart_pulse/cast",
+          "hit": "effect/hit_heart"
+        }
+      },
+      "relay_tower": {
+        "icon": "ui/weapons/relay_tower",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/relay_tower/projectile"
+        },
+        "effects": {
+          "cast": "weapon/relay_tower/cast",
+          "hit": "effect/hit_resonance"
+        }
+      },
+      "static_broom": {
+        "icon": "ui/weapons/static_broom",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/static_broom/projectile"
+        },
+        "effects": {
+          "cast": "weapon/static_broom/cast",
+          "hit": "effect/hit_static"
+        }
+      },
+      "afterimage_wheel": {
+        "icon": "ui/weapons/afterimage_wheel",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "weapon/afterimage_wheel/projectile"
+        },
+        "effects": {
+          "cast": "weapon/afterimage_wheel/cast",
+          "hit": "effect/hit_echo"
+        }
+      }
+    },
+    "enemies": {
+      "noise_slime": {
+        "icon": "ui/enemies/noise_slime",
+        "color": "#2af7ff",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "enemy/noise_slime",
+          "animations": {
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/noise_slime/move_0",
+                "enemy/noise_slime/move_1",
+                "enemy/noise_slime/move_2",
+                "enemy/noise_slime/move_3"
+              ],
+              "fps": 7,
+              "loop": true,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hit": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/noise_slime/hit_0",
+                "enemy/noise_slime/hit_1"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/noise_slime/death_0",
+                "enemy/noise_slime/death_1",
+                "enemy/noise_slime/death_2",
+                "enemy/noise_slime/death_3"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_noise"
+        }
+      },
+      "pixel_bat": {
+        "icon": "ui/enemies/pixel_bat",
+        "color": "#a574ff",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "enemy/pixel_bat",
+          "animations": {
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/pixel_bat/move_0",
+                "enemy/pixel_bat/move_1",
+                "enemy/pixel_bat/move_2",
+                "enemy/pixel_bat/move_3"
+              ],
+              "fps": 7,
+              "loop": true,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hit": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/pixel_bat/hit_0",
+                "enemy/pixel_bat/hit_1"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/pixel_bat/death_0",
+                "enemy/pixel_bat/death_1",
+                "enemy/pixel_bat/death_2",
+                "enemy/pixel_bat/death_3"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_shadow"
+        }
+      },
+      "adware_bug": {
+        "icon": "ui/enemies/adware_bug",
+        "color": "#ff62d0",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "enemy/adware_bug",
+          "animations": {
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/adware_bug/move_0",
+                "enemy/adware_bug/move_1",
+                "enemy/adware_bug/move_2",
+                "enemy/adware_bug/move_3"
+              ],
+              "fps": 7,
+              "loop": true,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hit": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/adware_bug/hit_0",
+                "enemy/adware_bug/hit_1"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/adware_bug/death_0",
+                "enemy/adware_bug/death_1",
+                "enemy/adware_bug/death_2",
+                "enemy/adware_bug/death_3"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_glitch"
+        }
+      },
+      "relay_drone": {
+        "icon": "ui/enemies/relay_drone",
+        "color": "#ffd966",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "enemy/relay_drone",
+          "animations": {
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/relay_drone/move_0",
+                "enemy/relay_drone/move_1",
+                "enemy/relay_drone/move_2",
+                "enemy/relay_drone/move_3"
+              ],
+              "fps": 7,
+              "loop": true,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hit": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/relay_drone/hit_0",
+                "enemy/relay_drone/hit_1"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/relay_drone/death_0",
+                "enemy/relay_drone/death_1",
+                "enemy/relay_drone/death_2",
+                "enemy/relay_drone/death_3"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_drone"
+        }
+      },
+      "glitch_knight": {
+        "icon": "ui/enemies/glitch_knight",
+        "color": "#ff3d6e",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "enemy/glitch_knight",
+          "animations": {
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/glitch_knight/move_0",
+                "enemy/glitch_knight/move_1",
+                "enemy/glitch_knight/move_2",
+                "enemy/glitch_knight/move_3"
+              ],
+              "fps": 7,
+              "loop": true,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hit": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/glitch_knight/hit_0",
+                "enemy/glitch_knight/hit_1"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "enemy/glitch_knight/death_0",
+                "enemy/glitch_knight/death_1",
+                "enemy/glitch_knight/death_2",
+                "enemy/glitch_knight/death_3"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.7,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_glitch"
+        }
+      }
+    },
+    "bosses": {
+      "boss_signal_hydra": {
+        "icon": "ui/bosses/boss_signal_hydra",
+        "portrait": "sprites/portraits/bosses/boss_signal_hydra.png",
+        "color": "#ff4fd8",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "boss/boss_signal_hydra",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_signal_hydra/idle_0",
+                "boss/boss_signal_hydra/idle_1",
+                "boss/boss_signal_hydra/idle_2"
+              ],
+              "fps": 5,
+              "loop": true,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_signal_hydra/move_0",
+                "boss/boss_signal_hydra/move_1",
+                "boss/boss_signal_hydra/move_2",
+                "boss/boss_signal_hydra/move_3"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_signal_hydra/attack_0",
+                "boss/boss_signal_hydra/attack_1",
+                "boss/boss_signal_hydra/attack_2",
+                "boss/boss_signal_hydra/attack_3"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_signal_hydra/hurt_0",
+                "boss/boss_signal_hydra/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_signal_hydra/death_0",
+                "boss/boss_signal_hydra/death_1",
+                "boss/boss_signal_hydra/death_2",
+                "boss/boss_signal_hydra/death_3",
+                "boss/boss_signal_hydra/death_4"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_boss",
+          "aura": "effect/boss_aura/boss_signal_hydra"
+        }
+      },
+      "boss_rain_cache": {
+        "icon": "ui/bosses/boss_rain_cache",
+        "portrait": "sprites/portraits/bosses/boss_rain_cache.png",
+        "color": "#6478ff",
+        "sprite": {
+          "atlas": "actors",
+          "prefix": "boss/boss_rain_cache",
+          "animations": {
+            "idle": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_rain_cache/idle_0",
+                "boss/boss_rain_cache/idle_1",
+                "boss/boss_rain_cache/idle_2"
+              ],
+              "fps": 5,
+              "loop": true,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "move": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_rain_cache/move_0",
+                "boss/boss_rain_cache/move_1",
+                "boss/boss_rain_cache/move_2",
+                "boss/boss_rain_cache/move_3"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_rain_cache/attack_0",
+                "boss/boss_rain_cache/attack_1",
+                "boss/boss_rain_cache/attack_2",
+                "boss/boss_rain_cache/attack_3"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "hurt": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_rain_cache/hurt_0",
+                "boss/boss_rain_cache/hurt_1"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "death": {
+              "atlas": "actors",
+              "frames": [
+                "boss/boss_rain_cache/death_0",
+                "boss/boss_rain_cache/death_1",
+                "boss/boss_rain_cache/death_2",
+                "boss/boss_rain_cache/death_3",
+                "boss/boss_rain_cache/death_4"
+              ],
+              "fps": 8,
+              "loop": false,
+              "scale": 1.2,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        },
+        "effects": {
+          "killBurst": "effect/kill_burst_boss",
+          "aura": "effect/boss_aura/boss_rain_cache"
+        }
+      }
+    },
+    "biomes": {
+      "neon_radio_rooftop": {
+        "icon": "ui/biomes/neon_radio_rooftop",
+        "preview": "sprites/previews/biomes/neon_radio_rooftop.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/neon_radio_rooftop/background"
+        },
+        "effects": {
+          "ambient": "biome/neon_radio_rooftop/ambient_fx"
+        }
+      },
+      "ranked_arcade_matrix": {
+        "icon": "ui/biomes/ranked_arcade_matrix",
+        "preview": "sprites/previews/biomes/ranked_arcade_matrix.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/ranked_arcade_matrix/background"
+        },
+        "effects": {
+          "ambient": "biome/ranked_arcade_matrix/ambient_fx"
+        }
+      },
+      "midnight_cache_rain": {
+        "icon": "ui/biomes/midnight_cache_rain",
+        "preview": "sprites/previews/biomes/midnight_cache_rain.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/midnight_cache_rain/background"
+        },
+        "effects": {
+          "ambient": "biome/midnight_cache_rain/ambient_fx"
+        }
+      },
+      "starlight_signal_plaza": {
+        "icon": "ui/biomes/starlight_signal_plaza",
+        "preview": "sprites/previews/biomes/starlight_signal_plaza.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/starlight_signal_plaza/background"
+        },
+        "effects": {
+          "ambient": "biome/starlight_signal_plaza/ambient_fx"
+        }
+      },
+      "data_library_loop": {
+        "icon": "ui/biomes/data_library_loop",
+        "preview": "sprites/previews/biomes/data_library_loop.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/data_library_loop/background"
+        },
+        "effects": {
+          "ambient": "biome/data_library_loop/ambient_fx"
+        }
+      },
+      "static_back_alley": {
+        "icon": "ui/biomes/static_back_alley",
+        "preview": "sprites/previews/biomes/static_back_alley.png",
+        "sprite": {
+          "atlas": "biomes",
+          "frame": "biome/static_back_alley/background"
+        },
+        "effects": {
+          "ambient": "biome/static_back_alley/ambient_fx"
+        }
+      }
+    },
+    "drops": {
+      "xp_small": {
+        "icon": "ui/drops/xp_small",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/xp_small"
+        }
+      },
+      "xp_medium": {
+        "icon": "ui/drops/xp_medium",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/xp_medium"
+        }
+      },
+      "xp_large": {
+        "icon": "ui/drops/xp_large",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/xp_large"
+        }
+      },
+      "boss_cache": {
+        "icon": "ui/drops/boss_cache",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/boss_cache"
+        }
+      },
+      "heal_heart": {
+        "icon": "ui/drops/heal_heart",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/heal_heart"
+        }
+      },
+      "shield_chip": {
+        "icon": "ui/drops/shield_chip",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/shield_chip"
+        }
+      },
+      "supply_box": {
+        "icon": "ui/drops/supply_box",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/supply_box"
+        }
+      },
+      "magnet_tape": {
+        "icon": "ui/drops/magnet_tape",
+        "sprite": {
+          "atlas": "combat",
+          "frame": "drop/magnet_tape"
+        }
+      }
+    },
+    "effects": {
+      "effect/hit_default": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_default"
+        }
+      },
+      "effect/hit_sound": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_sound"
+        }
+      },
+      "effect/hit_blade": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_blade"
+        }
+      },
+      "effect/hit_data": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_data"
+        }
+      },
+      "effect/hit_signal": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_signal"
+        }
+      },
+      "effect/hit_cute": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_cute"
+        }
+      },
+      "effect/hit_resonance": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_resonance"
+        }
+      },
+      "effect/hit_guard": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_guard"
+        }
+      },
+      "effect/hit_machine": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_machine"
+        }
+      },
+      "effect/hit_fire": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_fire"
+        }
+      },
+      "effect/hit_dream": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_dream"
+        }
+      },
+      "effect/hit_heart": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_heart"
+        }
+      },
+      "effect/hit_static": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_static"
+        }
+      },
+      "effect/hit_echo": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_echo"
+        }
+      },
+      "effect/hit_charm": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_charm"
+        }
+      },
+      "effect/hit_cut": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_cut"
+        }
+      },
+      "effect/hit_data_burst": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_data_burst"
+        }
+      },
+      "effect/hit_purify": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_purify"
+        }
+      },
+      "effect/hit_scratch": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_scratch"
+        }
+      },
+      "effect/hit_counter_star": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/hit_counter_star"
+        }
+      },
+      "effect/dream_cut": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/dream_cut"
+        }
+      },
+      "effect/kill_burst_noise": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_noise"
+        }
+      },
+      "effect/kill_burst_shadow": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_shadow"
+        }
+      },
+      "effect/kill_burst_glitch": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_glitch"
+        }
+      },
+      "effect/kill_burst_drone": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_drone"
+        }
+      },
+      "effect/kill_burst_elite": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_elite"
+        }
+      },
+      "effect/kill_burst_boss": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/kill_burst_boss"
+        }
+      },
+      "effect/level_up": {
+        "sprite": {
+          "atlas": "combat",
+          "frame": "effect/level_up"
+        }
+      }
+    }
+  },
+  "fallbacks": {
+    "missingIcon": "ui/missing_icon",
+    "missingActor": "actor/missing_idle",
+    "missingEffect": "effect/hit_default"
+  },
+  "creditsFile": "CREDITS.md"
+}

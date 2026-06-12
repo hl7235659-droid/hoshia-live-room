@@ -26,47 +26,52 @@
     {
       "kind": "jobs",
       "path": "data/jobs.v1.json",
-      "description": "10 ???????????????? Hoshia ???????"
+      "description": "10 个可选职业与对应的 Hoshia 玩法风格。"
     },
     {
       "kind": "weapons",
       "path": "data/weapons.v1.json",
-      "description": "????/???????????"
+      "description": "武器与攻击表现的公开玩法配置。"
     },
     {
       "kind": "enemies",
       "path": "data/enemies.v1.json",
-      "description": "???????????????"
+      "description": "小怪族群、强度和生成权重配置。"
     },
     {
       "kind": "bosses",
       "path": "data/bosses.v1.json",
-      "description": "15 ?? BOSS ??????????"
+      "description": "15 分钟 BOSS 与对应战斗风格配置。"
     },
     {
       "kind": "biomes",
       "path": "data/biomes.v1.json",
-      "description": "????? Hoshia activity/mood ??????"
+      "description": "根据 Hoshia activity/mood 切换的场景配置。"
     },
     {
       "kind": "upgrades",
       "path": "data/upgrades.v1.json",
-      "description": "????????????????????"
+      "description": "升级三选一的候选池与职业专属选项。"
     },
     {
       "kind": "waves",
       "path": "data/waves.v1.json",
-      "description": "15 ??????? BOSS ????"
+      "description": "15 分钟波次节奏与 BOSS 出场规则。"
     },
     {
       "kind": "directorRules",
       "path": "data/director-rules.v1.json",
-      "description": "??? Hoshia mood/activity ????????????????????"
+      "description": "按 Hoshia mood/activity 调整怪物、掉落和节奏的导演规则。"
     },
     {
       "kind": "locales",
       "path": "data/locales.zh-CN.v1.json",
-      "description": "????? UI ???"
+      "description": "小游戏 UI 文案占位配置。"
+    },
+    {
+      "kind": "visuals",
+      "path": "visuals.v1.json",
+      "description": "公开像素素材映射：角色、职业、武器、敌人、BOSS、场景、掉落物和特效。"
     }
   ],
   "publicDataPolicy": {
@@ -80,7 +85,7 @@
   },
   "hoshiaModule": {
     "moduleId": "hoshia_pixel_game",
-    "displayName": "???????",
+    "displayName": "像素割草小游戏",
     "contextProviderHint": "可从本包读取职业、当前波次、公开 mood/activity 标签和安全事件摘要，生成 module_context。",
     "safeContextFields": [
       "class_id",

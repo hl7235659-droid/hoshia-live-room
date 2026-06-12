@@ -5,6 +5,7 @@ import type {
   PixelGameEnemyTuning,
   PixelGameJob,
   PixelGameUpgradeOption,
+  PixelGameVisualManifest,
   PixelGameWaveRule
 } from "../types";
 
@@ -26,13 +27,14 @@ async function loadJson<T>(path: string): Promise<T | null> {
 }
 
 export async function loadPixelGameData(): Promise<PixelGameDataBundle> {
-  const [jobsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw] = await Promise.all([
+  const [jobsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw, visualsRaw] = await Promise.all([
     loadJson<{ jobs?: PixelGameJob[] }>("data/jobs.v1.json"),
     loadJson<{ upgradePool?: PixelGameUpgradeOption[]; jobExclusiveUpgrades?: PixelGameUpgradeOption[] }>("data/upgrades.v1.json"),
     loadJson<{ enemies?: PixelGameEnemyTuning[] }>("data/enemies.v1.json"),
     loadJson<{ bosses?: PixelGameBossTuning[] }>("data/bosses.v1.json"),
     loadJson<{ biomes?: PixelGameBiome[] }>("data/biomes.v1.json"),
-    loadJson<{ waves?: PixelGameWaveRule[] }>("data/waves.v1.json")
+    loadJson<{ waves?: PixelGameWaveRule[] }>("data/waves.v1.json"),
+    loadJson<PixelGameVisualManifest>("visuals.v1.json")
   ]);
 
   const jobs = normalizeJobs(jobsRaw?.jobs);
@@ -53,7 +55,29 @@ export async function loadPixelGameData(): Promise<PixelGameDataBundle> {
     bosses,
     biomes,
     waves,
+    visuals: normalizeVisuals(visualsRaw),
     source: loadedCount === 6 ? "assets" : loadedCount === 0 ? "fallback" : "mixed"
+  };
+}
+
+function normalizeVisuals(item: PixelGameVisualManifest | null): PixelGameVisualManifest | null {
+  if (!item || item.schemaVersion !== 1 || item.kind !== "visuals") return null;
+  if (!Array.isArray(item.atlases) || !item.atlases.length || !item.entities) return null;
+  return {
+    ...item,
+    assetBase: item.assetBase || "assets/game/",
+    atlases: item.atlases.filter((atlas) => atlas?.id && atlas.image && atlas.data),
+    entities: {
+      ...item.entities,
+      jobs: item.entities.jobs || {},
+      starterWeapons: item.entities.starterWeapons || {},
+      weapons: item.entities.weapons || {},
+      enemies: item.entities.enemies || {},
+      bosses: item.entities.bosses || {},
+      biomes: item.entities.biomes || {},
+      drops: item.entities.drops || {},
+      effects: item.entities.effects || {}
+    }
   };
 }
 

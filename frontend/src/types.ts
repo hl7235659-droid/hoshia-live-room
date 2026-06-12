@@ -414,6 +414,72 @@ export type PixelGameWaveRule = {
   boss?: boolean;
 };
 
+export type PixelGameVisualAnimation = {
+  atlas: string;
+  frames: string[];
+  fps?: number;
+  loop?: boolean;
+  anchor?: PixelGameVector;
+  scale?: number;
+};
+
+export type PixelGameVisualSprite = {
+  atlas?: string;
+  frame?: string;
+  prefix?: string;
+  animations?: Record<string, PixelGameVisualAnimation>;
+};
+
+export type PixelGameVisualEntity = {
+  icon?: string;
+  portrait?: string;
+  preview?: string;
+  color?: string;
+  sprite?: PixelGameVisualSprite;
+  effects?: Record<string, string>;
+};
+
+export type PixelGameVisualAtlas = {
+  id: string;
+  image: string;
+  data: string;
+};
+
+export type PixelGameVisualManifest = {
+  schemaVersion: 1;
+  kind: "visuals";
+  packId: string;
+  packVersion: string;
+  assetBase?: string;
+  pixelSpec?: {
+    tileSize?: number;
+    actorCell?: number;
+    enemyCell?: number;
+    bossCell?: number;
+    iconSize?: number;
+    filter?: "nearest" | string;
+    defaultAnchor?: [number, number];
+  };
+  atlases: PixelGameVisualAtlas[];
+  entities: {
+    hoshia?: PixelGameVisualEntity;
+    jobs?: Record<string, PixelGameVisualEntity>;
+    starterWeapons?: Record<string, PixelGameVisualEntity>;
+    weapons?: Record<string, PixelGameVisualEntity>;
+    enemies?: Record<string, PixelGameVisualEntity>;
+    bosses?: Record<string, PixelGameVisualEntity>;
+    biomes?: Record<string, PixelGameVisualEntity>;
+    drops?: Record<string, PixelGameVisualEntity>;
+    effects?: Record<string, PixelGameVisualEntity>;
+  };
+  fallbacks?: {
+    missingIcon?: string;
+    missingActor?: string;
+    missingEffect?: string;
+  };
+  creditsFile?: string;
+};
+
 export type PixelGameDataBundle = {
   jobs: PixelGameJob[];
   upgrades: PixelGameUpgradeOption[];
@@ -421,6 +487,7 @@ export type PixelGameDataBundle = {
   bosses: PixelGameBossTuning[];
   biomes: PixelGameBiome[];
   waves: PixelGameWaveRule[];
+  visuals: PixelGameVisualManifest | null;
   source: "assets" | "fallback" | "mixed";
 };
 

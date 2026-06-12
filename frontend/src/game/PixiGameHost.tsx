@@ -10,6 +10,8 @@ import type {
   PixelGameUpgradeOption,
   PixelGameWaveRule
 } from "../types";
+import { createPixelGameVisualRenderer } from "./pixelGameVisualRenderer";
+import type { PixelGameVisualEffect, PixelGameVisualRenderer } from "./pixelGameVisualRenderer";
 
 export type PixelGameUpgradePick = {
   sequence: number;
@@ -116,6 +118,7 @@ type EngineState = {
   enemies: Enemy[];
   projectiles: Projectile[];
   gems: Gem[];
+  effects: PixelGameVisualEffect[];
 };
 
 type Controls = {
@@ -131,6 +134,7 @@ export function PixiGameHost(props: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<PixiApplication | null>(null);
   const graphicsRef = useRef<{ bg: PixiGraphics; actors: PixiGraphics; fx: PixiGraphics } | null>(null);
+  const visualRendererRef = useRef<PixelGameVisualRenderer | null>(null);
   const engineRef = useRef<EngineState | null>(null);
   const propsRef = useRef(props);
   const controlsRef = useRef<Controls>({ keyboard: {}, stickX: 0, stickY: 0 });
@@ -167,8 +171,10 @@ export function PixiGameHost(props: Props) {
       const bg = new PIXI.Graphics();
       const actors = new PIXI.Graphics();
       const fx = new PIXI.Graphics();
+      const visualRenderer = createPixelGameVisualRenderer(PIXI, propsRef.current.data.visuals);
+      visualRendererRef.current = visualRenderer;
       graphicsRef.current = { bg, actors, fx };
-      app.stage.addChild(bg, actors, fx);
+      app.stage.addChild(bg, visualRenderer.worldLayer, actors, fx, visualRenderer.fxLayer);
 
       engineRef.current = createEngine(propsRef.current.run, propsRef.current.data, classJob);
       propsRef.current.onSnapshot(snapshotFromEngine(engineRef.current));
@@ -190,7 +196,7 @@ export function PixiGameHost(props: Props) {
         if (!propsRef.current.paused && !engine.awaitingUpgrade && !engine.awaitingClass && !engine.finished) {
           updateEngine(engine, propsRef.current, controlsRef.current, dt);
         }
-        drawEngine(PIXI!, appRef.current, graphicsRef.current, engine);
+        drawEngine(PIXI!, appRef.current, graphicsRef.current, visualRendererRef.current, engine);
         if (nowMs - lastSnapshotRef.current >= snapshotEveryMs || engine.finished) {
           lastSnapshotRef.current = nowMs;
           propsRef.current.onSnapshot(snapshotFromEngine(engine));
@@ -223,6 +229,8 @@ export function PixiGameHost(props: Props) {
       window.removeEventListener("keyup", onKeyUp);
       resizeObserver?.disconnect();
       controlsRef.current = { keyboard: {}, stickX: 0, stickY: 0 };
+      visualRendererRef.current?.destroy();
+      visualRendererRef.current = null;
       appRef.current?.destroy(true, { children: true, texture: true, baseTexture: true });
       appRef.current = null;
       graphicsRef.current = null;
@@ -346,7 +354,8 @@ function createEngine(run: PixelGamePublicRun, data: PixelGameDataBundle, job: P
     bossSpawnSecond: bossSpawnSecond(data, bossId),
     enemies: [],
     projectiles: [],
-    gems: []
+    gems: [],
+    effects: []
   };
 }
 
@@ -371,6 +380,7 @@ function updateEngine(engine: EngineState, props: Props, controls: Controls, dt:
   updateProjectiles(engine, dt);
   updateEnemies(engine, dt);
   updateGems(engine, dt);
+  updateEffects(engine, dt);
   processLevelUps(engine, props);
   maybeSpawnBoss(engine, props.data);
 
@@ -505,8 +515,19 @@ function updateProjectiles(engine: EngineState, dt: number) {
     for (const enemy of engine.enemies) {
       if (enemy.hp <= 0) continue;
       if (distance(projectile.x, projectile.y, enemy.x, enemy.y) > enemy.size + projectile.size) continue;
+      const willKill = enemy.hp - projectile.damage <= 0;
       enemy.hp -= projectile.damage;
       projectile.life = 0;
+      pushNeonEffect(engine, {
+        kind: "hit",
+        x: projectile.x,
+        y: projectile.y,
+        duration: willKill ? 0.16 : 0.22,
+        color: projectile.color || enemy.color,
+        size: Math.max(18, enemy.size * (enemy.boss ? 1.2 : 1.8)),
+        targetTypeId: enemy.typeId,
+        boss: Boolean(enemy.boss)
+      });
       if (enemy.hp <= 0) killEnemy(engine, enemy);
       break;
     }
@@ -550,10 +571,33 @@ function updateGems(engine: EngineState, dt: number) {
   engine.gems = engine.gems.filter((gem) => gem.xp > 0).slice(-120);
 }
 
+function updateEffects(engine: EngineState, dt: number) {
+  let writeIndex = 0;
+  for (const effect of engine.effects) {
+    effect.age += dt;
+    if (effect.age < effect.duration) {
+      engine.effects[writeIndex] = effect;
+      writeIndex += 1;
+    }
+  }
+  engine.effects.length = writeIndex;
+  if (engine.effects.length > 96) engine.effects.splice(0, engine.effects.length - 96);
+}
+
 function killEnemy(engine: EngineState, enemy: Enemy) {
   engine.kills += enemy.boss ? 1 : 1;
   engine.score += Math.floor(enemy.score * (enemy.boss ? 1.6 : 1));
   if (enemy.boss) engine.bossResult = "defeated";
+  pushNeonEffect(engine, {
+    kind: "kill",
+    x: enemy.x,
+    y: enemy.y,
+    duration: enemy.boss ? 0.72 : 0.42,
+    color: enemy.boss ? "#ffe66d" : enemy.color,
+    size: enemy.boss ? enemy.size * 2.4 : Math.max(32, enemy.size * 2.8),
+    targetTypeId: enemy.typeId,
+    boss: Boolean(enemy.boss)
+  });
   const gems = enemy.boss ? 12 : enemy.xp >= 6 ? 3 : 1;
   for (let index = 0; index < gems; index += 1) {
     engine.gems.push({
@@ -564,6 +608,18 @@ function killEnemy(engine: EngineState, enemy: Enemy) {
       color: enemy.boss ? "#ffe66d" : "#7cffc4"
     });
   }
+}
+
+function pushNeonEffect(
+  engine: EngineState,
+  effect: Omit<PixelGameVisualEffect, "id" | "age">
+) {
+  engine.effects.push({
+    ...effect,
+    id: `fx-${Date.now()}-${Math.floor(engine.rng() * 100000)}`,
+    age: 0
+  });
+  if (engine.effects.length > 96) engine.effects.splice(0, engine.effects.length - 96);
 }
 
 function processLevelUps(engine: EngineState, props: Props) {
@@ -739,7 +795,13 @@ function snapshotFromEngine(engine: EngineState): PixelGameSnapshot {
   };
 }
 
-function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: PixiGraphics; actors: PixiGraphics; fx: PixiGraphics }, engine: EngineState) {
+function drawEngine(
+  PIXI: PixiModule,
+  app: PixiApplication,
+  graphics: { bg: PixiGraphics; actors: PixiGraphics; fx: PixiGraphics },
+  visualRenderer: PixelGameVisualRenderer | null,
+  engine: EngineState
+) {
   const width = app.renderer.width / app.renderer.resolution;
   const height = app.renderer.height / app.renderer.resolution;
   const palette = engine.biomePalette;
@@ -756,6 +818,7 @@ function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: Pixi
 
   const camX = engine.x - width / 2;
   const camY = engine.y - height / 2;
+  const visualResult = visualRenderer?.render(engine, { x: camX, y: camY }) || null;
   const grid = 42;
   bg.lineStyle(1, PIXI.utils.string2hex(palette[1] || "#44f5ff"), 0.14);
   for (let x = -((camX % grid) + grid); x < width + grid; x += grid) bg.moveTo(x, 0).lineTo(x, height);
@@ -764,6 +827,7 @@ function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: Pixi
   bg.drawRect(-camX, -camY, engine.worldWidth, engine.worldHeight);
 
   for (const gem of engine.gems) {
+    if (visualResult?.gems.has(gem.id)) continue;
     const x = gem.x - camX;
     const y = gem.y - camY;
     actors.beginFill(PIXI.utils.string2hex(gem.color), 0.9);
@@ -772,6 +836,7 @@ function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: Pixi
   }
 
   for (const projectile of engine.projectiles) {
+    if (visualResult?.projectiles.has(projectile.id)) continue;
     actors.beginFill(PIXI.utils.string2hex(projectile.color), 1);
     actors.drawRect(projectile.x - camX - 3, projectile.y - camY - 3, 6, 6);
     actors.endFill();
@@ -780,16 +845,21 @@ function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: Pixi
   for (const enemy of engine.enemies) {
     const x = enemy.x - camX;
     const y = enemy.y - camY;
-    actors.beginFill(PIXI.utils.string2hex(enemy.color), enemy.boss ? 0.98 : 0.86);
+    const enemyRendered = visualResult?.enemies.has(enemy.id) || false;
+    if (!enemyRendered) {
+      actors.beginFill(PIXI.utils.string2hex(enemy.color), enemy.boss ? 0.98 : 0.86);
+      if (enemy.boss) {
+        actors.drawRoundedRect(x - enemy.size, y - enemy.size, enemy.size * 2, enemy.size * 2, 6);
+        actors.endFill();
+      } else {
+        actors.drawRect(x - enemy.size / 2, y - enemy.size / 2, enemy.size, enemy.size);
+        actors.endFill();
+      }
+    }
     if (enemy.boss) {
-      actors.drawRoundedRect(x - enemy.size, y - enemy.size, enemy.size * 2, enemy.size * 2, 6);
-      actors.endFill();
       actors.lineStyle(3, PIXI.utils.string2hex(palette[3] || "#ffe66d"), 0.8);
       actors.drawCircle(x, y, enemy.size + 7 + Math.sin(engine.elapsed * 4) * 2);
       actors.lineStyle(0);
-    } else {
-      actors.drawRect(x - enemy.size / 2, y - enemy.size / 2, enemy.size, enemy.size);
-      actors.endFill();
     }
     const hpRatio = clamp(enemy.hp / enemy.maxHp, 0, 1);
     actors.beginFill(0x111827, 0.72);
@@ -810,7 +880,26 @@ function drawEngine(PIXI: PixiModule, app: PixiApplication, graphics: { bg: Pixi
     fx.drawCircle(px, py, 28 + Math.sin(engine.elapsed * 8) * 2);
     fx.lineStyle(0);
   }
-  drawPixelHoshia(actors, PIXI, px, py, palette, engine.hurtCooldown > 0);
+  for (const effect of engine.effects) {
+    const x = effect.x - camX;
+    const y = effect.y - camY;
+    const progress = clamp(effect.age / Math.max(0.001, effect.duration), 0, 1);
+    const alpha = (1 - progress) * (effect.kind === "kill" ? 0.78 : 0.55);
+    const color = PIXI.utils.string2hex(effect.color);
+    const radius = effect.size * (0.3 + progress * (effect.kind === "kill" ? 1.15 : 0.75));
+    fx.beginFill(color, alpha * 0.12);
+    fx.drawCircle(x, y, radius);
+    fx.endFill();
+    fx.lineStyle(Math.max(1, 4 * (1 - progress)), color, alpha);
+    fx.drawCircle(x, y, radius);
+    if (effect.kind === "kill") {
+      const line = radius * 0.72;
+      fx.moveTo(x - line, y).lineTo(x + line, y);
+      fx.moveTo(x, y - line).lineTo(x, y + line);
+    }
+    fx.lineStyle(0);
+  }
+  if (!visualResult?.hoshia) drawPixelHoshia(actors, PIXI, px, py, palette, engine.hurtCooldown > 0);
 }
 
 function drawPixelHoshia(g: PixiGraphics, PIXI: PixiModule, x: number, y: number, palette: string[], hurt: boolean) {
