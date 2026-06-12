@@ -166,7 +166,7 @@ export function normalizeCharacterEvent(event = {}) {
 
 function sanitizeEventData(data = {}) {
   if (!data || typeof data !== "object") return {};
-  const allowed = new Set(["title", "artist", "activity", "mood", "source_type", "topic", "category", "post_id", "comment_id", "status"]);
+  const allowed = new Set(["title", "artist", "activity", "mood", "source_type", "route", "topic", "category", "post_id", "comment_id", "status"]);
   const output = {};
   for (const [key, value] of Object.entries(data)) {
     if (!allowed.has(key)) continue;

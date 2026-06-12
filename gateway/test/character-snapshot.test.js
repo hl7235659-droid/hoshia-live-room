@@ -54,3 +54,24 @@ test("character event normalization keeps summaries and drops sensitive data", (
   assert.equal(JSON.parse(event.data_json).token, undefined);
   assert.equal(JSON.parse(event.data_json).path, undefined);
 });
+
+test("character event normalization keeps safe ai reply route only", () => {
+  const event = normalizeCharacterEvent({
+    event_type: "ai.reply_sent",
+    room_id: "room",
+    source_id: "reply-1",
+    public_hint: "Hoshia replied",
+    data: {
+      route: "smalltalk",
+      source_type: "openai_compatible",
+      raw_response: "full reply should not persist",
+      base_url: "https://example.test/v1"
+    }
+  });
+  const data = JSON.parse(event.data_json);
+
+  assert.equal(data.route, "smalltalk");
+  assert.equal(data.source_type, "openai_compatible");
+  assert.equal(data.raw_response, undefined);
+  assert.equal(data.base_url, undefined);
+});

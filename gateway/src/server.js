@@ -84,7 +84,7 @@ import {
   normalizeCharacterEvent,
   summarizeCharacterSnapshotForPrompt
 } from "./character-snapshot.js";
-import { projectUserMessageReceivedEvent } from "./character-event-projector.js";
+import { projectCharacterEvent } from "./character-event-projector.js";
 import {
   buildHoshiaReplyMetadata,
   prepareHoshiaCenterContext
@@ -910,6 +910,7 @@ async function handleMusicRequestFromDanmaku(session, query, originalText = "") 
       memoryEligible: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
       retentionDays: 30
     }));
+    appendMusicSongRequestedCharacterEvent(result.track, session);
     await broadcastSystemText(`♪ ${session.nickname} 点歌《${result.track.title}》已加入播放。`);
     queueMusicAcknowledgementReply(session, [result.track], originalText || `song request ${query}`);
   } else {
@@ -993,6 +994,7 @@ async function handleBulkMusicRequestFromDanmaku(session, intent, originalText =
         memoryEligible: normalizeStoredAiProfile(session.ai_profile)?.memory_enabled === true,
         retentionDays: 30
       }));
+      appendMusicSongRequestedCharacterEvent(track, session);
     }
     await broadcastSystemText(formatBulkMusicRequestSuccess(intent, result));
     queueMusicAcknowledgementReply(session, result.tracks || [], originalText || intent.query || "bulk song request");
@@ -1326,6 +1328,20 @@ async function handleAiReplyBatch(batch) {
     route: reply.route || replyRoute
   });
   await storeMessage(aiMessage);
+  appendCharacterEvent({
+    event_type: "ai.reply_sent",
+    actor_type: "ai",
+    source_kind: "ai_reply",
+    source_id: aiMessage.id,
+    public_hint: "Hoshia sent a live room reply",
+    private_hint: "Hoshia sent a live room reply",
+    reason: reply.route || replyRoute,
+    data: {
+      route: reply.route || replyRoute,
+      source_type: reply.source || "unknown",
+      status: "sent"
+    }
+  });
   broadcast(aiMessage);
   broadcastHoshiaPresentation(presentationFromClawEnvelope(reply, {
     traceId: latencyTraceId,
@@ -2341,7 +2357,7 @@ function buildEventLogCharacterSnapshot({ roomId, characterId = "hoshia" } = {})
   const events = db.listRecentCharacterEvents({ roomId, characterId, limit: 100 }).slice().reverse();
   let projected = current;
   for (const event of events) {
-    projected = projectUserMessageReceivedEvent(projected, event);
+    projected = projectCharacterEvent(projected, event);
   }
 
   if (JSON.stringify(projected) !== JSON.stringify(current)) {
@@ -2364,6 +2380,28 @@ function appendCharacterEvent(event = {}) {
     });
     return null;
   }
+}
+
+function appendMusicSongRequestedCharacterEvent(track, session) {
+  if (!track) return null;
+  return appendCharacterEvent({
+    event_type: "module.music.song_requested",
+    actor_type: "user",
+    user_id: session?.user_id || track.requested_by_id || "",
+    nickname: session?.nickname || track.requested_by || "",
+    source_kind: "music",
+    source_id: track.id || "",
+    occurred_at: track.requested_at || new Date().toISOString(),
+    public_hint: "Viewer requested a song",
+    private_hint: "Viewer requested a song",
+    reason: "music song request",
+    data: {
+      title: track.title || "",
+      artist: track.artist || "",
+      source_type: track.source || "",
+      status: "requested"
+    }
+  });
 }
 
 function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {
