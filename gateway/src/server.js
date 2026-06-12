@@ -2912,8 +2912,8 @@ function hasSensitiveMetricMarker(value) {
 function safeRevision() {
   return pickRuntimeRevision([
     process.env.SOURCE_REVISION,
-    process.env.REVISION,
-    readRevisionFile()
+    readRevisionFile(),
+    process.env.REVISION
   ], (value) => safeMetricIdentifier(value, 40));
 }
 

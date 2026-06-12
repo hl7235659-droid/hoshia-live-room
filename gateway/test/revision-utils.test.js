@@ -5,6 +5,7 @@ import { pickRuntimeRevision } from "../src/revision-utils.js";
 test("runtime revision skips Docker unknown default and falls back to real revision", () => {
   assert.equal(pickRuntimeRevision(["unknown", "abc123"]), "abc123");
   assert.equal(pickRuntimeRevision(["UNKNOWN", "def456"]), "def456");
+  assert.equal(pickRuntimeRevision(["unknown", "file-revision", "stale-env"]), "file-revision");
 });
 
 test("runtime revision applies sanitizer before selecting candidates", () => {
