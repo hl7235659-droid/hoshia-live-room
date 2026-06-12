@@ -476,6 +476,121 @@ test("onboarding profile can be completed or skipped", () => {
   }
 });
 
+
+test("pixel game database persists runs unlocks events and room leaderboard isolation", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    db.insertRegistrationCode({ id: "code-game-1", codeHash: hashAccessCode("HOSHA-GAME-0001") });
+    const user = db.createUserWithRegistrationCode({
+      registrationCodeHash: hashAccessCode("HOSHA-GAME-0001"),
+      user: {
+        id: "user-game-1",
+        username: "GameFriend",
+        passwordHash: hashPassword("password-1"),
+        nickname: "Game Friend"
+      }
+    });
+
+    const now = "2026-06-12T00:00:00.000Z";
+    const profile = db.ensurePixelGameProfile({ userId: user.id, roomId: "room-a", now });
+    assert.equal(profile.user_id, user.id);
+    assert.equal(profile.total_runs, 0);
+
+    db.unlockPixelGameClass({ userId: user.id, classId: "star_idol", reason: "default", now });
+    db.unlockPixelGameClass({ userId: user.id, classId: "star_idol", reason: "default", now });
+    assert.equal(db.listPixelGameClassUnlocks(user.id).filter((row) => row.class_id === "star_idol").length, 1);
+
+    const run = db.createPixelGameRun(pixelRun({ id: "pgr-db-1", room_id: "room-a", user_id: user.id, nickname: user.nickname, started_at: now }));
+    assert.equal(run.status, "active");
+    assert.equal(db.getActivePixelGameRun({ roomId: "room-a", userId: user.id, now }).id, "pgr-db-1");
+    assert.throws(() => {
+      db.createPixelGameRun(pixelRun({ id: "pgr-db-duplicate", room_id: "room-a", user_id: user.id, nickname: user.nickname, started_at: now }));
+    }, /UNIQUE|constraint/i);
+
+    const finished = db.finishPixelGameRun({
+      runId: "pgr-db-1",
+      roomId: "room-a",
+      userId: user.id,
+      accepted: true,
+      finishedAt: "2026-06-12T00:04:00.000Z",
+      durationSeconds: 240,
+      score: 9000,
+      kills: 50,
+      level: 4,
+      wavesCleared: 5,
+      bossResult: "failed",
+      result: "defeated",
+      scoreTier: "B",
+      reportText: "safe report"
+    });
+    assert.equal(finished.status, "finished");
+    assert.equal(finished.accepted, 1);
+    assert.equal(db.ensurePixelGameProfile({ userId: user.id, roomId: "room-a", now }).total_runs, 1);
+
+    db.createPixelGameRun(pixelRun({ id: "pgr-db-2", room_id: "room-b", user_id: user.id, nickname: user.nickname, started_at: "2026-06-12T00:05:00.000Z" }));
+    db.finishPixelGameRun({
+      runId: "pgr-db-2",
+      roomId: "room-b",
+      userId: user.id,
+      accepted: true,
+      finishedAt: "2026-06-12T00:08:00.000Z",
+      durationSeconds: 180,
+      score: 50000,
+      kills: 80,
+      level: 6,
+      wavesCleared: 8,
+      bossResult: "failed",
+      result: "defeated",
+      scoreTier: "A",
+      reportText: "safe report room b"
+    });
+
+    const boardA = db.listPixelGameLeaderboard({ roomId: "room-a", limit: 5 });
+    assert.equal(boardA.length, 1);
+    assert.equal(boardA[0].id, "pgr-db-1");
+    assert.equal(boardA[0].score, 9000);
+
+    db.insertPixelGameRunEvent({
+      id: "pge-db-1",
+      runId: "pgr-db-1",
+      roomId: "room-a",
+      userId: user.id,
+      eventType: "hoshia_pixel_game.run_finished",
+      summary: "Game Friend finished a run",
+      data: { class_id: "star_idol", score_tier: "B" },
+      occurredAt: "2026-06-12T00:04:01.000Z"
+    });
+    const events = db.listRecentPixelGameEvents({ roomId: "room-a", userId: user.id, limit: 3 });
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].data, { class_id: "star_idol", score_tier: "B" });
+  } finally {
+    cleanup();
+  }
+});
+
+function pixelRun(overrides = {}) {
+  const startedAt = overrides.started_at || "2026-06-12T00:00:00.000Z";
+  return {
+    id: overrides.id || "pgr-db",
+    room_id: overrides.room_id || "room-a",
+    user_id: overrides.user_id || "user-game-1",
+    nickname: overrides.nickname || "Game Friend",
+    class_id: overrides.class_id || "star_idol",
+    seed: overrides.seed || "12345",
+    stage_id: overrides.stage_id || "neon_radio_rooftop",
+    difficulty_tier: overrides.difficulty_tier || "B",
+    locked_activity: overrides.locked_activity || "idle",
+    locked_mood: overrides.locked_mood || "calm",
+    locked_energy: overrides.locked_energy ?? 50,
+    locked_social_need: overrides.locked_social_need ?? 50,
+    started_at: startedAt,
+    expires_at: overrides.expires_at || "2026-06-12T00:16:30.000Z",
+    client_version: overrides.client_version || "test",
+    created_at: overrides.created_at || startedAt,
+    updated_at: overrides.updated_at || startedAt
+  };
+}
+
 function openTempDb() {
   const dir = mkdtempSync(path.join(tmpdir(), "live-room-db-"));
   const db = openLiveRoomDatabase(path.join(dir, "live-room.sqlite"));

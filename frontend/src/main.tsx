@@ -1,10 +1,11 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ChevronDown, ChevronLeft, ChevronUp, Clock, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Send, Settings, ShieldCheck, Signal, Sparkles, UserPlus, Users, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clock, Gamepad2, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Send, Settings, ShieldCheck, Signal, Sparkles, UserPlus, Users, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { AccountAvatar, AccountSettingsModal, RoomSettingsModal } from "./components/AccountPanels";
 import { HoshiaTimelineOverlay } from "./components/TimelineOverlay";
 import { GlobalMusicPlayer, MusicRoomPanel } from "./components/MusicPanels";
+import { HoshiaGameOverlay } from "./game/HoshiaGameOverlay";
 import { colorForMessage } from "./messageColors";
 import type { AiProfile, AudiencePayload, AudienceUser, CharacterState, HoshiaPost, HoshiaPresentation, HoshiaVisualState, LiveMessage, MusicState, MusicTrack, RoomInfo, Session } from "./types";
 import { isHoshiaPresentation, toCharacterState } from "./types";
@@ -840,6 +841,7 @@ function LiveMobile({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [musicPlaybackNotice, setMusicPlaybackNotice] = useState("");
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [gameOpen, setGameOpen] = useState(false);
   const [hoshiaPosts, setHoshiaPosts] = useState<HoshiaPost[]>(() => (isDemo ? demoHoshiaPosts : []));
 
   useEffect(() => {
@@ -923,6 +925,7 @@ function LiveMobile({
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenTimeline={() => setTimelineOpen(true)}
+          onOpenGame={() => setGameOpen(true)}
           onLeave={onLeave}
         />
         <BottomDock
@@ -962,6 +965,14 @@ function LiveMobile({
             onSessionUpdate={onSessionUpdate}
           />
         ) : null}
+        {gameOpen ? (
+          <HoshiaGameOverlay
+            session={session}
+            isDemo={isDemo}
+            hoshiaState={hoshiaState}
+            onClose={() => setGameOpen(false)}
+          />
+        ) : null}
         {timelineOpen ? (
           <HoshiaTimelineOverlay
             session={session}
@@ -994,6 +1005,7 @@ function LiveOverlay({
   onOpenAccount,
   onOpenSettings,
   onOpenTimeline,
+  onOpenGame,
   onLeave
 }: {
   state: CharacterState;
@@ -1004,6 +1016,7 @@ function LiveOverlay({
   onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTimeline: () => void;
+  onOpenGame: () => void;
   onLeave: () => void;
 }) {
   const [islandOpen, setIslandOpen] = useState(false);
@@ -1124,6 +1137,15 @@ function LiveOverlay({
           <span>{connectionNotice(socketStatus)}</span>
         </div>
       ) : null}
+      <button
+        type="button"
+        className="game-open-link"
+        aria-label="Open Hoshia pixel game"
+        onClick={onOpenGame}
+        title="Hoshia pixel game"
+      >
+        <Gamepad2 size={18} strokeWidth={2.2} />
+      </button>
       <button
         type="button"
         className="timeline-open-link"

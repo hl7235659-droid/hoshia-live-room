@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "ui": {
+    "title": "星见电波心境战",
+    "start": "启动一局",
+    "pause": "暂停",
+    "resume": "继续",
+    "finish": "结算战报",
+    "upgrade_title": "选择一次强化",
+    "class_title": "选择职业专精"
+  }
+}

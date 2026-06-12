@@ -186,6 +186,89 @@ export function openLiveRoomDatabase(databasePath) {
 
     CREATE INDEX IF NOT EXISTS idx_character_snapshots_latest
       ON character_snapshots(room_id, character_id, generated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS hoshia_pixel_game_profiles (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      room_id TEXT NOT NULL,
+      total_runs INTEGER NOT NULL DEFAULT 0,
+      total_play_seconds INTEGER NOT NULL DEFAULT 0,
+      total_kills INTEGER NOT NULL DEFAULT 0,
+      best_score INTEGER NOT NULL DEFAULT 0,
+      best_level INTEGER NOT NULL DEFAULT 1,
+      best_wave INTEGER NOT NULL DEFAULT 0,
+      boss_defeated_count INTEGER NOT NULL DEFAULT 0,
+      selected_class_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS hoshia_pixel_game_class_unlocks (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      class_id TEXT NOT NULL,
+      unlocked_at TEXT NOT NULL,
+      unlock_reason TEXT NOT NULL,
+      PRIMARY KEY (user_id, class_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hoshia_pixel_game_runs (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nickname TEXT,
+      status TEXT NOT NULL,
+      accepted INTEGER NOT NULL DEFAULT 1,
+      class_id TEXT NOT NULL,
+      seed TEXT NOT NULL,
+      stage_id TEXT NOT NULL,
+      difficulty_tier TEXT NOT NULL DEFAULT 'B',
+      locked_activity TEXT,
+      locked_mood TEXT,
+      locked_energy INTEGER,
+      locked_social_need INTEGER,
+      started_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      finished_at TEXT,
+      duration_seconds INTEGER NOT NULL DEFAULT 0,
+      score INTEGER NOT NULL DEFAULT 0,
+      kills INTEGER NOT NULL DEFAULT 0,
+      level INTEGER NOT NULL DEFAULT 1,
+      waves_cleared INTEGER NOT NULL DEFAULT 0,
+      boss_result TEXT NOT NULL DEFAULT 'not_reached',
+      result TEXT NOT NULL DEFAULT 'active',
+      score_tier TEXT NOT NULL DEFAULT '',
+      report_text TEXT NOT NULL DEFAULT '',
+      client_version TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pixel_game_runs_active
+      ON hoshia_pixel_game_runs(room_id, user_id, status, expires_at);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pixel_game_runs_one_active
+      ON hoshia_pixel_game_runs(room_id, user_id)
+      WHERE status = 'active';
+
+    CREATE INDEX IF NOT EXISTS idx_pixel_game_runs_leaderboard
+      ON hoshia_pixel_game_runs(room_id, accepted, score DESC, finished_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_pixel_game_runs_class_leaderboard
+      ON hoshia_pixel_game_runs(room_id, class_id, accepted, score DESC);
+
+    CREATE TABLE IF NOT EXISTS hoshia_pixel_game_run_events (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES hoshia_pixel_game_runs(id) ON DELETE CASCADE,
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      data_json TEXT NOT NULL DEFAULT '{}',
+      occurred_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pixel_game_run_events_recent
+      ON hoshia_pixel_game_run_events(room_id, occurred_at DESC, id DESC);
   `);
   migrateUsersTable(db);
   migrateHoshiaPostInteractionsTable(db);
@@ -1203,8 +1286,232 @@ export class LiveRoomDatabase {
     `).run(roomId, roomId, keep);
   }
 
+  getPixelGameProfile(userId, roomId = "") {
+    return this.db.prepare(`
+      SELECT user_id, room_id, total_runs, total_play_seconds, total_kills, best_score, best_level, best_wave, boss_defeated_count, COALESCE(selected_class_id, '') AS selected_class_id, created_at, updated_at
+      FROM hoshia_pixel_game_profiles
+      WHERE user_id = ? AND (? = '' OR room_id = ?)
+    `).get(userId, roomId || "", roomId || "") || null;
+  }
+
+  ensurePixelGameProfile({ userId, roomId, now = new Date().toISOString() } = {}) {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO hoshia_pixel_game_profiles (
+        user_id, room_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?)
+    `).run(userId, roomId, now, now);
+    return this.getPixelGameProfile(userId, roomId);
+  }
+
+  listPixelGameClassUnlocks(userId) {
+    return this.db.prepare(`
+      SELECT user_id, class_id, unlocked_at, unlock_reason
+      FROM hoshia_pixel_game_class_unlocks
+      WHERE user_id = ?
+      ORDER BY unlocked_at ASC, class_id ASC
+    `).all(userId);
+  }
+
+  unlockPixelGameClass({ userId, classId, reason = "progress", now = new Date().toISOString() } = {}) {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO hoshia_pixel_game_class_unlocks (user_id, class_id, unlocked_at, unlock_reason)
+      VALUES (?, ?, ?, ?)
+    `).run(userId, classId, now, reason || "progress");
+    return this.listPixelGameClassUnlocks(userId).find((item) => item.class_id === classId) || null;
+  }
+
+  getActivePixelGameRun({ roomId, userId, now = new Date().toISOString() } = {}) {
+    return this.db.prepare(`
+      SELECT *
+      FROM hoshia_pixel_game_runs
+      WHERE room_id = ? AND user_id = ? AND status = 'active' AND datetime(expires_at) > datetime(?)
+      ORDER BY datetime(started_at) DESC, id DESC
+      LIMIT 1
+    `).get(roomId, userId, now) || null;
+  }
+
+  expirePixelGameRuns({ roomId, userId = "", now = new Date().toISOString() } = {}) {
+    this.db.prepare(`
+      UPDATE hoshia_pixel_game_runs
+      SET status = 'expired', result = 'expired', updated_at = ?
+      WHERE room_id = ?
+        AND status = 'active'
+        AND datetime(expires_at) <= datetime(?)
+        AND (? = '' OR user_id = ?)
+    `).run(now, roomId, now, userId || "", userId || "");
+  }
+
+  createPixelGameRun(run) {
+    this.db.prepare(`
+      INSERT INTO hoshia_pixel_game_runs (
+        id, room_id, user_id, nickname, status, accepted, class_id, seed, stage_id, difficulty_tier,
+        locked_activity, locked_mood, locked_energy, locked_social_need,
+        started_at, expires_at, client_version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      run.id,
+      run.room_id,
+      run.user_id,
+      run.nickname || null,
+      run.class_id,
+      run.seed,
+      run.stage_id,
+      run.difficulty_tier || "B",
+      run.locked_activity || "",
+      run.locked_mood || "",
+      Number(run.locked_energy || 0),
+      Number(run.locked_social_need || 0),
+      run.started_at,
+      run.expires_at,
+      run.client_version || null,
+      run.created_at || run.started_at,
+      run.updated_at || run.started_at
+    );
+    return this.getPixelGameRun(run.id);
+  }
+
+  getPixelGameRun(runId) {
+    return this.db.prepare(`
+      SELECT *
+      FROM hoshia_pixel_game_runs
+      WHERE id = ?
+    `).get(runId) || null;
+  }
+
+  getPixelGameRunForUser({ runId, roomId, userId } = {}) {
+    return this.db.prepare(`
+      SELECT *
+      FROM hoshia_pixel_game_runs
+      WHERE id = ? AND room_id = ? AND user_id = ?
+    `).get(runId, roomId, userId) || null;
+  }
+
+  finishPixelGameRun({ runId, roomId, userId, accepted, finishedAt, durationSeconds, score, kills, level, wavesCleared, bossResult, result, scoreTier, reportText = "" } = {}) {
+    let committed = false;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.getPixelGameRunForUser({ runId, roomId, userId });
+      if (!existing) {
+        this.db.exec("ROLLBACK");
+        committed = true;
+        return null;
+      }
+      if (existing.status !== "active") {
+        this.db.exec("COMMIT");
+        committed = true;
+        return { ...existing, already_finished: true };
+      }
+      const safeAccepted = accepted ? 1 : 0;
+      this.db.prepare(`
+        UPDATE hoshia_pixel_game_runs
+        SET status = 'finished', accepted = ?, finished_at = ?, duration_seconds = ?, score = ?, kills = ?, level = ?, waves_cleared = ?, boss_result = ?, result = ?, score_tier = ?, report_text = ?, updated_at = ?
+        WHERE id = ? AND room_id = ? AND user_id = ? AND status = 'active'
+      `).run(
+        safeAccepted,
+        finishedAt,
+        durationSeconds,
+        score,
+        kills,
+        level,
+        wavesCleared,
+        bossResult,
+        result,
+        scoreTier,
+        reportText || "",
+        finishedAt,
+        runId,
+        roomId,
+        userId
+      );
+      if (safeAccepted) {
+        this.ensurePixelGameProfile({ userId, roomId, now: finishedAt });
+        this.db.prepare(`
+          UPDATE hoshia_pixel_game_profiles
+          SET total_runs = total_runs + 1,
+              total_play_seconds = total_play_seconds + ?,
+              total_kills = total_kills + ?,
+              best_score = MAX(best_score, ?),
+              best_level = MAX(best_level, ?),
+              best_wave = MAX(best_wave, ?),
+              boss_defeated_count = boss_defeated_count + ?,
+              selected_class_id = ?,
+              updated_at = ?
+          WHERE user_id = ? AND room_id = ?
+        `).run(
+          durationSeconds,
+          kills,
+          score,
+          level,
+          wavesCleared,
+          bossResult === "defeated" ? 1 : 0,
+          existing.class_id,
+          finishedAt,
+          userId,
+          roomId
+        );
+      }
+      this.db.exec("COMMIT");
+      committed = true;
+      return this.getPixelGameRun(runId);
+    } catch (error) {
+      if (!committed) this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  abandonPixelGameRun({ runId, roomId, userId, now = new Date().toISOString() } = {}) {
+    this.db.prepare(`
+      UPDATE hoshia_pixel_game_runs
+      SET status = 'abandoned', accepted = 0, result = 'abandoned', finished_at = ?, updated_at = ?
+      WHERE id = ? AND room_id = ? AND user_id = ? AND status = 'active'
+    `).run(now, now, runId, roomId, userId);
+    return this.getPixelGameRunForUser({ runId, roomId, userId });
+  }
+
+  listPixelGameLeaderboard({ roomId, classId = "", limit = 10 } = {}) {
+    const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 10), 50));
+    return this.db.prepare(`
+      SELECT id, room_id, user_id, COALESCE(nickname, '') AS nickname, class_id, stage_id, difficulty_tier, score, kills, level, waves_cleared, boss_result, result, score_tier, duration_seconds, finished_at
+      FROM hoshia_pixel_game_runs
+      WHERE room_id = ? AND status = 'finished' AND accepted = 1 AND (? = '' OR class_id = ?)
+      ORDER BY score DESC, waves_cleared DESC, datetime(finished_at) ASC, id ASC
+      LIMIT ?
+    `).all(roomId, classId || "", classId || "", safeLimit);
+  }
+
+  insertPixelGameRunEvent({ id, runId, roomId, userId, eventType, summary, data = {}, occurredAt = new Date().toISOString(), createdAt = occurredAt } = {}) {
+    this.db.prepare(`
+      INSERT INTO hoshia_pixel_game_run_events (id, run_id, room_id, user_id, event_type, summary, data_json, occurred_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, runId, roomId, userId, eventType, summary, JSON.stringify(data || {}), occurredAt, createdAt);
+    return { id, run_id: runId, room_id: roomId, user_id: userId, event_type: eventType, summary, data_json: JSON.stringify(data || {}), occurred_at: occurredAt, created_at: createdAt };
+  }
+
+  listRecentPixelGameEvents({ roomId, userId = "", limit = 12 } = {}) {
+    const safeLimit = Math.max(1, Math.min(Math.floor(Number(limit) || 12), 50));
+    return this.db.prepare(`
+      SELECT id, run_id, room_id, user_id, event_type, summary, data_json, occurred_at, created_at
+      FROM hoshia_pixel_game_run_events
+      WHERE room_id = ? AND (? = '' OR user_id = ?)
+      ORDER BY datetime(occurred_at) DESC, id DESC
+      LIMIT ?
+    `).all(roomId, userId || "", userId || "", safeLimit).map((row) => ({
+      ...row,
+      data: parseJsonObject(row.data_json)
+    }));
+  }
+
   close() {
     this.db.close();
+  }
+}
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
   }
 }
 

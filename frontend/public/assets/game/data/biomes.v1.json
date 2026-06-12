@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "biomes": [
+    {
+      "id": "neon_radio_rooftop",
+      "name": "霓虹电波天台",
+      "activity": "idle",
+      "palette": [
+        "#071226",
+        "#21f3ff",
+        "#ff4fd8",
+        "#ffe66d"
+      ],
+      "enemy_families": [
+        "noise",
+        "drone"
+      ],
+      "boss_id": "boss_signal_hydra"
+    },
+    {
+      "id": "ranked_arcade_matrix",
+      "name": "排位街机矩阵",
+      "activity": "gaming",
+      "palette": [
+        "#100820",
+        "#ff4fd8",
+        "#44f5ff",
+        "#ff8a4c"
+      ],
+      "enemy_families": [
+        "glitch",
+        "drone"
+      ],
+      "boss_id": "boss_signal_hydra"
+    },
+    {
+      "id": "midnight_cache_rain",
+      "name": "深夜缓存雨巷",
+      "activity": "sleepy",
+      "palette": [
+        "#040817",
+        "#6478ff",
+        "#99c7ff",
+        "#302c5f"
+      ],
+      "enemy_families": [
+        "shadow",
+        "noise"
+      ],
+      "boss_id": "boss_rain_cache"
+    },
+    {
+      "id": "starlight_signal_plaza",
+      "name": "星光信号广场",
+      "activity": "happy",
+      "palette": [
+        "#061a26",
+        "#7cffc4",
+        "#ffe66d",
+        "#ff7aa8"
+      ],
+      "enemy_families": [
+        "noise",
+        "fan_signal"
+      ],
+      "boss_id": "boss_signal_hydra"
+    },
+    {
+      "id": "data_library_loop",
+      "name": "数据图书馆回廊",
+      "activity": "thinking",
+      "palette": [
+        "#081421",
+        "#8bff7a",
+        "#44f5ff",
+        "#b18cff"
+      ],
+      "enemy_families": [
+        "drone",
+        "glitch"
+      ],
+      "boss_id": "boss_signal_hydra"
+    },
+    {
+      "id": "static_back_alley",
+      "name": "静电暗巷",
+      "activity": "emo",
+      "palette": [
+        "#080611",
+        "#6c7bff",
+        "#ff3d6e",
+        "#2af7ff"
+      ],
+      "enemy_families": [
+        "shadow",
+        "glitch"
+      ],
+      "boss_id": "boss_rain_cache"
+    }
+  ]
+}

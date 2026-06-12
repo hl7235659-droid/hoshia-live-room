@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "weapons": [
+    {
+      "id": "signal_mic",
+      "name": "电波麦克风",
+      "kind": "orbital_pulse",
+      "damage": 14,
+      "cooldown_ms": 720,
+      "range": 210,
+      "color": "#44f5ff"
+    },
+    {
+      "id": "neon_blade",
+      "name": "霓虹短刃",
+      "kind": "slash",
+      "damage": 24,
+      "cooldown_ms": 620,
+      "range": 92,
+      "color": "#ff5fd7"
+    },
+    {
+      "id": "packet_drone",
+      "name": "数据包无人机",
+      "kind": "homing",
+      "damage": 12,
+      "cooldown_ms": 540,
+      "range": 260,
+      "color": "#8bff7a"
+    },
+    {
+      "id": "synth_charm",
+      "name": "合成护符",
+      "kind": "aura",
+      "damage": 10,
+      "cooldown_ms": 900,
+      "range": 150,
+      "color": "#ffe66d"
+    },
+    {
+      "id": "chat_barrage",
+      "name": "弹幕枪",
+      "kind": "projectile",
+      "damage": 9,
+      "cooldown_ms": 360,
+      "range": 320,
+      "color": "#ff8a4c"
+    },
+    {
+      "id": "repair_turret",
+      "name": "维修炮台",
+      "kind": "turret",
+      "damage": 11,
+      "cooldown_ms": 480,
+      "range": 250,
+      "color": "#9ad1ff"
+    },
+    {
+      "id": "heart_pulse",
+      "name": "心跳脉冲",
+      "kind": "pulse",
+      "damage": 13,
+      "cooldown_ms": 760,
+      "range": 180,
+      "color": "#ff7aa8"
+    },
+    {
+      "id": "relay_tower",
+      "name": "中继电塔",
+      "kind": "zone",
+      "damage": 16,
+      "cooldown_ms": 960,
+      "range": 190,
+      "color": "#b18cff"
+    },
+    {
+      "id": "static_broom",
+      "name": "静电扫帚",
+      "kind": "pierce",
+      "damage": 12,
+      "cooldown_ms": 520,
+      "range": 260,
+      "color": "#c8ff4d"
+    },
+    {
+      "id": "afterimage_wheel",
+      "name": "残影轮",
+      "kind": "dash_echo",
+      "damage": 18,
+      "cooldown_ms": 700,
+      "range": 160,
+      "color": "#6c7bff"
+    }
+  ]
+}

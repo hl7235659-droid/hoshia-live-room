@@ -199,3 +199,248 @@ export function isHoshiaPresentation(value: unknown): value is HoshiaPresentatio
     optionalString(candidate.timestamp) &&
     optionalString(candidate.updated_at);
 }
+
+export type PixelGameRunStatus = "active" | "finished" | "abandoned" | "expired";
+export type PixelGameRunResult = "active" | "cleared" | "defeated" | "timeout" | "abandoned" | "expired" | "finished";
+export type PixelGameBossResult = "not_reached" | "failed" | "defeated";
+export type PixelGameScoreTier = "" | "C" | "B" | "A" | "S";
+
+export type PixelGameVector = {
+  x: number;
+  y: number;
+};
+
+export type PixelGameProfile = {
+  total_runs: number;
+  total_play_seconds: number;
+  total_kills: number;
+  best_score: number;
+  best_level: number;
+  best_wave: number;
+  boss_defeated_count: number;
+  selected_class_id?: string;
+};
+
+export type PixelGamePublicRun = {
+  id: string;
+  run_id: string;
+  status: PixelGameRunStatus;
+  accepted: boolean;
+  class_id: string;
+  seed: string;
+  stage_id: string;
+  difficulty_tier: string;
+  locked_activity: string;
+  locked_mood: string;
+  locked_energy: number;
+  locked_social_need: number;
+  started_at: string;
+  expires_at: string;
+  finished_at?: string;
+  duration_seconds: number;
+  score: number;
+  kills: number;
+  level: number;
+  waves_cleared: number;
+  boss_result: PixelGameBossResult;
+  result: PixelGameRunResult;
+  score_tier: PixelGameScoreTier;
+};
+
+export type PixelGameLeaderboardEntry = {
+  run_id: string;
+  nickname: string;
+  class_id: string;
+  stage_id: string;
+  difficulty_tier: string;
+  score: number;
+  kills: number;
+  level: number;
+  waves_cleared: number;
+  boss_result: PixelGameBossResult;
+  result: PixelGameRunResult;
+  score_tier: PixelGameScoreTier;
+  duration_seconds: number;
+  finished_at: string;
+};
+
+export type PixelGameStatePayload = {
+  ok: boolean;
+  enabled: boolean;
+  profile: PixelGameProfile | null;
+  unlocked_classes: string[];
+  active_run: PixelGamePublicRun | null;
+  leaderboard: PixelGameLeaderboardEntry[];
+  rules?: {
+    duration_seconds?: number;
+    class_ids?: string[];
+  };
+};
+
+export type PixelGameRunStartResponse = {
+  ok: boolean;
+  resumed?: boolean;
+  error?: string;
+  run?: PixelGamePublicRun;
+  visual_state?: {
+    activity: string;
+    mood: string;
+    energy: number;
+    social_need: number;
+  };
+};
+
+export type PixelGameFinishPayload = {
+  duration_seconds: number;
+  score: number;
+  kills: number;
+  level: number;
+  waves_cleared: number;
+  boss_result: PixelGameBossResult;
+  result: Exclude<PixelGameRunResult, "active" | "expired">;
+  upgrade_ids?: string[];
+  specialization_id?: string;
+};
+
+export type PixelGameFinishResponse = {
+  ok: boolean;
+  accepted?: boolean;
+  suspicious?: boolean;
+  reason?: string;
+  already_finished?: boolean;
+  run?: PixelGamePublicRun;
+  report?: string;
+  unlocked_classes?: string[];
+  leaderboard?: PixelGameLeaderboardEntry[];
+  error?: string;
+};
+
+export type PixelGameAbandonResponse = {
+  ok: boolean;
+  run?: PixelGamePublicRun;
+  error?: string;
+};
+
+export type PixelGameUpgradeEffects = {
+  maxHp?: number;
+  heal?: number;
+  speedMultiplier?: number;
+  damageMultiplier?: number;
+  attackRateMultiplier?: number;
+  projectileCount?: number;
+  projectileSpeedMultiplier?: number;
+  pickupRange?: number;
+  shield?: number;
+  xpMultiplier?: number;
+};
+
+export type PixelGameUpgradeOption = {
+  id: string;
+  name: string;
+  title?: string;
+  description?: string;
+  effect?: string;
+  flavor?: string;
+  rarity?: "common" | "rare" | "epic" | "signal" | string;
+  tags?: string[];
+  maxRank?: number;
+  jobId?: string;
+  effects?: PixelGameUpgradeEffects;
+};
+
+export type PixelGameJob = {
+  id: string;
+  name: string;
+  role?: string;
+  tagline?: string;
+  startingWeapon?: {
+    id: string;
+    name?: string;
+    damageType?: string;
+    pattern?: string;
+  };
+  baseStats?: {
+    maxHp?: number;
+    speed?: number;
+    attack?: number;
+    cooldown?: number;
+    pickup?: number;
+    luck?: number;
+  };
+  passive?: string;
+  upgradeTags?: string[];
+};
+
+export type PixelGameEnemyTuning = {
+  id: string;
+  name?: string;
+  family?: string;
+  archetype?: string;
+  hp: number;
+  speed: number;
+  damage: number;
+  xp: number;
+  score: number;
+  spawn_weight?: number;
+  spawnWeight?: number;
+  color?: string;
+  size?: number;
+};
+
+export type PixelGameBossTuning = {
+  id: string;
+  name?: string;
+  spawn_minute?: number;
+  hp: number;
+  damage: number;
+  speed: number;
+  patterns?: string[];
+  color?: string;
+};
+
+export type PixelGameBiome = {
+  id: string;
+  name?: string;
+  activity?: string;
+  palette?: string[];
+  enemy_families?: string[];
+  boss_id?: string;
+};
+
+export type PixelGameWaveRule = {
+  minute: number;
+  spawn_rate: number;
+  families?: string[];
+  boss?: boolean;
+};
+
+export type PixelGameDataBundle = {
+  jobs: PixelGameJob[];
+  upgrades: PixelGameUpgradeOption[];
+  enemies: PixelGameEnemyTuning[];
+  bosses: PixelGameBossTuning[];
+  biomes: PixelGameBiome[];
+  waves: PixelGameWaveRule[];
+  source: "assets" | "fallback" | "mixed";
+};
+
+export type PixelGameSnapshot = {
+  status: "idle" | "running" | "paused" | "upgrade" | "class_select" | "finished";
+  hp: number;
+  maxHp: number;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  score: number;
+  kills: number;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+  wavesCleared: number;
+  enemies: number;
+  projectiles: number;
+  chosenClassId?: string;
+  specializationId?: string;
+  upgradeIds: string[];
+  shield: number;
+  bossResult: PixelGameBossResult;
+};

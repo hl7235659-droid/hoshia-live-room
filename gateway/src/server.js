@@ -7,6 +7,8 @@ import { config } from "./config.js";
 import { openLiveRoomDatabase } from "./database.js";
 import { attachLiveRoomWebSocket, WEB_SOCKET_OPEN } from "./live-room-websocket.js";
 import { registerAccountRoutes } from "./account-routes.js";
+import { registerPixelGameRoutes } from "./game-routes.js";
+import { createHoshiaPixelGameService } from "./game-service.js";
 import {
   cookieName,
   decodeSessionCookie,
@@ -25,6 +27,7 @@ import {
   createHoshiaLifeModuleProvider,
   createHoshiaPostCreatedEvent,
   createHoshiaNewsModuleProvider,
+  createHoshiaPixelGameModuleProvider,
   createHoshiaVisualModuleProvider,
   createHoshiaVisualStateChangedEvent,
   createMusicModuleProvider,
@@ -173,6 +176,11 @@ const hoshiaDailyCanonService = createHoshiaDailyCanonService({
   db,
   timeZone: config.realityContextTimezone || "Asia/Shanghai"
 });
+const hoshiaPixelGameService = createHoshiaPixelGameService({
+  db,
+  roomId: config.roomId,
+  hoshiaVisualStateProvider: () => hoshiaVisualStateService.publicState()
+});
 const moduleEventStore = createModuleEventStore({ maxEvents: 120 });
 const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   db,
@@ -208,7 +216,8 @@ const moduleProviders = [
   createHoshiaLifeModuleProvider(hoshiaDailyCanonService),
   createHoshiaInterestModuleProvider(hoshiaInterestSystem),
   createHoshiaInterestKnowledgeModuleProvider(hoshiaInterestKnowledgeService),
-  createHoshiaNewsModuleProvider(hoshiaNewsService)
+  createHoshiaNewsModuleProvider(hoshiaNewsService),
+  createHoshiaPixelGameModuleProvider(hoshiaPixelGameService)
 ];
 const sockets = new Map();
 const activeUserConnections = new Map();
@@ -253,6 +262,15 @@ registerAccountRoutes(app, {
   shouldScheduleWelcomeGreeting,
   store,
   uniqueOnlineCount
+});
+
+registerPixelGameRoutes(app, {
+  config,
+  gameService: hoshiaPixelGameService,
+  moduleEventStore,
+  requireSession,
+  generateGameReport,
+  normalizeStoredAiProfile
 });
 
 app.get("/healthz", (_req, res) => {
@@ -826,6 +844,43 @@ async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit,
   }
   scheduleCommentReplyTick();
   return result;
+}
+
+async function generateGameReport({ run, finish, scoreTier, result, session } = {}) {
+  if (config.aiMode === "mock") return "";
+  const prompt = [
+    hoshiaPersonaPrompt,
+    "A viewer just finished a private Hoshia pixel survivor mini-game run. Write one short Chinese comment as Hoshia.",
+    "Use only this sanitized run summary; do not mention internal APIs, databases, paths, tokens, or server details.",
+    `Viewer: ${session?.nickname || "viewer"}`,
+    `Class: ${run?.class_id || "unknown"}`,
+    `Stage: ${run?.stage_id || "unknown"}`,
+    `Locked Hoshia state: activity=${run?.locked_activity || "idle"}, mood=${run?.locked_mood || "calm"}`,
+    `Result: ${result || finish?.result || "finished"}, score tier=${scoreTier || "C"}, waves=${finish?.waves_cleared ?? 0}, boss=${finish?.boss_result || "not_reached"}, duration=${finish?.duration_seconds ?? 0}s, kills=${finish?.kills ?? 0}`,
+    "Requirements: Chinese only, one sentence, under 70 Chinese characters, warm and playful, no invented hidden details."
+  ].join("\n");
+  try {
+    const reply = await generateAiReply(roomAiSession([{ session }]), prompt, config, globalThis.fetch, {
+      roomSession: true,
+      forceReply: true,
+      replyMode: "pixel_game_report",
+      replyTargets: [session?.nickname].filter(Boolean),
+      moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+      moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+      messages: [{
+        user_id: session?.user_id || "",
+        nickname: session?.nickname || "viewer",
+        text: "pixel game run finished",
+        mentioned: true,
+        memory_enabled: normalizeStoredAiProfile(session?.ai_profile)?.memory_enabled === true,
+        timestamp: new Date().toISOString()
+      }]
+    });
+    if (reply?.skipped || !reply?.text) return "";
+    return String(reply.text).slice(0, 160);
+  } catch {
+    return "";
+  }
 }
 
 async function generatePostCommentReply({

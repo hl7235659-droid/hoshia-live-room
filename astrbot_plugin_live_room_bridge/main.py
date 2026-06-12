@@ -697,8 +697,30 @@ class LiveRoomBridgePlugin(Star):
         if not isinstance(value, dict):
             return {}
         data: dict[str, str] = {}
-        for key, limit in {"title": 120, "artist": 120, "source": 40, "category": 40, "topic": 120, "matched_alias": 120, "source_kind": 40}.items():
-            text = self._safe_runtime_text(value.get(key), limit)
+        allowed_fields = {
+            "title": 120,
+            "artist": 120,
+            "source": 40,
+            "category": 40,
+            "topic": 120,
+            "matched_alias": 120,
+            "source_kind": 40,
+            "class_id": 80,
+            "class_name": 120,
+            "stage_id": 80,
+            "state_activity": 80,
+            "state_mood": 80,
+            "difficulty_tier": 40,
+            "result": 40,
+            "waves_cleared": 40,
+            "boss_result": 40,
+            "duration_seconds": 40,
+            "score_tier": 40,
+            "rank_tier": 40,
+            "unlock_reason": 160,
+        }
+        for key, limit in allowed_fields.items():
+            text = self._safe_module_event_data_text(value.get(key), limit)
             if text:
                 data[key] = text
         if data.get("source_kind") not in {"local", "search", None}:
@@ -748,6 +770,31 @@ class LiveRoomBridgePlugin(Star):
             return ""
         return text
 
+    def _safe_module_event_data_text(self, value: Any, limit: int) -> str:
+        if value is None or isinstance(value, (dict, list, tuple, set)):
+            return ""
+        text = self._safe_runtime_text(str(value), limit)
+        if not text or self._has_forbidden_module_event_detail(text):
+            return ""
+        return text
+
+    def _has_forbidden_module_event_detail(self, text: str) -> bool:
+        forbidden_patterns = (
+            r"\b(?:https?|wss?|ftp|file)://",
+            r"\bwww\.",
+            r"\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|app|cn|top|xyz|me|cloud|site|online|local|lan|internal)\b",
+            r"(?:^|\s)(?:[A-Za-z]:[\\/]|\\\\|~[\\/]|/(?:home|root|etc|var|usr|opt|srv|tmp|mnt|run|proc|sys|dev|workspace|Users?)(?:/|$))",
+            r"(?:^|\s)\.?[A-Za-z0-9_.-]+\.(?:env|pem|key|crt|sqlite|db|log)(?:\b|$)",
+            r"\b(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|::1)\b",
+            r"\b[a-z][a-z0-9_-]{1,63}:\d{2,5}\b",
+            r"\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|bridge[_-]?token|token|password|passwd|secret|authorization)\b\s*[:=]",
+            r"\b(?:api\s*key|api[_-]?key|access[_-]?token|refresh[_-]?token|bridge[_-]?token|token|password|passwd|secret|authorization)\b\s+[a-z0-9._-]{4,}",
+            r"\b(?:secret|token|api[_-]?key)[-_][a-z0-9._-]{4,}\b",
+            r"\bbearer\s+[a-z0-9._-]+",
+            r"\beyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+\b",
+        )
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in forbidden_patterns)
+
     def _safe_retention_days(self, value: Any) -> int:
         try:
             return max(1, min(int(value), 365))
@@ -766,6 +813,26 @@ class LiveRoomBridgePlugin(Star):
         if artist:
             parts.append(f"歌手 {artist}")
         if not parts:
+            for key, label in (
+                ("class_name", "职业"),
+                ("class_id", "职业代号"),
+                ("stage_id", "关卡"),
+                ("state_activity", "状态"),
+                ("state_mood", "氛围"),
+                ("difficulty_tier", "难度"),
+                ("result", "结果"),
+                ("waves_cleared", "清理波次"),
+                ("boss_result", "Boss"),
+                ("duration_seconds", "时长秒数"),
+                ("score_tier", "分数档"),
+                ("rank_tier", "评级"),
+                ("unlock_reason", "解锁原因"),
+            ):
+                value = str(data.get(key, "")).strip()
+                if value:
+                    parts.append(f"{label} {value}")
+            if parts:
+                return "，".join(parts)[:320]
             for key in ("source",):
                 value = str(data.get(key, "")).strip()
                 if value:

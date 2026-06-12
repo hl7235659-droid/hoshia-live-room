@@ -135,6 +135,15 @@ export function createHoshiaLifeModuleProvider(lifeSystem) {
   };
 }
 
+export function createHoshiaPixelGameModuleProvider(gameService) {
+  return {
+    moduleId: "hoshia_pixel_game",
+    getCapabilityContext(session) {
+      return buildHoshiaPixelGameModuleContext(gameService, session);
+    }
+  };
+}
+
 function buildInterestKnowledgeUnavailableContext() {
   return sanitizeModuleContext({
     module_id: "hoshia_interest_knowledge",
@@ -142,6 +151,49 @@ function buildInterestKnowledgeUnavailableContext() {
     current_state: ["Interest knowledge is unavailable."],
     capabilities: [],
     limits: ["Do not pretend to know unfamiliar interest topics without provided context."]
+  });
+}
+
+export function buildHoshiaPixelGameModuleContext(gameService, session) {
+  const state = typeof gameService?.publicState === "function" ? gameService.publicState(session) : { enabled: false };
+  if (!state?.enabled) {
+    return sanitizeModuleContext({
+      module_id: "hoshia_pixel_game",
+      enabled: false,
+      current_state: ["Hoshia pixel game is unavailable."],
+      capabilities: [],
+      limits: ["Do not invent game results without a provided run summary."]
+    });
+  }
+  const profile = state.profile || {};
+  const active = state.active_run || null;
+  const leaderboard = Array.isArray(state.leaderboard) ? state.leaderboard : [];
+  const currentState = [
+    `Pixel game unlocked classes: ${(Array.isArray(state.unlocked_classes) ? state.unlocked_classes.length : 0)}.`,
+    `Best score: ${cleanText(profile.best_score, 32) || "0"}; best wave: ${cleanText(profile.best_wave, 32) || "0"}.`
+  ];
+  if (active) {
+    currentState.push(`Active run: ${cleanText(active.class_id, 40)} in ${cleanText(active.stage_id, 40)}, mood ${cleanText(active.locked_mood, 32)}, activity ${cleanText(active.locked_activity, 32)}.`);
+  } else {
+    currentState.push("No active pixel game run right now.");
+  }
+  for (const [index, row] of leaderboard.slice(0, 3).entries()) {
+    currentState.push(`Leaderboard ${index + 1}: ${cleanText(row.nickname, 32)} ${cleanText(row.score, 32)} points, ${cleanText(row.score_tier, 8)} tier.`);
+  }
+  return sanitizeModuleContext({
+    module_id: "hoshia_pixel_game",
+    enabled: true,
+    current_state: currentState,
+    capabilities: [
+      "Viewers can play a private single-player Hoshia pixel survivor run.",
+      "Run start locks public Hoshia mood, activity, energy, and social need into the level director.",
+      "Hoshia may comment on sanitized run summaries, class choices, score tiers, and unlocks."
+    ],
+    limits: [
+      "Only safe run summaries are exposed; no raw inputs, frame logs, internal paths, tokens, or server details.",
+      "Do not claim exact gameplay facts unless provided by module events or current state.",
+      "Game memories should be purified preferences, not full score history."
+    ]
   });
 }
 
@@ -473,6 +525,90 @@ export function createHoshiaPostCreatedEvent(post, session, {
   });
 }
 
+export function createPixelGameRunStartedEvent(run, session, { roomId = "" } = {}) {
+  if (!run) return null;
+  const nickname = cleanText(session?.nickname, 32) || "viewer";
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_pixel_game",
+    event_type: "hoshia_pixel_game.run_started",
+    user_id: session?.user_id || "",
+    nickname,
+    summary_hint: `${nickname} started a Hoshia pixel game run as ${cleanText(run.class_id, 40)} in ${cleanText(run.stage_id, 40)}.`,
+    memory_eligible: false,
+    retention_days: 7,
+    occurred_at: run.started_at || new Date().toISOString(),
+    data: {
+      class_id: run.class_id,
+      stage_id: run.stage_id,
+      state_activity: run.locked_activity,
+      state_mood: run.locked_mood,
+      difficulty_tier: run.difficulty_tier
+    }
+  });
+}
+
+export function createPixelGameRunFinishedEvent(run, session, {
+  roomId = "",
+  memoryEligible = false,
+  retentionDays = 30
+} = {}) {
+  if (!run) return null;
+  const nickname = cleanText(session?.nickname || run.nickname, 32) || "viewer";
+  const tier = cleanText(run.score_tier, 16) || "C";
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_pixel_game",
+    event_type: "hoshia_pixel_game.run_finished",
+    user_id: session?.user_id || run.user_id || "",
+    nickname,
+    summary_hint: `${nickname} finished a Hoshia pixel game run as ${cleanText(run.class_id, 40)} with ${tier} tier.`,
+    memory_eligible: Boolean(memoryEligible),
+    memory_kind: "pixel_game_preference_candidate",
+    retention_days: retentionDays,
+    occurred_at: run.finished_at || new Date().toISOString(),
+    data: {
+      class_id: run.class_id,
+      stage_id: run.stage_id,
+      state_activity: run.locked_activity,
+      state_mood: run.locked_mood,
+      difficulty_tier: run.difficulty_tier,
+      result: run.result,
+      waves_cleared: String(run.waves_cleared ?? ""),
+      boss_result: run.boss_result,
+      duration_seconds: String(run.duration_seconds ?? ""),
+      score_tier: tier
+    }
+  });
+}
+
+export function createPixelGameClassUnlockedEvent({ classId, run } = {}, session, {
+  roomId = "",
+  memoryEligible = false
+} = {}) {
+  const safeClassId = cleanIdentifier(classId, 40);
+  if (!safeClassId) return null;
+  const nickname = cleanText(session?.nickname, 32) || "viewer";
+  return sanitizeModuleEvent({
+    room_id: roomId,
+    module_id: "hoshia_pixel_game",
+    event_type: "hoshia_pixel_game.class_unlocked",
+    user_id: session?.user_id || "",
+    nickname,
+    summary_hint: `${nickname} unlocked Hoshia pixel game class ${safeClassId}.`,
+    memory_eligible: Boolean(memoryEligible),
+    memory_kind: "pixel_game_preference_candidate",
+    retention_days: 30,
+    occurred_at: new Date().toISOString(),
+    data: {
+      class_id: safeClassId,
+      stage_id: run?.stage_id,
+      score_tier: run?.score_tier,
+      unlock_reason: "progress"
+    }
+  });
+}
+
 export function createHoshiaCommentReplyEvent({ post, comment, reply, status = "replied" } = {}, {
   roomId = ""
 } = {}) {
@@ -554,8 +690,11 @@ function formatTrackLine(track) {
 
 function sanitizeEventData(data) {
   const allowed = {};
-  for (const key of ["title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status", "category", "topic", "matched_alias", "source_kind", "action"]) {
-    const value = cleanText(data[key], key === "source" || key === "category" || key === "source_kind" ? 40 : 120);
+  for (const key of [
+    "title", "artist", "source", "activity", "mood", "reason", "source_type", "post_id", "comment_id", "status", "category", "topic", "matched_alias", "source_kind", "action",
+    "class_id", "class_name", "stage_id", "state_activity", "state_mood", "difficulty_tier", "result", "waves_cleared", "boss_result", "duration_seconds", "score_tier", "rank_tier", "unlock_reason"
+  ]) {
+    const value = cleanText(data[key], key === "source" || key === "category" || key === "source_kind" || key.endsWith("_id") || key.endsWith("_tier") ? 40 : 120);
     if (value) allowed[key] = value;
   }
   if (allowed.source_kind && !["local", "search"].includes(allowed.source_kind)) delete allowed.source_kind;

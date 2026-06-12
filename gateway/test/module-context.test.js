@@ -5,8 +5,10 @@ import {
   buildHoshiaInterestModuleContext,
   buildHoshiaLifeModuleContext,
   buildHoshiaNewsModuleContext,
+  buildHoshiaPixelGameModuleContext,
   buildHoshiaVisualModuleContext,
   buildMusicModuleContext,
+  createHoshiaPixelGameModuleProvider,
   createHoshiaInterestKnowledgeModuleProvider,
   createHoshiaInterestModuleProvider,
   createHoshiaLifeModuleProvider,
@@ -16,6 +18,9 @@ import {
   createModuleEventStore,
   createMusicModuleProvider,
   createMusicSongRequestedEvent,
+  createPixelGameClassUnlockedEvent,
+  createPixelGameRunFinishedEvent,
+  createPixelGameRunStartedEvent,
   sanitizeModuleEvent
 } from "../src/module-context.js";
 import { MusicService } from "../src/music-service.js";
@@ -477,4 +482,152 @@ test("consumed module memory events can be restored after skipped AI replies", (
   store.restoreMemoryEvents(consumed);
   assert.equal(store.pendingMemorySize(), 1);
   assert.equal(store.consumeMemoryEvents({ roomId: "room-a" })[0].summary_hint, "A 点了 Baba O'Riley - The Who");
+});
+
+test("pixel game module context exposes provider state without private run fields", () => {
+  const gameService = {
+    publicState(session) {
+      assert.equal(session.user_id, "user-1");
+      return {
+        enabled: true,
+        profile: { best_score: 42000, best_wave: 15 },
+        unlocked_classes: ["star_idol", "neon_samurai", "stream_hacker"],
+        active_run: {
+          run_id: "pgr_public",
+          class_id: "neon_samurai",
+          stage_id: "ranked_arcade_matrix",
+          locked_activity: "gaming",
+          locked_mood: "competitive",
+          locked_energy: 80,
+          locked_social_need: 60,
+          seed: "12345",
+          user_id: "user-1",
+          internal_path: "C:\\secret\\run.json",
+          token: "secret-token"
+        },
+        leaderboard: [
+          {
+            run_id: "pgr_leader",
+            nickname: "Viewer",
+            score: 42000,
+            score_tier: "S",
+            user_id: "hidden-user",
+            report_text: "hidden report"
+          }
+        ],
+        rules: { duration_seconds: 900 }
+      };
+    }
+  };
+
+  const context = buildHoshiaPixelGameModuleContext(gameService, { user_id: "user-1" });
+  const viaProvider = buildModuleContext({
+    providers: [createHoshiaPixelGameModuleProvider(gameService)],
+    session: { user_id: "user-1" }
+  });
+  const serialized = JSON.stringify(context);
+
+  assert.equal(context.module_id, "hoshia_pixel_game");
+  assert.equal(context.enabled, true);
+  assert.equal(context.current_state.some((line) => line.includes("Pixel game unlocked classes: 3")), true);
+  assert.equal(context.current_state.some((line) => line.includes("neon_samurai") && line.includes("ranked_arcade_matrix")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Viewer") && line.includes("42000")), true);
+  assert.equal(context.capabilities.some((line) => line.includes("locks public Hoshia mood")), true);
+  assert.equal(context.limits.some((line) => line.includes("tokens")), true);
+  assert.equal(viaProvider[0].module_id, "hoshia_pixel_game");
+  assert.doesNotMatch(serialized, /secret-token|C:\\|hidden-user|report_text|seed/i);
+});
+
+test("pixel game module events preserve attribution and whitelist safe data", () => {
+  const session = { user_id: "user-1", nickname: "Viewer" };
+  const run = {
+    id: "pgr_raw",
+    run_id: "pgr_raw",
+    user_id: "user-1",
+    nickname: "Viewer",
+    class_id: "neon_samurai",
+    class_name: "ignored name",
+    stage_id: "ranked_arcade_matrix",
+    locked_activity: "gaming",
+    locked_mood: "competitive",
+    difficulty_tier: "S",
+    result: "cleared",
+    waves_cleared: 15,
+    boss_result: "defeated",
+    duration_seconds: 899,
+    score_tier: "S",
+    score: 42000,
+    started_at: "2026-06-12T00:00:00.000Z",
+    finished_at: "2026-06-12T00:14:59.000Z",
+    report_text: "private report",
+    internal_url: "https://internal.example/run?token=secret",
+    file_path: "C:\\secret\\run.json",
+    token: "secret-token"
+  };
+
+  const started = createPixelGameRunStartedEvent(run, session, { roomId: "room-1" });
+  const finished = createPixelGameRunFinishedEvent(run, session, { roomId: "room-1", memoryEligible: true });
+  const unlocked = createPixelGameClassUnlockedEvent({ classId: "dream_director<script>", run }, session, { roomId: "room-1", memoryEligible: true });
+
+  assert.equal(started.user_id, "user-1");
+  assert.equal(started.nickname, "Viewer");
+  assert.deepEqual(started.data, {
+    class_id: "neon_samurai",
+    stage_id: "ranked_arcade_matrix",
+    state_activity: "gaming",
+    state_mood: "competitive",
+    difficulty_tier: "S"
+  });
+  assert.equal(finished.memory_eligible, true);
+  assert.equal(finished.memory_kind, "pixel_game_preference_candidate");
+  assert.deepEqual(finished.data, {
+    class_id: "neon_samurai",
+    stage_id: "ranked_arcade_matrix",
+    state_activity: "gaming",
+    state_mood: "competitive",
+    difficulty_tier: "S",
+    result: "cleared",
+    waves_cleared: "15",
+    boss_result: "defeated",
+    duration_seconds: "899",
+    score_tier: "S"
+  });
+  assert.equal(unlocked.data.class_id, "dream_director_script_");
+  assert.equal(unlocked.data.unlock_reason, "progress");
+
+  const serialized = JSON.stringify([started, finished, unlocked]);
+  assert.doesNotMatch(serialized, /https?:\/\/|token|secret|C:\\|report_text|score":42000|internal/i);
+});
+
+test("generic event sanitizer strips sensitive pixel game data fields and unsafe source kinds", () => {
+  const event = sanitizeModuleEvent({
+    room_id: "room-1",
+    module_id: "hoshia_pixel_game",
+    event_type: "hoshia_pixel_game.run_finished",
+    user_id: "user-1",
+    nickname: "Viewer",
+    summary_hint: "Viewer finished a safe public pixel game summary",
+    memory_eligible: true,
+    data: {
+      class_id: "star_idol",
+      stage_id: "ranked_arcade_matrix",
+      state_activity: "gaming",
+      state_mood: "happy",
+      score_tier: "A",
+      source_kind: "https://internal.example/token=secret",
+      path: "C:\\secret\\db.sqlite",
+      token: "secret-token",
+      url: "https://internal.example/run",
+      raw_log: "frame dump"
+    }
+  });
+
+  assert.deepEqual(event.data, {
+    class_id: "star_idol",
+    stage_id: "ranked_arcade_matrix",
+    state_activity: "gaming",
+    state_mood: "happy",
+    score_tier: "A"
+  });
+  assert.doesNotMatch(JSON.stringify(event), /https?:\/\/|token|secret|C:\\|raw_log|db\.sqlite/i);
 });

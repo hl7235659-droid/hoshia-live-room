@@ -1,0 +1,581 @@
+{
+  "schemaVersion": 1,
+  "kind": "upgrades",
+  "packId": "hoshia-radio-cyber-pixel-mowdown",
+  "draftRules": {
+    "choiceCount": 3,
+    "rerollCost": "消耗 1 个重调旋钮",
+    "duplicateHandling": "已满级升级不会进入三选一候选。",
+    "moodWeighting": "与当前 Hoshia mood/activity 匹配的标签获得轻微权重加成。",
+    "safetyFloor": "若玩家生命低于 35%，至少一项候选会偏向护盾、回血或机动。"
+  },
+  "rarities": {
+    "common": {
+      "displayName": "普通",
+      "weight": 68
+    },
+    "rare": {
+      "displayName": "稀有",
+      "weight": 24
+    },
+    "epic": {
+      "displayName": "史诗",
+      "weight": 7
+    },
+    "signal": {
+      "displayName": "电波奇迹",
+      "weight": 1
+    }
+  },
+  "upgradePool": [
+    {
+      "id": "spark_amp",
+      "name": "电波增幅",
+      "rarity": "common",
+      "tags": [
+        "damage",
+        "sound"
+      ],
+      "maxRank": 5,
+      "effect": "全部武器伤害提高 12%。",
+      "flavor": "把频道音量推到刚好不破音。"
+    },
+    {
+      "id": "neon_step",
+      "name": "霓虹步",
+      "rarity": "common",
+      "tags": [
+        "dash",
+        "mobility"
+      ],
+      "maxRank": 4,
+      "effect": "移动速度提高 8%，冲刺后短暂留下低伤尾迹。",
+      "flavor": "脚下像踩着一串会发光的节拍器。"
+    },
+    {
+      "id": "pixel_heart",
+      "name": "像素心电",
+      "rarity": "common",
+      "tags": [
+        "survival",
+        "recovery"
+      ],
+      "maxRank": 4,
+      "effect": "生命上限提高 15，并在升级时回复少量生命。",
+      "flavor": "心跳声变成了 8-bit 小鼓。"
+    },
+    {
+      "id": "magnet_tape",
+      "name": "磁带吸附",
+      "rarity": "common",
+      "tags": [
+        "pickup",
+        "utility"
+      ],
+      "maxRank": 5,
+      "effect": "拾取范围提高 18%。",
+      "flavor": "经验碎片像被旧磁带倒带一样飞回来。"
+    },
+    {
+      "id": "cooldown_dial",
+      "name": "冷却旋钮",
+      "rarity": "common",
+      "tags": [
+        "tempo",
+        "utility"
+      ],
+      "maxRank": 5,
+      "effect": "主要武器冷却缩短 7%。",
+      "flavor": "把慢吞吞的频道拧快一点。"
+    },
+    {
+      "id": "crt_guard",
+      "name": "CRT 护屏",
+      "rarity": "common",
+      "tags": [
+        "shield",
+        "guard"
+      ],
+      "maxRank": 3,
+      "effect": "每 28 秒获得一个可抵挡一次伤害的小护盾。",
+      "flavor": "老电视的玻璃罩意外很结实。"
+    },
+    {
+      "id": "static_chain",
+      "name": "静电脉链",
+      "rarity": "rare",
+      "tags": [
+        "chain",
+        "data"
+      ],
+      "maxRank": 4,
+      "effect": "投射物命中后有 22% 概率向附近敌人弹跳。",
+      "flavor": "敌人挤在一起时，坏消息会传得特别快。"
+    },
+    {
+      "id": "fan_chant",
+      "name": "应援合唱",
+      "rarity": "rare",
+      "tags": [
+        "charm",
+        "sound",
+        "pickup"
+      ],
+      "maxRank": 3,
+      "effect": "击败精英后生成应援圈，圈内经验自动吸附。",
+      "flavor": "台下的像素小人开始整齐拍手。"
+    },
+    {
+      "id": "blade_afterimage",
+      "name": "残像斩",
+      "rarity": "rare",
+      "tags": [
+        "blade",
+        "crit"
+      ],
+      "maxRank": 4,
+      "effect": "暴击后追加一次 45% 伤害的残像攻击。",
+      "flavor": "刀光晚到半拍，但敌人已经倒下。"
+    },
+    {
+      "id": "orbit_ofuda",
+      "name": "环绕御札",
+      "rarity": "rare",
+      "tags": [
+        "orbit",
+        "signal"
+      ],
+      "maxRank": 4,
+      "effect": "新增 1 枚环绕物，环绕物伤害提高 10%。",
+      "flavor": "纸符绕着玩家转，像小型电波卫星。"
+    },
+    {
+      "id": "repair_drone",
+      "name": "修理无人机",
+      "rarity": "rare",
+      "tags": [
+        "summon",
+        "recovery"
+      ],
+      "maxRank": 3,
+      "effect": "召唤无人机周期性修复护盾或造成小范围伤害。",
+      "flavor": "它不太聪明，但真的很努力。"
+    },
+    {
+      "id": "frequency_lock",
+      "name": "锁频",
+      "rarity": "rare",
+      "tags": [
+        "resonance",
+        "mark"
+      ],
+      "maxRank": 3,
+      "effect": "对同一目标连续命中时，每次额外提高 5% 伤害，最多叠 6 层。",
+      "flavor": "找到频点后，敌人的外壳会自己唱反调。"
+    },
+    {
+      "id": "moon_supply",
+      "name": "月面补给券",
+      "rarity": "rare",
+      "tags": [
+        "supply",
+        "survival"
+      ],
+      "maxRank": 3,
+      "effect": "每 60 秒掉落一次公开补给箱。",
+      "flavor": "包裹备注写着：请在敌群散开前签收。"
+    },
+    {
+      "id": "soft_glitch",
+      "name": "柔性乱码",
+      "rarity": "rare",
+      "tags": [
+        "glitch",
+        "control"
+      ],
+      "maxRank": 3,
+      "effect": "敌人进入区域攻击后有概率短暂减速。",
+      "flavor": "乱码也可以很温柔，只是敌人走不动了。"
+    },
+    {
+      "id": "overclock_broadcast",
+      "name": "过载直播",
+      "rarity": "epic",
+      "tags": [
+        "damage",
+        "tempo",
+        "risk"
+      ],
+      "maxRank": 2,
+      "effect": "伤害提高 28%，但敌群刷新速度提高 6%。",
+      "flavor": "收视率和危险一起飙升。"
+    },
+    {
+      "id": "lucky_static",
+      "name": "幸运雪花屏",
+      "rarity": "epic",
+      "tags": [
+        "luck",
+        "glitch"
+      ],
+      "maxRank": 2,
+      "effect": "稀有升级权重提高，重调时更容易保留同标签选项。",
+      "flavor": "雪花屏里闪过的不是故障，是机会。"
+    },
+    {
+      "id": "counter_burst",
+      "name": "反击爆星",
+      "rarity": "epic",
+      "tags": [
+        "counter",
+        "guard"
+      ],
+      "maxRank": 3,
+      "effect": "护盾破裂或格挡后释放环形星弹。",
+      "flavor": "防守成功时，整片夜空都会亮一下。"
+    },
+    {
+      "id": "dream_retake",
+      "name": "梦核重拍",
+      "rarity": "epic",
+      "tags": [
+        "dream",
+        "director"
+      ],
+      "maxRank": 2,
+      "effect": "升级三选一中可锁定 1 个候选并免费重调其余候选。",
+      "flavor": "导演说这条不算，再来一次。"
+    },
+    {
+      "id": "signal_miracle",
+      "name": "电波奇迹",
+      "rarity": "signal",
+      "tags": [
+        "signal",
+        "survival",
+        "damage"
+      ],
+      "maxRank": 1,
+      "effect": "濒危时清屏一次，随后 10 秒内伤害和移动速度大幅提高。",
+      "flavor": "全频道都听见了 Hoshia 的加油。"
+    }
+  ],
+  "jobExclusiveUpgrades": [
+    {
+      "id": "idol_finale",
+      "jobId": "star_idol",
+      "name": "星屑返场",
+      "rarity": "epic",
+      "tags": [
+        "sound",
+        "charm"
+      ],
+      "effect": "应援光环结束时释放一圈高伤音符。"
+    },
+    {
+      "id": "samurai_zero_frame",
+      "jobId": "neon_samurai",
+      "name": "零帧拔刀",
+      "rarity": "epic",
+      "tags": [
+        "blade",
+        "crit"
+      ],
+      "effect": "刀光层数满时，下一次半月斩范围加倍。"
+    },
+    {
+      "id": "hacker_backdoor",
+      "jobId": "stream_hacker",
+      "name": "后门封包",
+      "rarity": "epic",
+      "tags": [
+        "data",
+        "mark"
+      ],
+      "effect": "被标记的精英受到弹跳伤害时额外掉落经验碎片。"
+    },
+    {
+      "id": "miko_grand_barrier",
+      "jobId": "radio_miko",
+      "name": "大结界开台",
+      "rarity": "epic",
+      "tags": [
+        "shield",
+        "signal"
+      ],
+      "effect": "小结界触发后向外扩散净化波。"
+    },
+    {
+      "id": "nekomata_tail_cache",
+      "jobId": "pixel_nekomata",
+      "name": "尾巴缓存",
+      "rarity": "epic",
+      "tags": [
+        "pickup",
+        "dash"
+      ],
+      "effect": "猫步满层时自动吸附附近经验并追加扑击。"
+    },
+    {
+      "id": "tuner_perfect_pitch",
+      "jobId": "quantum_tuner",
+      "name": "绝对音准",
+      "rarity": "epic",
+      "tags": [
+        "resonance",
+        "zone"
+      ],
+      "effect": "共振环重叠区域造成额外持续伤害。"
+    },
+    {
+      "id": "knight_reflect_oath",
+      "jobId": "barrage_knight",
+      "name": "反射誓约",
+      "rarity": "epic",
+      "tags": [
+        "counter",
+        "guard"
+      ],
+      "effect": "反击星弹会优先追踪精英敌人。"
+    },
+    {
+      "id": "engineer_scrap_factory",
+      "jobId": "scrap_engineer",
+      "name": "废线工厂",
+      "rarity": "epic",
+      "tags": [
+        "summon",
+        "machine"
+      ],
+      "effect": "每第三座炮台升级为双管炮台。"
+    },
+    {
+      "id": "courier_return_orbit",
+      "jobId": "moon_courier",
+      "name": "返航轨道",
+      "rarity": "epic",
+      "tags": [
+        "dash",
+        "supply"
+      ],
+      "effect": "拾取补给后立即刷新一次推进器尾焰。"
+    },
+    {
+      "id": "director_hidden_scene",
+      "jobId": "dream_director",
+      "name": "隐藏分镜",
+      "rarity": "epic",
+      "tags": [
+        "dream",
+        "director"
+      ],
+      "effect": "与当前 Hoshia mood 匹配的升级出现时，附带一次小范围清场。"
+    }
+  ],
+  "levelUpTriads": [
+    {
+      "id": "triad_boot_01",
+      "label": "开局三选一：稳住电波",
+      "moodTags": [
+        "calm",
+        "cheerful"
+      ],
+      "activityTags": [
+        "idle",
+        "chatting"
+      ],
+      "choices": [
+        "pixel_heart",
+        "neon_step",
+        "spark_amp"
+      ]
+    },
+    {
+      "id": "triad_boot_02",
+      "label": "开局三选一：快点成型",
+      "moodTags": [
+        "excited",
+        "focused"
+      ],
+      "activityTags": [
+        "game_focus",
+        "singing"
+      ],
+      "choices": [
+        "cooldown_dial",
+        "static_chain",
+        "magnet_tape"
+      ]
+    },
+    {
+      "id": "triad_safe_01",
+      "label": "低血三选一：别掉线",
+      "moodTags": [
+        "worried",
+        "sleepy"
+      ],
+      "activityTags": [
+        "tts_active",
+        "idle"
+      ],
+      "choices": [
+        "crt_guard",
+        "pixel_heart",
+        "moon_supply"
+      ]
+    },
+    {
+      "id": "triad_music_01",
+      "label": "节拍三选一：跟上频道",
+      "moodTags": [
+        "cheerful",
+        "focused"
+      ],
+      "activityTags": [
+        "singing",
+        "listening_music"
+      ],
+      "choices": [
+        "fan_chant",
+        "frequency_lock",
+        "cooldown_dial"
+      ]
+    },
+    {
+      "id": "triad_glitch_01",
+      "label": "乱码三选一：把敌人绕晕",
+      "moodTags": [
+        "mischievous",
+        "focused"
+      ],
+      "activityTags": [
+        "reading_news",
+        "chatting"
+      ],
+      "choices": [
+        "soft_glitch",
+        "static_chain",
+        "lucky_static"
+      ]
+    },
+    {
+      "id": "triad_stage_01",
+      "label": "舞台三选一：灯光就位",
+      "moodTags": [
+        "cheerful",
+        "excited"
+      ],
+      "activityTags": [
+        "receiving_gift",
+        "singing"
+      ],
+      "choices": [
+        "fan_chant",
+        "spark_amp",
+        "overclock_broadcast"
+      ]
+    },
+    {
+      "id": "triad_guard_01",
+      "label": "守线三选一：撑住这一波",
+      "moodTags": [
+        "worried",
+        "focused"
+      ],
+      "activityTags": [
+        "game_focus",
+        "tts_active"
+      ],
+      "choices": [
+        "counter_burst",
+        "crt_guard",
+        "orbit_ofuda"
+      ]
+    },
+    {
+      "id": "triad_lonely_01",
+      "label": "月面三选一：有人陪你",
+      "moodTags": [
+        "lonely",
+        "calm"
+      ],
+      "activityTags": [
+        "receiving_gift",
+        "idle"
+      ],
+      "choices": [
+        "repair_drone",
+        "moon_supply",
+        "magnet_tape"
+      ]
+    },
+    {
+      "id": "triad_dream_01",
+      "label": "梦核三选一：重拍这场戏",
+      "moodTags": [
+        "sleepy",
+        "lonely"
+      ],
+      "activityTags": [
+        "live2d_pose",
+        "listening_music"
+      ],
+      "choices": [
+        "dream_retake",
+        "soft_glitch",
+        "lucky_static"
+      ]
+    },
+    {
+      "id": "triad_highrisk_01",
+      "label": "高压三选一：赌一波大的",
+      "moodTags": [
+        "excited",
+        "mischievous"
+      ],
+      "activityTags": [
+        "game_focus",
+        "chatting"
+      ],
+      "choices": [
+        "overclock_broadcast",
+        "blade_afterimage",
+        "counter_burst"
+      ]
+    },
+    {
+      "id": "triad_signal_01",
+      "label": "奇迹三选一：全频道闪烁",
+      "moodTags": [
+        "worried",
+        "cheerful"
+      ],
+      "activityTags": [
+        "receiving_gift",
+        "tts_active"
+      ],
+      "choices": [
+        "signal_miracle",
+        "pixel_heart",
+        "crt_guard"
+      ]
+    },
+    {
+      "id": "triad_luck_01",
+      "label": "好运三选一：雪花屏里挑宝物",
+      "moodTags": [
+        "mischievous",
+        "sleepy"
+      ],
+      "activityTags": [
+        "reading_news",
+        "live2d_pose"
+      ],
+      "choices": [
+        "lucky_static",
+        "dream_retake",
+        "frequency_lock"
+      ]
+    }
+  ]
+}
