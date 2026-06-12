@@ -33,7 +33,74 @@ type musicIntentResult struct {
 	Source     string
 }
 
-func newProvider(_ Config) Provider {
+func newProvider(cfg Config) Provider {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
+	case "openai_compatible", "openai-compatible", "openai":
+		return newOpenAICompatibleProvider(cfg)
+	default:
+		return fakeProvider{}
+	}
+}
+
+func providerSource(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "openai_compatible", "openai-compatible", "openai":
+		return "openai_compatible"
+	default:
+		return "fake_provider"
+	}
+}
+
+func normalizeCharacterState(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "IDLE", "LISTENING", "THINKING", "SPEAKING":
+		return strings.ToUpper(strings.TrimSpace(value))
+	default:
+		return "SPEAKING"
+	}
+}
+
+func normalizeMusicIntent(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "request", "request_many", "pause", "resume", "next", "previous", "remove", "status", "none":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "none"
+	}
+}
+
+func clampConfidence(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
+}
+
+func clampTextRunes(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 {
+		return ""
+	}
+	if len([]rune(value)) <= limit {
+		return value
+	}
+	runes := []rune(value)
+	return string(runes[:limit])
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func newFakeProvider() Provider {
 	return fakeProvider{}
 }
 

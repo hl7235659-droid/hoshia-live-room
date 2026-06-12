@@ -84,6 +84,11 @@ Important options:
 - `HOSHIACLAW_STREAMING_ENABLED`: enables streaming when the Hoshiaclaw backend supports it.
 - `HOSHIACLAW_LISTEN_ADDR`: Hoshiaclaw container listen address, normally `0.0.0.0:8080`.
 - `HOSHIACLAW_DATA_DIR` / `HOSHIACLAW_LOG_DIR`: container runtime paths for sidecar data and logs.
+- `HOSHIACLAW_PROVIDER`: `fake` by default. Set to `openai_compatible` only in private `.env` files after the provider key and model are ready.
+- `HOSHIACLAW_OPENAI_BASE_URL`: OpenAI-compatible base URL without `/chat/completions`, for example `https://opencode.ai/zen/go/v1` for OpenCode Go.
+- `HOSHIACLAW_OPENAI_API_KEY`: provider API key. Keep the real value only in private server `.env`.
+- `HOSHIACLAW_OPENAI_MODEL`: provider model id, for example `deepseek-v4-flash` on OpenCode Go.
+- `HOSHIACLAW_OPENAI_TIMEOUT_MS` / `HOSHIACLAW_OPENAI_MAX_TOKENS` / `HOSHIACLAW_OPENAI_TEMPERATURE`: sidecar model-call limits.
 - `SINGLE_USER_DIRECT_REPLY_ENABLED`: makes single-viewer rooms reply without requiring `@Hoshia`.
 - `SINGLE_USER_REPLY_DELAY_MS`: short delay before a single-viewer direct reply; defaults to `600`.
 - `MUSIC_ENABLED`: enables the private-room music queue experiment.
@@ -153,6 +158,17 @@ docker compose up -d live-room-gateway live-room-web
 ```
 
 The sidecar runtime mounts `data/hoshiaclaw`, `logs/hoshiaclaw`, and `private/hoshiaclaw`. These paths are ignored by Git and are for local/server runtime state only. Do not store raw user transcripts, real model provider tokens, private URLs, SSH details, or tunnel information in committed files.
+
+To test a real OpenAI-compatible model while keeping room traffic on the current backend, keep `AI_MODE` unchanged and only switch the sidecar provider in a private server `.env`:
+
+```env
+HOSHIACLAW_PROVIDER=openai_compatible
+HOSHIACLAW_OPENAI_BASE_URL=https://opencode.ai/zen/go/v1
+HOSHIACLAW_OPENAI_API_KEY=<provider-key-in-private-env>
+HOSHIACLAW_OPENAI_MODEL=deepseek-v4-flash
+```
+
+Then restart `live-room-hoshiaclaw` and send shadow requests from inside the Compose network before changing `AI_MODE`.
 
 ### Local Development
 

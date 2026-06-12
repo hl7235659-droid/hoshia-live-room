@@ -2,13 +2,16 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testServer(token string) *Server {
@@ -145,6 +148,231 @@ func TestNewsEndpoints(t *testing.T) {
 			t.Fatalf("%s expected 200, got %d body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
+}
+
+func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
+	upstream := newMockChatCompletionServer(t, func(t *testing.T, r *http.Request, body map[string]any) string {
+		t.Helper()
+		if got := r.Header.Get("Authorization"); got != "Bearer test-openai-key" {
+			t.Fatalf("unexpected authorization header %q", got)
+		}
+		if body["model"] != "test-model" {
+			t.Fatalf("unexpected model %#v", body["model"])
+		}
+		messages, _ := body["messages"].([]any)
+		if len(messages) < 2 {
+			t.Fatalf("expected chat messages, got %#v", body["messages"])
+		}
+		userMessage, _ := messages[1].(map[string]any)
+		prompt := fmt.Sprint(userMessage["content"])
+		for _, forbidden := range []string{"Bearer hidden-token", "https://internal.example", `C:\Users\me`} {
+			if strings.Contains(prompt, forbidden) {
+				t.Fatalf("prompt leaked %q: %s", forbidden, prompt)
+			}
+		}
+		return `{"text":"收到，我会轻一点说。","state":"SPEAKING","skipped":false}`
+	})
+	defer upstream.Close()
+
+	provider := newTestOpenAIProvider(upstream.URL)
+	result, err := provider.Generate(context.Background(), generateRequest{
+		Text:           "你好 Bearer hidden-token",
+		Nickname:       "Alice",
+		RoomID:         "room",
+		ContextSummary: "summary https://internal.example/a",
+		Messages:       []chatMessage{{Nickname: "Bob", Text: `from C:\Users\me\secret.txt`}},
+		CharacterSnapshotContext: map[string]any{
+			"mood":         "calm",
+			"provider_url": "https://internal.example/model",
+		},
+	})
+	if err != nil {
+		t.Fatalf("generate failed: %v", err)
+	}
+	if result.Source != openAICompatibleSource || result.Text != "收到，我会轻一点说。" || result.State != "SPEAKING" || result.Skipped {
+		t.Fatalf("unexpected generate result: %#v", result)
+	}
+}
+
+func TestOpenAICompatibleGeneratePlainTextFallback(t *testing.T) {
+	upstream := newMockChatCompletionServer(t, func(t *testing.T, r *http.Request, _ map[string]any) string {
+		t.Helper()
+		return "我听见啦。"
+	})
+	defer upstream.Close()
+
+	provider := newTestOpenAIProvider(upstream.URL)
+	result, err := provider.Generate(context.Background(), generateRequest{Text: "hello"})
+	if err != nil {
+		t.Fatalf("generate failed: %v", err)
+	}
+	if result.Text != "我听见啦。" || result.State != "SPEAKING" || result.Skipped {
+		t.Fatalf("unexpected fallback result: %#v", result)
+	}
+}
+
+func TestOpenAICompatibleSummarizeJSONAndPlainText(t *testing.T) {
+	responses := []string{
+		`{"summary":"Alice 正在准备演示。 "}`,
+		"Bob 刚进房间打招呼。",
+	}
+	upstream := newMockChatCompletionServer(t, func(t *testing.T, r *http.Request, _ map[string]any) string {
+		t.Helper()
+		if len(responses) == 0 {
+			t.Fatal("unexpected extra upstream request")
+		}
+		next := responses[0]
+		responses = responses[1:]
+		return next
+	})
+	defer upstream.Close()
+
+	provider := newTestOpenAIProvider(upstream.URL)
+	first, err := provider.Summarize(context.Background(), summarizeRequest{Messages: []chatMessage{{Nickname: "Alice", Text: "我在准备演示"}}})
+	if err != nil {
+		t.Fatalf("summarize json failed: %v", err)
+	}
+	second, err := provider.Summarize(context.Background(), summarizeRequest{Messages: []chatMessage{{Nickname: "Bob", Text: "hi"}}})
+	if err != nil {
+		t.Fatalf("summarize text failed: %v", err)
+	}
+	if first.Summary != "Alice 正在准备演示。" || second.Summary != "Bob 刚进房间打招呼。" {
+		t.Fatalf("unexpected summaries: %#v %#v", first, second)
+	}
+}
+
+func TestOpenAICompatibleMusicIntentNormalization(t *testing.T) {
+	responses := []string{
+		`{"intent":"request","query":"Blue Bird","confidence":1.7}`,
+		`{"intent":"delete_everything","query":"secret","confidence":0.8}`,
+	}
+	upstream := newMockChatCompletionServer(t, func(t *testing.T, r *http.Request, _ map[string]any) string {
+		t.Helper()
+		next := responses[0]
+		responses = responses[1:]
+		return next
+	})
+	defer upstream.Close()
+
+	provider := newTestOpenAIProvider(upstream.URL)
+	request, err := provider.MusicIntent(context.Background(), musicIntentRequest{Text: "点歌 Blue Bird"})
+	if err != nil {
+		t.Fatalf("music intent failed: %v", err)
+	}
+	invalid, err := provider.MusicIntent(context.Background(), musicIntentRequest{Text: "bad"})
+	if err != nil {
+		t.Fatalf("invalid music intent failed: %v", err)
+	}
+	if request.Intent != "request" || request.Query != "Blue Bird" || request.Confidence != 1 {
+		t.Fatalf("unexpected request intent: %#v", request)
+	}
+	if invalid.Intent != "none" || invalid.Query != "" {
+		t.Fatalf("unexpected invalid intent normalization: %#v", invalid)
+	}
+}
+
+func TestOpenAICompatibleProviderFailureDoesNotLeakSecrets(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `provider said key test-openai-key failed`, http.StatusUnauthorized)
+	}))
+	defer upstream.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/live-room/generate", strings.NewReader(`{"text":"hi"}`))
+	req.Header.Set("Authorization", "Bearer sidecar-token")
+	New(Config{
+		Addr:                      ":0",
+		ServiceName:               "hoshiaclaw",
+		AuthToken:                 "sidecar-token",
+		Provider:                  "openai_compatible",
+		OpenAICompatibleBaseURL:   upstream.URL + "/v1",
+		OpenAICompatibleAPIKey:    "test-openai-key",
+		OpenAICompatibleModel:     "test-model",
+		OpenAICompatibleTimeout:   time.Second,
+		OpenAICompatibleMaxTokens: 120,
+		OpenAICompatibleTemp:      0.2,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	response := rec.Body.String()
+	for _, forbidden := range []string{"test-openai-key", upstream.URL, "provider said"} {
+		if strings.Contains(response, forbidden) {
+			t.Fatalf("response leaked %q: %s", forbidden, response)
+		}
+	}
+	assertJSONError(t, rec.Body.Bytes(), "provider_failed")
+}
+
+func TestOpenAICompatibleProviderHTTP500AndTimeoutAreControlled(t *testing.T) {
+	t.Run("http500", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "private upstream details", http.StatusInternalServerError)
+		}))
+		defer upstream.Close()
+
+		_, err := newTestOpenAIProvider(upstream.URL).Generate(context.Background(), generateRequest{Text: "hi"})
+		if err == nil || !strings.Contains(err.Error(), "chat_completion_http_500") {
+			t.Fatalf("expected safe http 500 error, got %v", err)
+		}
+		if strings.Contains(err.Error(), "private upstream details") || strings.Contains(err.Error(), "test-openai-key") {
+			t.Fatalf("error leaked private details: %v", err)
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(200 * time.Millisecond)
+			_, _ = w.Write([]byte(`{"choices":[]}`))
+		}))
+		defer upstream.Close()
+
+		provider := newOpenAICompatibleProvider(Config{
+			OpenAICompatibleBaseURL:   upstream.URL + "/v1",
+			OpenAICompatibleAPIKey:    "test-openai-key",
+			OpenAICompatibleModel:     "test-model",
+			OpenAICompatibleTimeout:   25 * time.Millisecond,
+			OpenAICompatibleMaxTokens: 120,
+			OpenAICompatibleTemp:      0.2,
+		})
+		_, err := provider.Generate(context.Background(), generateRequest{Text: "hi"})
+		if err == nil || !strings.Contains(err.Error(), "chat_completion_request_failed") {
+			t.Fatalf("expected safe timeout error, got %v", err)
+		}
+		if strings.Contains(err.Error(), "test-openai-key") || strings.Contains(err.Error(), upstream.URL) {
+			t.Fatalf("timeout error leaked private details: %v", err)
+		}
+	})
+}
+
+func newTestOpenAIProvider(upstreamURL string) Provider {
+	return newOpenAICompatibleProvider(Config{
+		OpenAICompatibleBaseURL:   upstreamURL + "/v1",
+		OpenAICompatibleAPIKey:    "test-openai-key",
+		OpenAICompatibleModel:     "test-model",
+		OpenAICompatibleTimeout:   time.Second,
+		OpenAICompatibleMaxTokens: 120,
+		OpenAICompatibleTemp:      0.2,
+	})
+}
+
+func newMockChatCompletionServer(t *testing.T, content func(*testing.T, *http.Request, map[string]any) string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("bad upstream request body: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": content(t, r, body)}},
+			},
+		})
+	}))
 }
 
 func assertJSONError(t *testing.T, body []byte, expected string) {

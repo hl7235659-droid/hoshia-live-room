@@ -20,11 +20,14 @@ type Server struct {
 }
 
 type generateRequest struct {
-	Text       string `json:"text"`
-	Nickname   string `json:"nickname"`
-	RoomID     string `json:"room_id"`
-	Stream     bool   `json:"stream"`
-	ForceReply bool   `json:"force_reply"`
+	Text                     string         `json:"text"`
+	Nickname                 string         `json:"nickname"`
+	RoomID                   string         `json:"room_id"`
+	Stream                   bool           `json:"stream"`
+	ForceReply               bool           `json:"force_reply"`
+	Messages                 []chatMessage  `json:"messages"`
+	ContextSummary           string         `json:"context_summary"`
+	CharacterSnapshotContext map[string]any `json:"character_snapshot_context"`
 }
 
 type summarizeRequest struct {
@@ -70,7 +73,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
 		"service": s.cfg.ServiceName,
-		"source":  "fake_provider",
+		"source":  providerSource(s.cfg.Provider),
 	})
 }
 
