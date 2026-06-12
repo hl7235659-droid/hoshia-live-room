@@ -1,5 +1,6 @@
 import express from "express";
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import cookie from "cookie";
 import Redis from "ioredis";
 import { nanoid } from "nanoid";
@@ -2924,7 +2925,18 @@ function hasSensitiveMetricMarker(value) {
 }
 
 function safeRevision() {
-  return safeMetricIdentifier(process.env.REVISION || process.env.SOURCE_REVISION || "unknown", 40) || "unknown";
+  return safeMetricIdentifier(process.env.REVISION || process.env.SOURCE_REVISION || readRevisionFile() || "unknown", 40) || "unknown";
+}
+
+let cachedRevisionFileValue = null;
+function readRevisionFile() {
+  if (cachedRevisionFileValue !== null) return cachedRevisionFileValue;
+  try {
+    cachedRevisionFileValue = readFileSync(new URL("../REVISION", import.meta.url), "utf8").trim();
+  } catch {
+    cachedRevisionFileValue = "";
+  }
+  return cachedRevisionFileValue;
 }
 
 function safeRuntimeModes() {
