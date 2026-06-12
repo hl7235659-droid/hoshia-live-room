@@ -107,6 +107,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.provider.Generate(ctx, request)
 	if err != nil {
+		s.logger.Warn("hoshiaclaw generate failed", "code", providerErrorCode(err))
 		if shouldStream(request.Stream, r) {
 			s.writeNDJSON(w, []map[string]any{{"type": "error", "ok": false, "error": "provider_failed"}})
 			return
@@ -143,6 +144,7 @@ func (s *Server) handleSummarize(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.provider.Summarize(r.Context(), request)
 	if err != nil {
+		s.logger.Warn("hoshiaclaw summarize failed", "code", providerErrorCode(err))
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": "provider_failed"})
 		return
 	}
@@ -156,6 +158,7 @@ func (s *Server) handleMusicIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.provider.MusicIntent(r.Context(), request)
 	if err != nil {
+		s.logger.Warn("hoshiaclaw music intent failed", "code", providerErrorCode(err))
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": "provider_failed"})
 		return
 	}

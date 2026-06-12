@@ -319,7 +319,7 @@ func TestOpenAICompatibleProviderHTTP500AndTimeoutAreControlled(t *testing.T) {
 		defer upstream.Close()
 
 		_, err := newTestOpenAIProvider(upstream.URL).Generate(context.Background(), generateRequest{Text: "hi"})
-		if err == nil || !strings.Contains(err.Error(), "chat_completion_http_500") {
+		if err == nil || !strings.Contains(err.Error(), "provider_http_status_500") {
 			t.Fatalf("expected safe http 500 error, got %v", err)
 		}
 		if strings.Contains(err.Error(), "private upstream details") || strings.Contains(err.Error(), "test-openai-key") {
@@ -343,13 +343,36 @@ func TestOpenAICompatibleProviderHTTP500AndTimeoutAreControlled(t *testing.T) {
 			OpenAICompatibleTemp:      0.2,
 		})
 		_, err := provider.Generate(context.Background(), generateRequest{Text: "hi"})
-		if err == nil || !strings.Contains(err.Error(), "chat_completion_request_failed") {
+		if err == nil || !strings.Contains(err.Error(), "provider_timeout") {
 			t.Fatalf("expected safe timeout error, got %v", err)
 		}
 		if strings.Contains(err.Error(), "test-openai-key") || strings.Contains(err.Error(), upstream.URL) {
 			t.Fatalf("timeout error leaked private details: %v", err)
 		}
 	})
+}
+
+func TestOpenAICompatibleProviderLengthWithoutContentIsControlled(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"finish_reason": "length",
+					"message": map[string]any{
+						"role":              "assistant",
+						"content":           "",
+						"reasoning_content": "long hidden reasoning",
+					},
+				},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	_, err := newTestOpenAIProvider(upstream.URL).Generate(context.Background(), generateRequest{Text: "hi"})
+	if err == nil || !strings.Contains(err.Error(), "provider_empty_content") {
+		t.Fatalf("expected provider_empty_content, got %v", err)
+	}
 }
 
 func newTestOpenAIProvider(upstreamURL string) Provider {

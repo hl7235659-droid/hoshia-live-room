@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 )
@@ -39,8 +40,17 @@ type chatCompletionMsg struct {
 
 type chatCompletionResponse struct {
 	Choices []struct {
-		Message chatCompletionMsg `json:"message"`
+		Message      chatCompletionMsg `json:"message"`
+		FinishReason string            `json:"finish_reason"`
 	} `json:"choices"`
+}
+
+type providerError struct {
+	Code string
+}
+
+func (err providerError) Error() string {
+	return err.Code
 }
 
 func newOpenAICompatibleProvider(cfg Config) Provider {
@@ -128,7 +138,7 @@ func (p *openAICompatibleProvider) MusicIntent(ctx context.Context, request musi
 
 func (p *openAICompatibleProvider) complete(ctx context.Context, messages []chatCompletionMsg) (string, error) {
 	if p.baseURL == "" || p.apiKey == "" || p.model == "" {
-		return "", errors.New("openai_compatible_not_configured")
+		return "", providerError{Code: "provider_not_configured"}
 	}
 	payload := chatCompletionRequest{
 		Model:       p.model,
@@ -138,11 +148,11 @@ func (p *openAICompatibleProvider) complete(ctx context.Context, messages []chat
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("encode_chat_completion: %w", err)
+		return "", providerError{Code: "provider_encode_failed"}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", errors.New("build_chat_completion_request")
+		return "", providerError{Code: "provider_request_build_failed"}
 	}
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	req.Header.Set("Accept", "application/json")
@@ -151,28 +161,50 @@ func (p *openAICompatibleProvider) complete(ctx context.Context, messages []chat
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return "", errors.New("chat_completion_request_failed")
+		return "", classifyTransportError(ctx, err)
 	}
 	defer resp.Body.Close()
 	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", errors.New("chat_completion_read_failed")
+		return "", providerError{Code: "provider_read_failed"}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("chat_completion_http_%d", resp.StatusCode)
+		return "", providerError{Code: fmt.Sprintf("provider_http_status_%d", resp.StatusCode)}
 	}
 	var parsed chatCompletionResponse
 	if err := json.Unmarshal(responseBody, &parsed); err != nil {
-		return "", errors.New("chat_completion_bad_json")
+		return "", providerError{Code: "provider_bad_json"}
 	}
 	if len(parsed.Choices) == 0 {
-		return "", errors.New("chat_completion_empty_choices")
+		return "", providerError{Code: "provider_empty_choices"}
 	}
 	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
 	if content == "" {
-		return "", errors.New("chat_completion_empty_message")
+		if strings.TrimSpace(parsed.Choices[0].FinishReason) == "length" {
+			return "", providerError{Code: "provider_empty_content"}
+		}
+		return "", providerError{Code: "provider_empty_message"}
 	}
 	return content, nil
+}
+
+func classifyTransportError(ctx context.Context, err error) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		return providerError{Code: "provider_timeout"}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return providerError{Code: "provider_timeout"}
+	}
+	return providerError{Code: "provider_request_failed"}
+}
+
+func providerErrorCode(err error) string {
+	var typed providerError
+	if errors.As(err, &typed) {
+		return typed.Code
+	}
+	return "provider_failed"
 }
 
 func buildGeneratePrompt(request generateRequest, text string) string {

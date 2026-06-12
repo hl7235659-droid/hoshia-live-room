@@ -84,6 +84,10 @@ import {
   normalizeCharacterEvent,
   summarizeCharacterSnapshotForPrompt
 } from "./character-snapshot.js";
+import {
+  buildHoshiaReplyMetadata,
+  prepareHoshiaCenterContext
+} from "./hoshia-center-context.js";
 
 class MemoryStore {
   constructor() {
@@ -1206,31 +1210,32 @@ async function handleAiReplyBatch(batch) {
   await setCharacterState(nextCharacterState("ai_thinking", batchText));
   if (!contextPolicy.fastLane) await sleep(250);
   const contextStartedAt = performance.now();
-  for (const event of hoshiaInterestKnowledgeService.observeBatch(batch, { roomId: config.roomId })) {
-    moduleEventStore.append(event);
-  }
-  const fullModuleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });
-  const fullModuleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: contextPolicy.moduleEventLimit });
-  const moduleContext = moduleContextForRoute(fullModuleContext, contextPolicy, batch);
-  const moduleEvents = moduleEventsForRoute(fullModuleEvents, contextPolicy);
-  const diaryEvent = hoshiaDailyCanonService.getActiveEvent({ now: new Date(), create: true });
-  const activeContext = buildActiveContext({
-    visualState: hoshiaVisualStateService.publicState(),
-    audienceUsers: audiencePayload().users,
+  const {
     moduleContext,
     moduleEvents,
+    activeContext,
+    characterSnapshot,
+    lifeMemoryPacket
+  } = prepareHoshiaCenterContext({
     batch,
-    diaryEvent
+    roomId: config.roomId,
+    contextPolicy,
+    moduleProviders,
+    moduleEventStore,
+    hoshiaInterestKnowledgeService,
+    hoshiaDailyCanonService,
+    hoshiaVisualStateService,
+    hoshiaLifeMemoryService,
+    audienceUsers: audiencePayload().users,
+    buildModuleContext,
+    buildActiveContext,
+    buildCharacterSnapshot: buildCurrentCharacterSnapshot
   });
-  const characterSnapshot = buildCurrentCharacterSnapshot(batch[0]?.session);
   db.upsertCharacterSnapshot({
     roomId: config.roomId,
     characterId: "hoshia",
     snapshot: characterSnapshot
   });
-  const lifeMemoryPacket = contextPolicy.includeLifeMemory
-    ? hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: contextPolicy.livingMemoryK || 3 })
-    : [];
   const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket, { activeContext, contextPolicy, moduleContext, moduleEvents });
   const shortTermContext = await buildShortTermAiContext(batch, contextPolicy);
   const moduleMemoryEvents = contextPolicy.consumeModuleMemoryEvents
@@ -1240,18 +1245,23 @@ async function handleAiReplyBatch(batch) {
   let streamedReply = false;
   let streamDeltaStarted = false;
   const streamEmitter = createSentenceStreamEmitter({ traceId: latencyTraceId, route: replyRoute });
-  const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, {
-    roomSession: true,
+  const replyMetadata = buildHoshiaReplyMetadata({
+    batch,
+    messages: batch.map((item) => ({
+      user_id: item.session.user_id,
+      nickname: item.session.nickname,
+      text: item.text,
+      mentioned: item.mentioned,
+      memory_enabled: normalizeStoredAiProfile(item.session.ai_profile)?.memory_enabled === true,
+      timestamp: item.timestamp
+    })),
     replyTargets: replyTargets(batch),
-    forceReply: batch.some((item) => item.forceReply),
-    replyMode: batch.some((item) => item.forceReply) ? "single_user_direct" : "",
     replyRoute,
-    activeContext,
     contextPolicy,
     latencyTraceId,
-    recentContext: shortTermContext.recentContext,
-    contextSummary: shortTermContext.contextSummary,
+    shortTermContext,
     characterSnapshotContext: summarizeCharacterSnapshotForPrompt(characterSnapshot),
+    activeContext,
     moduleContext,
     moduleEvents,
     moduleMemoryEvents,
@@ -1262,16 +1272,9 @@ async function handleAiReplyBatch(batch) {
       }
       streamedReply = true;
       streamEmitter.push(deltaText, deltaRoute || replyRoute);
-    },
-    messages: batch.map((item) => ({
-      user_id: item.session.user_id,
-      nickname: item.session.nickname,
-      text: item.text,
-      mentioned: item.mentioned,
-      memory_enabled: normalizeStoredAiProfile(item.session.ai_profile)?.memory_enabled === true,
-      timestamp: item.timestamp
-    }))
+    }
   });
+  const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, replyMetadata);
   await streamEmitter.flush();
   if (reply.skipped) {
     clearQuickReplyLead(batch);
