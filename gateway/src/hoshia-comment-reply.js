@@ -14,6 +14,7 @@ export function createHoshiaCommentReplyService({
   generator,
   replyGenerator,
   aiReplyGenerator,
+  shadowGenerator = null,
   visualStateProvider = null,
   moduleContextProvider = null,
   moduleEventsProvider = null,
@@ -32,6 +33,9 @@ export function createHoshiaCommentReplyService({
   const generateReply = aiReplyGenerator || generator || replyGenerator || null;
   if (generateReply && typeof generateReply !== "function") {
     throw new Error("generator must be a function");
+  }
+  if (shadowGenerator && typeof shadowGenerator !== "function") {
+    throw new Error("shadowGenerator must be a function");
   }
 
   const delayConfig = normalizeCommentReplyDelayConfig(minDelayMinutes, maxDelayMinutes);
@@ -70,12 +74,13 @@ export function createHoshiaCommentReplyService({
       };
     },
 
-    async processDueReplies({ limit = defaultLimit, force = false, now = clock() } = {}) {
+    async processDueReplies({ limit = defaultLimit, force = false, now = clock(), shadow = false, shadowOnly = false, recordMetric = null } = {}) {
       return processDue({
         db,
         lifeMemoryService,
         moduleEventStore,
         generator: generateReply,
+        shadowGenerator,
         visualStateProvider,
         moduleContextProvider,
         moduleEventsProvider,
@@ -83,18 +88,21 @@ export function createHoshiaCommentReplyService({
         dailyReplyLimit,
         limit,
         force,
+        shadowOnly: Boolean(shadow || shadowOnly),
+        recordMetric,
         defaultLimit,
         maxRepliesPerTick,
         now
       });
     },
 
-    async processDueComments({ limit = defaultLimit, force = false, now = clock() } = {}) {
+    async processDueComments({ limit = defaultLimit, force = false, now = clock(), shadow = false, shadowOnly = false, recordMetric = null } = {}) {
       const result = await processDue({
         db,
         lifeMemoryService,
         moduleEventStore,
         generator: generateReply,
+        shadowGenerator,
         visualStateProvider,
         moduleContextProvider,
         moduleEventsProvider,
@@ -102,6 +110,8 @@ export function createHoshiaCommentReplyService({
         dailyReplyLimit,
         limit,
         force,
+        shadowOnly: Boolean(shadow || shadowOnly),
+        recordMetric,
         defaultLimit,
         maxRepliesPerTick,
         now
@@ -112,6 +122,7 @@ export function createHoshiaCommentReplyService({
         failed_count: result.failed,
         scanned_count: result.scanned,
         skipped_count: result.skipped,
+        shadowed_count: result.shadowed,
         items: result.results
       };
     }
@@ -169,6 +180,7 @@ async function processDue({
   lifeMemoryService,
   moduleEventStore,
   generator,
+  shadowGenerator,
   visualStateProvider,
   moduleContextProvider,
   moduleEventsProvider,
@@ -176,6 +188,8 @@ async function processDue({
   dailyReplyLimit,
   limit,
   force,
+  shadowOnly,
+  recordMetric,
   defaultLimit,
   maxRepliesPerTick,
   now
@@ -188,13 +202,15 @@ async function processDue({
   });
   const normalizedComments = dueComments.map((rawComment) => normalizeDueComment(rawComment));
   const remainingDailyReplies = Math.max(0, clampInt(dailyReplyLimit, 0, 100, 20) - countRepliesToday(db, nowIso));
-  const replyLimit = Math.min(clampInt(maxRepliesPerTick, 1, 2, 2), remainingDailyReplies);
+  const perTickReplyLimit = clampInt(maxRepliesPerTick, 1, 2, 2);
+  const replyLimit = shadowOnly ? perTickReplyLimit : Math.min(perTickReplyLimit, remainingDailyReplies);
   if (replyLimit <= 0) {
     return {
       scanned: normalizedComments.length,
       replied: 0,
       failed: 0,
       skipped: normalizedComments.length,
+      shadowed: 0,
       results: normalizedComments.map((comment) => skipped(comment, "daily_reply_limit_reached"))
     };
   }
@@ -203,7 +219,9 @@ async function processDue({
 
   for (const dueComment of normalizedComments) {
     if (isComment(dueComment) && !selectedIds.has(dueComment.id)) {
-      markSkipped(db, dueComment, nowIso);
+      if (!shadowOnly) {
+        markSkipped(db, dueComment, nowIso);
+      }
       results.push(skipped(dueComment, "low_priority"));
       continue;
     }
@@ -212,11 +230,14 @@ async function processDue({
       lifeMemoryService,
       moduleEventStore,
       generator,
+      shadowGenerator,
       visualStateProvider,
       moduleContextProvider,
       moduleEventsProvider,
       config,
       dueComment,
+      shadowOnly,
+      recordMetric,
       now: nowIso
     });
     results.push(result);
@@ -227,6 +248,7 @@ async function processDue({
     replied: results.filter((item) => item.status === "replied").length,
     failed: results.filter((item) => item.status === "failed").length,
     skipped: results.filter((item) => item.status === "skipped").length,
+    shadowed: results.filter((item) => item.status === "shadowed").length,
     results
   };
 }
@@ -246,11 +268,14 @@ async function processOneDueComment({
   lifeMemoryService,
   moduleEventStore,
   generator,
+  shadowGenerator,
   visualStateProvider,
   moduleContextProvider,
   moduleEventsProvider,
   config,
   dueComment,
+  shadowOnly,
+  recordMetric,
   now
 }) {
   if (!isComment(dueComment)) {
@@ -261,6 +286,17 @@ async function processOneDueComment({
     ? db.getHoshiaPost(dueComment.post_id)
     : null);
   if (!post?.id) {
+    if (shadowOnly) {
+      const result = commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.failed", {
+        reason: "post_not_found",
+        source: "gateway"
+      });
+      recordCommentReplyShadowMetric(recordMetric, result, {
+        comment: dueComment,
+        post
+      });
+      return shadowedCommentResult(dueComment, post, result);
+    }
     return failComment(db, dueComment, "post_not_found", now);
   }
 
@@ -282,6 +318,23 @@ async function processOneDueComment({
       moduleContextProvider,
       moduleEventsProvider
     });
+    if (shadowOnly) {
+      const result = await generateCommentReplyShadowCandidate({
+        generator: shadowGenerator || generator,
+        post,
+        comment: dueComment,
+        memoryPacket,
+        now,
+        lifeMemoryService,
+        config,
+        ...replyContext
+      });
+      recordCommentReplyShadowMetric(recordMetric, result, {
+        comment: dueComment,
+        post
+      });
+      return shadowedCommentResult(dueComment, post, result);
+    }
     const generated = await generateWithFallback({
       generator,
       post,
@@ -337,6 +390,17 @@ async function processOneDueComment({
       reply_source: generated?.source || "template"
     };
   } catch (error) {
+    if (shadowOnly) {
+      const result = commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.failed", {
+        reason: cleanShadowMetricText(error?.message, 80) || "shadow_failed",
+        source: "gateway"
+      });
+      recordCommentReplyShadowMetric(recordMetric, result, {
+        comment: dueComment,
+        post
+      });
+      return shadowedCommentResult(dueComment, post, result);
+    }
     return failComment(db, dueComment, cleanText(error?.message, 80) || "reply_failed", now);
   }
 }
@@ -383,6 +447,51 @@ async function generateWithFallback({
   return normalizeGeneratedReply(fallback, fallbackContent, "template");
 }
 
+async function generateCommentReplyShadowCandidate({
+  generator,
+  post,
+  comment,
+  memoryPacket,
+  now,
+  lifeMemoryService,
+  config,
+  visualState,
+  moduleContext,
+  moduleEvents
+}) {
+  const input = {
+    post,
+    comment,
+    memoryPacket,
+    now,
+    lifeMemoryService,
+    config,
+    visualState,
+    moduleContext,
+    moduleEvents,
+    replyMode: "post_comment_reply_shadow",
+    shadowOnly: true
+  };
+
+  try {
+    if (generator) {
+      const generated = await generator(input);
+      return classifyCommentReplyShadowCandidate(generated, {
+        source: generated?.source || "llm"
+      });
+    }
+    const fallback = await defaultCommentReplyGenerator(input);
+    return classifyCommentReplyShadowCandidate(fallback, {
+      source: "template"
+    });
+  } catch (error) {
+    return commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.failed", {
+      reason: cleanShadowMetricText(error?.message, 80) || "shadow_failed",
+      source: "gateway"
+    });
+  }
+}
+
 function normalizeGeneratedReply(generated, content, source) {
   if (generated && typeof generated === "object") {
     return {
@@ -421,13 +530,88 @@ async function buildReplyContext({
 
 async function resolveProviderValue(provider, input) {
   if (!provider) return null;
-  if (typeof provider === "function") return provider(input);
-  if (typeof provider.getCapabilityContext === "function") return provider.getCapabilityContext(input.session || input);
-  if (typeof provider.getContext === "function") return provider.getContext(input);
-  if (typeof provider.getCurrentState === "function") return provider.getCurrentState(input);
-  if (typeof provider.listRecentEvents === "function") return provider.listRecentEvents(input);
-  if (typeof provider.list === "function") return provider.list(input);
-  return provider;
+  try {
+    if (typeof provider === "function") return await provider(input);
+    if (typeof provider.getCapabilityContext === "function") return await provider.getCapabilityContext(input.session || input);
+    if (typeof provider.getContext === "function") return await provider.getContext(input);
+    if (typeof provider.getCurrentState === "function") return await provider.getCurrentState(input);
+    if (typeof provider.listRecentEvents === "function") return await provider.listRecentEvents(input);
+    if (typeof provider.list === "function") return await provider.list(input);
+    return provider;
+  } catch {
+    return null;
+  }
+}
+
+function classifyCommentReplyShadowCandidate(generated, { source = "" } = {}) {
+  const resultSource = cleanShadowMetricText(generated?.source || source || "llm", 80) || "llm";
+  const latencyMs = safeMetricNumber(generated?.latency_ms ?? generated?.latencyMs);
+  if (generated?.skipped) {
+    return commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.skip", {
+      reason: cleanShadowMetricText(generated?.error || generated?.judge?.reason || generated?.route || "skipped", 80) || "skipped",
+      source: resultSource,
+      latencyMs
+    });
+  }
+  const content = normalizeGeneratedCandidateText(generated);
+  if (!content || generated?.failed || generated?.ok === false || resultSource === "gateway_error") {
+    return commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.failed", {
+      reason: cleanShadowMetricText(generated?.error || generated?.route || "empty_or_error_reply", 80) || "shadow_failed",
+      source: resultSource,
+      latencyMs
+    });
+  }
+  return commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.success", {
+    reason: cleanShadowMetricText(generated?.route || "candidate_generated", 80) || "candidate_generated",
+    source: resultSource,
+    latencyMs
+  });
+}
+
+function commentReplyShadowResult(eventType, { reason = "", source = "", latencyMs = undefined } = {}) {
+  const status = eventType.endsWith(".success")
+    ? "success"
+    : eventType.endsWith(".skip")
+      ? "skip"
+      : "failed";
+  return {
+    called: true,
+    eventType,
+    status,
+    reason: cleanShadowMetricText(reason, 80) || (status === "failed" ? "shadow_failed" : status),
+    source: cleanShadowMetricText(source, 80) || "unknown",
+    ...(latencyMs !== undefined ? { latencyMs } : {})
+  };
+}
+
+function recordCommentReplyShadowMetric(recordMetric, result, { comment, post } = {}) {
+  if (typeof recordMetric !== "function" || !result?.eventType) return;
+  try {
+    recordMetric({
+      eventType: result.eventType,
+      status: result.status,
+      reason: result.reason,
+      source: result.source,
+      replyMode: "post_comment_reply_shadow",
+      commentId: cleanIdentifier(comment?.id, 80),
+      postId: cleanIdentifier(post?.id, 80),
+      ...(result.latencyMs !== undefined ? { latencyMs: result.latencyMs } : {})
+    });
+  } catch {
+    // Metrics must never change comment reply behavior.
+  }
+}
+
+function shadowedCommentResult(comment, post, result) {
+  return {
+    status: "shadowed",
+    comment_id: comment?.id || "",
+    post_id: post?.id || comment?.post_id || "",
+    shadow_status: result.status,
+    shadow_event_type: result.eventType,
+    reason: result.reason,
+    reply_source: result.source
+  };
 }
 
 function selectReplyCandidates(comments, maxCount) {
@@ -533,6 +717,15 @@ function normalizeGeneratedContent(generated) {
   return content;
 }
 
+function normalizeGeneratedCandidateText(generated) {
+  const content = cleanText(
+    typeof generated === "string" ? generated : generated?.content || generated?.text,
+    500
+  );
+  if (!content || sensitivePattern.test(content)) return "";
+  return content;
+}
+
 function objectId(value) {
   return value && typeof value === "object" ? cleanIdentifier(value.id, 80) : "";
 }
@@ -633,6 +826,20 @@ function cleanIdentifier(value, maxLength = 48) {
     .toLowerCase()
     .replace(/[^a-z0-9_.:-]/g, "_")
     .slice(0, maxLength);
+}
+
+function cleanShadowMetricText(value, maxLength = 80) {
+  const text = cleanText(value, maxLength);
+  if (!text || sensitivePattern.test(text)) return "";
+  if (/(?:raw[_ -]?(?:prompt|response)|candidate[_ -]?text|token|secret|bearer|url|path|\.env|ssh|cloudflared)/i.test(text)) {
+    return "";
+  }
+  return text;
+}
+
+function safeMetricNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.round(number) : undefined;
 }
 
 function clampInt(value, min, max, fallback) {

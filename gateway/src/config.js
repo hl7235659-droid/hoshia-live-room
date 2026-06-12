@@ -27,6 +27,8 @@ export const config = {
   hoshiaClawFallbackToMock: parseBool(process.env.HOSHIACLAW_FALLBACK_TO_MOCK, true),
   hoshiaClawStreamingEnabled: parseBool(process.env.HOSHIACLAW_STREAMING_ENABLED, true),
   hoshiaClawProactiveShadowEnabled: parseBool(process.env.HOSHIACLAW_PROACTIVE_SHADOW_ENABLED, false),
+  hoshiaClawDailyPostShadowEnabled: parseBool(process.env.HOSHIACLAW_DAILY_POST_SHADOW_ENABLED, false),
+  hoshiaClawNewsTopicGenerateShadowEnabled: parseBool(process.env.HOSHIACLAW_NEWS_TOPIC_GENERATE_SHADOW_ENABLED, false),
   characterStateAuthority: enumValue(process.env.CHARACTER_STATE_AUTHORITY || "legacy", ["legacy", "event_log"], "legacy"),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
   singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),
@@ -43,6 +45,8 @@ export const config = {
   hoshiaStateTickMinMinutes: Number(process.env.HOSHIA_STATE_TICK_MIN_MINUTES || process.env.HOSHIA_STATE_TICK_MINUTES || 20),
   hoshiaStateTickMaxMinutes: Number(process.env.HOSHIA_STATE_TICK_MAX_MINUTES || process.env.HOSHIA_STATE_TICK_MINUTES || 60),
   hoshiaAsyncCommentReplyEnabled: parseBool(process.env.HOSHIA_ASYNC_COMMENT_REPLY_ENABLED, true),
+  hoshiaCommentReplyRolloutMode: enumValue(process.env.HOSHIA_COMMENT_REPLY_ROLLOUT_MODE || "live", ["live", "shadow", "off"], "live"),
+  hoshiaCommentReplyGreyPercent: clampNumber(process.env.HOSHIA_COMMENT_REPLY_GREY_PERCENT, 0, 100, 100),
   hoshiaCommentReplyMinDelayMinutes: Number(process.env.HOSHIA_COMMENT_REPLY_MIN_DELAY_MINUTES || 3),
   hoshiaCommentReplyMaxDelayMinutes: Number(process.env.HOSHIA_COMMENT_REPLY_MAX_DELAY_MINUTES || 45),
   hoshiaCommentReplyTickLimit: Number(process.env.HOSHIA_COMMENT_REPLY_TICK_LIMIT || 2),
@@ -91,4 +95,10 @@ function parseBool(value, fallback) {
 
 function enumValue(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
 }

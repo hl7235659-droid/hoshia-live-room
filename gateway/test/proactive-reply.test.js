@@ -15,6 +15,15 @@ test("HoshiaClaw proactive shadow is disabled by default", async () => {
   assert.equal(config.hoshiaClawProactiveShadowEnabled, false);
 });
 
+test("HoshiaClaw remaining shadow rollouts are conservative by default", async () => {
+  process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
+  const { config } = await import(`../src/config.js?remaining_shadow_defaults=${Date.now()}`);
+  assert.equal(config.hoshiaClawDailyPostShadowEnabled, false);
+  assert.equal(config.hoshiaClawNewsTopicGenerateShadowEnabled, false);
+  assert.equal(config.hoshiaCommentReplyRolloutMode, "live");
+  assert.equal(config.hoshiaCommentReplyGreyPercent, 100);
+});
+
 test("proactive reply config is disabled by default and clamps idle window", () => {
   assert.equal(normalizeProactiveReplyConfig({}).enabled, false);
   assert.deepEqual(normalizeProactiveReplyConfig({

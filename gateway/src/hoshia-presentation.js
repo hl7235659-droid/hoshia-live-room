@@ -12,6 +12,9 @@ const actions = new Set([
 const intensities = new Set(["low", "normal", "high"]);
 const states = new Set(["IDLE", "LISTENING", "THINKING", "SPEAKING", "ERROR"]);
 const sources = new Set(["ai_reply", "character_state", "hoshia_state", "system"]);
+const fallbackPngPrefix = "/assets/hoshia/stage-png/";
+const rawPromptKeys = new Set(["prompt", "raw_prompt", "rawPrompt"]);
+const rawResponseKeys = new Set(["response", "raw_response", "rawResponse"]);
 
 const stateActionMap = {
   IDLE: "idle",
@@ -41,7 +44,7 @@ export function normalizeHoshiaPresentation(input = {}, context = {}) {
     ...(safeText(input.expression, 80) ? { expression: safeText(input.expression, 80) } : {}),
     ...(safeText(input.motion, 80) ? { motion: safeText(input.motion, 80) } : {}),
     fallback_state: fallbackState,
-    ...(safePath(input.fallback_png || input.fallbackPng) ? { fallback_png: safePath(input.fallback_png || input.fallbackPng) } : {}),
+    ...(safeFallbackPng(input.fallback_png || input.fallbackPng) ? { fallback_png: safeFallbackPng(input.fallback_png || input.fallbackPng) } : {}),
     ...(safeText(input.cue || stateCueMap[fallbackState], 120) ? { cue: safeText(input.cue || stateCueMap[fallbackState], 120) } : {}),
     source: sources.has(input.source) ? input.source : context.source || "system",
     ...(safeText(input.trace_id || input.traceId || context.traceId, 80) ? { trace_id: safeText(input.trace_id || input.traceId || context.traceId, 80) } : {}),
@@ -83,6 +86,31 @@ export function presentationFromClawEnvelope(envelope = {}, context = {}) {
   }, context);
 }
 
+export function collectPresentationObservabilityCounts(input = {}, context = {}) {
+  const isEnvelope = Boolean(input?.presentation && typeof input.presentation === "object");
+  const presentationInput = isEnvelope ? input.presentation : input;
+  const normalized = isEnvelope
+    ? presentationFromClawEnvelope(input, context)
+    : normalizeHoshiaPresentation(input, context);
+  const rawDuration = presentationInput?.duration_ms ?? presentationInput?.durationMs;
+  const rawFallbackPng = presentationInput?.fallback_png ?? presentationInput?.fallbackPng;
+  const requestedAction = String(presentationInput?.action || "").trim();
+  const roundedDuration = Math.round(Number(rawDuration));
+
+  return Object.freeze({
+    presentation_count: input && typeof input === "object" ? 1 : 0,
+    normalized_field_count: Object.keys(normalized).length,
+    action_fallback_count: requestedAction && requestedAction !== normalized.action ? 1 : 0,
+    duration_clamped_count: rawDuration !== undefined && Number.isFinite(roundedDuration) && roundedDuration !== normalized.duration_ms ? 1 : 0,
+    fallback_png_allowed_count: normalized.fallback_png ? 1 : 0,
+    fallback_png_rejected_count: rawFallbackPng && !normalized.fallback_png ? 1 : 0,
+    sensitive_field_rejected_count: countSensitiveValues(input),
+    trace_passthrough_count: normalized.trace_id ? 1 : 0,
+    prompt_omitted_count: countMatchingKeys(input, rawPromptKeys),
+    response_omitted_count: countMatchingKeys(input, rawResponseKeys)
+  });
+}
+
 function normalizeAction(value, fallbackState) {
   const action = String(value || "").trim();
   if (actions.has(action)) return action;
@@ -119,14 +147,38 @@ function safeText(value, maxLength) {
   return text.slice(0, maxLength);
 }
 
-function safePath(value) {
+function safeFallbackPng(value) {
   const text = safeText(value, 180);
   if (!text) return "";
-  if (!text.startsWith("/assets/")) return "";
+  if (!text.startsWith(fallbackPngPrefix)) return "";
   if (text.includes("..") || text.includes("\\") || text.includes("//")) return "";
+  if (!/^\/assets\/hoshia\/stage-png\/[A-Za-z0-9._/-]+\.png$/i.test(text)) return "";
   return text;
 }
 
 function hasSensitiveMarker(value) {
   return /(?:token|secret|bearer|\.env|ssh|cloudflared|127\.0\.0\.1|localhost|https?:\/\/|[A-Za-z]:\\|\/home\/|\/root\/)/i.test(value);
+}
+
+function countSensitiveValues(value, seen = new Set()) {
+  if (typeof value === "string") return hasSensitiveMarker(value) ? 1 : 0;
+  if (!value || typeof value !== "object") return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countSensitiveValues(item, seen), 0);
+  }
+  return Object.values(value).reduce((total, item) => total + countSensitiveValues(item, seen), 0);
+}
+
+function countMatchingKeys(value, keys, seen = new Set()) {
+  if (!value || typeof value !== "object") return 0;
+  if (seen.has(value)) return 0;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countMatchingKeys(item, keys, seen), 0);
+  }
+  return Object.entries(value).reduce((total, [key, item]) => {
+    return total + (keys.has(key) ? 1 : 0) + countMatchingKeys(item, keys, seen);
+  }, 0);
 }

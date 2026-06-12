@@ -62,6 +62,10 @@ import {
   shouldRunProactiveReply
 } from "./proactive-reply.js";
 import { runHoshiaClawProactiveShadow } from "./proactive-shadow.js";
+import {
+  runDailyPostShadow,
+  runNewsTopicGenerateShadow
+} from "./hoshiaclaw-shadow.js";
 import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
 import {
   buildWelcomeGreetingPrompt,
@@ -80,6 +84,7 @@ import {
 } from "./message-router.js";
 import {
   normalizeHoshiaPresentation,
+  collectPresentationObservabilityCounts,
   presentationFromCharacterState,
   presentationFromClawEnvelope,
   presentationFromVisualState
@@ -187,6 +192,7 @@ const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   lifeMemoryService: hoshiaLifeMemoryService,
   moduleEventStore,
   aiReplyGenerator: generatePostCommentReply,
+  shadowGenerator: generatePostCommentReplyShadow,
   visualStateProvider: () => hoshiaVisualStateService.publicState(),
   moduleContextProvider: ({ session }) => buildModuleContext({ providers: moduleProviders, session }),
   moduleEventsProvider: () => moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 }),
@@ -241,6 +247,15 @@ const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
 let hoshiaVisualTickTimer = null;
 let hoshiaCommentReplyTimer = null;
 let currentHoshiaPresentation = null;
+const observabilityCounters = {
+  presentationEmitted: 0,
+  presentationSanitized: 0,
+  shadow: {
+    success: 0,
+    skip: 0,
+    failed: 0
+  }
+};
 
 app.use(express.json({ limit: "32kb" }));
 registerAccountRoutes(app, {
@@ -274,7 +289,15 @@ registerPixelGameRoutes(app, {
 });
 
 app.get("/healthz", (_req, res) => {
-  res.json({ ok: true, service: "live-room-dev", room_id: config.roomId, state: characterState });
+  res.json({
+    ok: true,
+    service: "live-room-dev",
+    room_id: config.roomId,
+    state: characterState,
+    revision: safeRevision(),
+    modes: safeRuntimeModes(),
+    observability: buildRuntimeObservability()
+  });
 });
 
 app.get("/api/room/state", requireSession, async (_req, res) => {
@@ -311,7 +334,14 @@ app.get("/api/hoshia/snapshot", requireSession, async (req, res) => {
 app.get("/api/hoshia/ops/summary", requireSession, async (_req, res) => {
   res.json({
     ok: true,
-    summary: getHoshiaOpsSummary()
+    summary: {
+      ...getHoshiaOpsSummary(),
+      runtime: {
+        revision: safeRevision(),
+        modes: safeRuntimeModes(),
+        observability: buildRuntimeObservability()
+      }
+    }
   });
 });
 
@@ -466,7 +496,8 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
   if (!post) return res.status(404).json({ error: "post_not_found" });
   const input = normalizeCommentInput(req.body, req.session, new Date());
   if (!input) return res.status(400).json({ error: "comment_invalid" });
-  const replyFields = config.hoshiaAsyncCommentReplyEnabled
+  const commentRollout = commentReplyRolloutForInteraction(input);
+  const replyFields = commentRollout.shouldSchedule
     ? hoshiaCommentReplyService.pendingFields({
       minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
       maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes
@@ -528,7 +559,8 @@ app.post("/api/hoshia/comments/reply-tick", requireSession, async (req, res) => 
   }
   const result = await runCommentReplyTick({
     limit: req.body?.limit,
-    force: req.body?.force === true
+    force: req.body?.force === true,
+    shadowOnly: config.hoshiaCommentReplyRolloutMode === "shadow"
   });
   const summary = getHoshiaOpsSummary();
   res.json({
@@ -734,6 +766,8 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
   const newsState = selectedNewsTopic
     ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
     : null;
+  void runDailyPostShadowCheck({ session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source });
+  void runNewsTopicGenerateShadowCheck({ session, topic: selectedNewsTopic, state: newsState, source });
   let result = hoshiaDailyPostService.tick({
     force,
     ignoreLimit,
@@ -804,6 +838,91 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
   return result;
 }
 
+async function runDailyPostShadowCheck({ session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
+  if (!config.hoshiaClawDailyPostShadowEnabled) return null;
+  try {
+    const plan = hoshiaDailyPostService.planDailyPost({
+      now: new Date(),
+      state: state || hoshiaVisualStateService.publicState(),
+      sourceType: newsTopic ? "news_topic" : "daily_state",
+      topic: newsTopic,
+      diaryEvent
+    });
+    if (!plan?.postInput) {
+      return recordShadowMetricEvent({
+        eventType: "hoshiaclaw.daily_post_shadow.skip",
+        status: "skip",
+        reason: plan?.reason || "daily_post_shadow_no_candidate",
+        source: "gateway",
+        route: "daily_post_shadow"
+      });
+    }
+    return runDailyPostShadow({
+      enabled: true,
+      session: shadowSession(session),
+      postInput: plan.postInput,
+      state: state || hoshiaVisualStateService.publicState(),
+      reason: source,
+      config,
+      generateAiReply,
+      fetchImpl: globalThis.fetch,
+      metadata: {
+        moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+        moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 })
+      },
+      recordMetric: (metric) => recordShadowMetricEvent({ ...metric, route: "daily_post_shadow" }),
+      logger: console
+    });
+  } catch (error) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.daily_post_shadow.failed",
+      status: "failed",
+      reason: safeMetricReason(error?.message) || "shadow_failed",
+      source: "gateway",
+      route: "daily_post_shadow"
+    });
+  }
+}
+
+async function runNewsTopicGenerateShadowCheck({ session = null, topic = null, state = null, source = "scheduled" } = {}) {
+  if (!config.hoshiaClawNewsTopicGenerateShadowEnabled) return null;
+  const safeTopic = topic || hoshiaNewsService.featuredTopic?.() || null;
+  if (!safeTopic) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.news_topic_generate_shadow.skip",
+      status: "skip",
+      reason: "news_topic_shadow_no_topic",
+      source: "gateway",
+      route: "news_topic_generate_shadow"
+    });
+  }
+  try {
+    return runNewsTopicGenerateShadow({
+      enabled: true,
+      session: shadowSession(session),
+      topic: safeTopic,
+      state: state || hoshiaVisualStateService.publicState(),
+      reason: source,
+      config,
+      generateAiReply,
+      fetchImpl: globalThis.fetch,
+      metadata: {
+        moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+        moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 })
+      },
+      recordMetric: (metric) => recordShadowMetricEvent({ ...metric, route: "news_topic_generate_shadow" }),
+      logger: console
+    });
+  } catch (error) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.news_topic_generate_shadow.failed",
+      status: "failed",
+      reason: safeMetricReason(error?.message) || "shadow_failed",
+      source: "gateway",
+      route: "news_topic_generate_shadow"
+    });
+  }
+}
 function getHoshiaOpsSummary(now = new Date()) {
   return buildHoshiaOpsSummary({
     db,
@@ -815,8 +934,13 @@ function getHoshiaOpsSummary(now = new Date()) {
   });
 }
 
-async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit, force = false } = {}) {
-  const result = await hoshiaCommentReplyService.processDueComments({ limit, force });
+async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit, force = false, shadowOnly = config.hoshiaCommentReplyRolloutMode === "shadow" } = {}) {
+  const result = await hoshiaCommentReplyService.processDueComments({
+    limit,
+    force,
+    shadowOnly,
+    recordMetric: recordCommentReplyShadowMetric
+  });
   if (result.processed_count > 0) {
     appendTimelineCommentReplyCharacterEvent({ status: "replied" });
     const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
@@ -918,6 +1042,55 @@ async function generatePostCommentReply({
   };
 }
 
+async function generatePostCommentReplyShadow({
+  post,
+  comment,
+  memoryPacket = [],
+  visualState = null,
+  moduleContext = [],
+  moduleEvents = []
+} = {}) {
+  const prompt = formatPostCommentReplyPrompt({ post, comment, memoryPacket, visualState });
+  return runCommentReplyShadowProvider({
+    session: {
+      user_id: comment?.user_id || "post-comment-viewer",
+      username: comment?.nickname || "viewer",
+      nickname: comment?.nickname || "viewer",
+      room_id: config.roomId
+    },
+    prompt,
+    moduleContext,
+    moduleEvents,
+    comment
+  });
+}
+
+async function runCommentReplyShadowProvider({ session, prompt, moduleContext = [], moduleEvents = [], comment = null } = {}) {
+  const reply = await generateAiReply(session, prompt, {
+    ...config,
+    aiMode: "hoshiaclaw",
+    hoshiaClawFallbackToMock: false,
+    hoshiaclawFallbackToMock: false,
+    hoshiaClawStreamingEnabled: false,
+    hoshiaclawStreamingEnabled: false
+  }, globalThis.fetch, {
+    forceReply: true,
+    replyMode: "post_comment_reply_shadow",
+    replyTargets: [comment?.nickname].filter(Boolean),
+    moduleContext: Array.isArray(moduleContext) ? moduleContext : [],
+    moduleEvents: Array.isArray(moduleEvents) ? moduleEvents : [],
+    messages: [],
+    onDelta: null
+  });
+  if (reply?.skipped) return { skipped: true, source: reply.source || "hoshiaclaw", error: reply.error || reply.route || "skipped", latency_ms: reply.latency_ms };
+  if (!reply?.text) return { failed: true, source: reply?.source || "gateway_error", error: reply?.error || "empty_or_error_reply", latency_ms: reply?.latency_ms };
+  return {
+    content: String(reply.text).slice(0, 500),
+    source: reply.source || "hoshiaclaw",
+    route: reply.route || "post_comment_reply_shadow",
+    latency_ms: reply.latency_ms
+  };
+}
 function formatPostCommentReplyPrompt({ post, comment, memoryPacket = [], visualState = null } = {}) {
   const state = visualState || {};
   return [
@@ -952,6 +1125,30 @@ function scheduleCommentReplyTick(delayMs = 60000) {
   hoshiaCommentReplyTimer.unref?.();
 }
 
+function commentReplyRolloutForInteraction(input = {}) {
+  if (!config.hoshiaAsyncCommentReplyEnabled) return { mode: "off", shouldSchedule: false, reason: "async_comment_reply_disabled" };
+  const mode = config.hoshiaCommentReplyRolloutMode || "live";
+  if (mode === "off") return { mode, shouldSchedule: false, reason: "rollout_off" };
+  const percent = Math.max(0, Math.min(100, Number(config.hoshiaCommentReplyGreyPercent ?? 100)));
+  if (percent <= 0) return { mode, shouldSchedule: false, reason: "grey_percent_zero" };
+  const seed = input?.id || `${input?.post_id || ""}:${input?.user_id || ""}:${input?.created_at || ""}`;
+  const bucket = stablePercentBucket(seed);
+  return {
+    mode,
+    shouldSchedule: bucket < percent,
+    reason: bucket < percent ? "scheduled" : "grey_percent_skip"
+  };
+}
+
+function stablePercentBucket(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 100;
+}
 function scheduleNextHoshiaVisualTick() {
   if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
   hoshiaVisualTickTimer = setTimeout(
@@ -2458,10 +2655,19 @@ function broadcastHoshiaState(state = hoshiaVisualStateService.publicState()) {
 }
 
 function broadcastHoshiaPresentation(presentation) {
+  const counts = collectPresentationObservabilityCounts(presentation, {
+    state: characterState,
+    source: presentation?.source || "system"
+  });
   currentHoshiaPresentation = normalizeHoshiaPresentation(presentation, {
     state: characterState,
     source: presentation?.source || "system"
   });
+  observabilityCounters.presentationEmitted += 1;
+  observabilityCounters.presentationSanitized += Number(counts.action_fallback_count || 0)
+    + Number(counts.duration_clamped_count || 0)
+    + Number(counts.fallback_png_rejected_count || 0)
+    + Number(counts.sensitive_field_rejected_count || 0);
   broadcast({
     type: "hoshia_presentation",
     room_id: config.roomId,
@@ -2638,25 +2844,113 @@ function appendTimelineCommentReplyCharacterEvent({ post, comment, reply, status
   });
 }
 
-function recordProactiveShadowMetric({ eventType = "", status = "", reason = "", source = "", latencyMs = undefined } = {}) {
-  if (!String(eventType || "").startsWith("hoshiaclaw.proactive_shadow.")) return null;
+function recordProactiveShadowMetric(metric = {}) {
+  if (!String(metric?.eventType || "").startsWith("hoshiaclaw.proactive_shadow.")) return null;
+  return recordShadowMetricEvent({ ...metric, route: "proactive_idle_shadow" });
+}
+
+function recordCommentReplyShadowMetric(metric = {}) {
+  if (!String(metric?.eventType || "").startsWith("hoshiaclaw.comment_reply_shadow.")) return null;
+  return recordShadowMetricEvent({ ...metric, route: "post_comment_reply_shadow" });
+}
+
+function recordShadowMetricEvent({ eventType = "", status = "", reason = "", source = "", route = "", commentId = "", postId = "" } = {}) {
+  if (!String(eventType || "").startsWith("hoshiaclaw.")) return null;
+  const safeStatus = ["success", "skip", "failed"].includes(String(status || "")) ? String(status) : statusFromShadowEvent(eventType);
+  const safeRoute = safeMetricIdentifier(route || routeFromShadowEvent(eventType), 80);
+  const safeSource = safeMetricIdentifier(source || "hoshiaclaw", 80) || "hoshiaclaw";
+  const safeReason = safeMetricReason(reason || safeStatus || "shadow_metric");
+  observabilityCounters.shadow[safeStatus] = Number(observabilityCounters.shadow[safeStatus] || 0) + 1;
   return appendCharacterEvent({
     event_type: eventType,
     actor_type: "system",
     source_kind: "hoshiaclaw",
-    source_id: "proactive_shadow",
-    public_hint: `HoshiaClaw proactive shadow ${status || "updated"}`,
-    private_hint: `HoshiaClaw proactive shadow ${status || "updated"}`,
-    reason: reason || status || "proactive_shadow",
+    source_id: safeRoute || "shadow",
+    public_hint: `HoshiaClaw ${safeRoute || "shadow"} ${safeStatus}`,
+    private_hint: `HoshiaClaw ${safeRoute || "shadow"} ${safeStatus}`,
+    reason: safeReason,
     data: {
-      status,
-      source_type: source || "hoshiaclaw",
-      route: "proactive_idle_shadow",
-      ...(latencyMs !== undefined ? { latency_ms: latencyMs } : {})
+      status: safeStatus,
+      source_type: safeSource,
+      route: safeRoute,
+      ...(postId ? { post_id: safeMetricIdentifier(postId, 80) } : {}),
+      ...(commentId ? { comment_id: safeMetricIdentifier(commentId, 80) } : {})
     }
   });
 }
 
+function statusFromShadowEvent(eventType = "") {
+  if (String(eventType).endsWith(".success")) return "success";
+  if (String(eventType).endsWith(".skip")) return "skip";
+  return "failed";
+}
+
+function routeFromShadowEvent(eventType = "") {
+  const text = String(eventType || "");
+  if (text.includes(".proactive_shadow.")) return "proactive_idle_shadow";
+  if (text.includes(".comment_reply_shadow.")) return "post_comment_reply_shadow";
+  if (text.includes(".daily_post_shadow.")) return "daily_post_shadow";
+  if (text.includes(".news_topic_generate_shadow.")) return "news_topic_generate_shadow";
+  return "shadow";
+}
+
+function shadowSession(session = null) {
+  return session || {
+    user_id: "room",
+    username: "room",
+    nickname: "Live room",
+    room_id: config.roomId
+  };
+}
+
+function safeMetricIdentifier(value, maxLength = 80) {
+  const text = String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, maxLength);
+  if (!text || hasSensitiveMetricMarker(text)) return "";
+  return text;
+}
+
+function safeMetricReason(value, fallback = "shadow_metric") {
+  const text = safeMetricIdentifier(value, 80);
+  return text || fallback;
+}
+
+function hasSensitiveMetricMarker(value) {
+  return /(?:token|secret|bearer|\.env|ssh|cloudflared|trycloudflare|https?:\/\/|localhost|127\.0\.0\.1|0\.0\.0\.0|[A-Za-z]:[\\/]|\/home\/|\/root\/|\/users\/|\/var\/|\/etc\/|internal|raw[_-]?(?:prompt|response)|candidate[_-]?text)/i.test(String(value || ""));
+}
+
+function safeRevision() {
+  return safeMetricIdentifier(process.env.REVISION || process.env.SOURCE_REVISION || "unknown", 40) || "unknown";
+}
+
+function safeRuntimeModes() {
+  return {
+    ai_mode: ["mock", "astrbot", "hoshiaclaw"].includes(config.aiMode) ? config.aiMode : "unknown",
+    character_state_authority: ["legacy", "event_log"].includes(config.characterStateAuthority) ? config.characterStateAuthority : "legacy",
+    comment_reply_rollout_mode: ["live", "shadow", "off"].includes(config.hoshiaCommentReplyRolloutMode) ? config.hoshiaCommentReplyRolloutMode : "live",
+    proactive_shadow_enabled: Boolean(config.hoshiaClawProactiveShadowEnabled),
+    daily_post_shadow_enabled: Boolean(config.hoshiaClawDailyPostShadowEnabled),
+    news_topic_shadow_enabled: Boolean(config.hoshiaClawNewsTopicGenerateShadowEnabled)
+  };
+}
+
+function buildRuntimeObservability() {
+  const snapshot = db.getLatestCharacterSnapshot?.({ roomId: config.roomId, characterId: "hoshia" });
+  const ageMs = snapshot?.generated_at ? Math.max(0, Date.now() - Date.parse(snapshot.generated_at)) : null;
+  return {
+    presentation_emitted: observabilityCounters.presentationEmitted,
+    presentation_sanitized: observabilityCounters.presentationSanitized,
+    module_memory_pending: typeof moduleEventStore.pendingMemorySize === "function" ? moduleEventStore.pendingMemorySize() : 0,
+    shadow_success: observabilityCounters.shadow.success,
+    shadow_skip: observabilityCounters.shadow.skip,
+    shadow_failed: observabilityCounters.shadow.failed,
+    character_snapshot_age_ms: Number.isFinite(ageMs) ? ageMs : null
+  };
+}
 function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {
   if (typeof body.text === "string") {
     return hoshiaVisualStateService.applyUserInteraction({

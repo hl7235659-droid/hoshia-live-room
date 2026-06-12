@@ -225,6 +225,226 @@ test("comment reply service passes LLM dependencies and reply mode", async () =>
   assert.equal(db.replies[0].content, "LLM reply");
 });
 
+test("comment reply service shadow mode records safe metric without writing reply side effects", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      user_id: "user_1",
+      nickname: "Alice",
+      type: "comment",
+      content: "can you see this comment?"
+    }]
+  });
+  const recordedMemories = [];
+  const moduleEvents = [];
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    lifeMemoryService: {
+      buildMemoryPacket() {
+        return ["memory packet"];
+      },
+      recordInteraction(input) {
+        recordedMemories.push(input);
+      }
+    },
+    moduleEventStore: {
+      append(event) {
+        moduleEvents.push(event);
+      }
+    },
+    aiReplyGenerator: async (input) => {
+      assert.equal(input.replyMode, "post_comment_reply_shadow");
+      assert.equal(input.shadowOnly, true);
+      return {
+        content: "candidate text must not be stored in metric",
+        source: "openai_compatible",
+        route: "comment_reply_shadow",
+        latency_ms: 42
+      };
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({
+    shadowOnly: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(result.shadowed, 1);
+  assert.equal(result.results[0].status, "shadowed");
+  assert.equal(result.results[0].shadow_status, "success");
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.repliedMarks.length, 0);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(db.skippedMarks.length, 0);
+  assert.equal(recordedMemories.length, 0);
+  assert.equal(moduleEvents.length, 0);
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.comment_reply_shadow.success",
+    status: "success",
+    reason: "comment_reply_shadow",
+    source: "openai_compatible",
+    replyMode: "post_comment_reply_shadow",
+    commentId: "comment_1",
+    postId: "post_1",
+    latencyMs: 42
+  }]);
+  const metricJson = JSON.stringify(metrics);
+  assert.equal(metricJson.includes("candidate text"), false);
+  assert.equal(/raw prompt|raw response|token|url|path/i.test(metricJson), false);
+});
+
+test("comment reply service uses caller-provided shadow generator only for shadow mode", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      content: "can you reply with the shadow generator?"
+    }]
+  });
+  let liveCalls = 0;
+  let shadowCalls = 0;
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: () => {
+      liveCalls += 1;
+      return "live reply";
+    },
+    shadowGenerator: (input) => {
+      shadowCalls += 1;
+      assert.equal(input.replyMode, "post_comment_reply_shadow");
+      assert.equal(input.shadowOnly, true);
+      return {
+        text: "shadow candidate text",
+        source: "hoshiaclaw",
+        route: "comment_reply_shadow"
+      };
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const shadowResult = await service.processDueReplies({
+    shadowOnly: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(shadowResult.shadowed, 1);
+  assert.equal(shadowResult.results[0].reply_source, "hoshiaclaw");
+  assert.equal(metrics[0].source, "hoshiaclaw");
+  assert.equal(liveCalls, 0);
+  assert.equal(shadowCalls, 1);
+  assert.equal(db.replies.length, 0);
+
+  const liveResult = await service.processDueReplies();
+
+  assert.equal(liveResult.replied, 1);
+  assert.equal(liveCalls, 1);
+  assert.equal(shadowCalls, 1);
+  assert.equal(db.replies[0].content, "live reply");
+});
+
+test("comment reply service shadow skip does not affect later live processing", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      content: "can you reply after shadow skip?"
+    }]
+  });
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: (input) => {
+      if (input.shadowOnly) {
+        return {
+          skipped: true,
+          source: "hoshiaclaw",
+          error: "judge_skip",
+          latency_ms: 7
+        };
+      }
+      return "live reply after skip";
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const shadowResult = await service.processDueReplies({
+    shadow: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+  const liveResult = await service.processDueReplies();
+
+  assert.equal(shadowResult.shadowed, 1);
+  assert.equal(shadowResult.results[0].shadow_status, "skip");
+  assert.equal(metrics[0].status, "skip");
+  assert.equal(metrics[0].reason, "judge_skip");
+  assert.equal(liveResult.replied, 1);
+  assert.equal(db.replies.length, 1);
+  assert.equal(db.replies[0].content, "live reply after skip");
+  assert.equal(db.failedMarks.length, 0);
+});
+
+test("comment reply service shadow failed metric is sanitized and leaves live flow intact", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      content: "can you reply after shadow failure?"
+    }]
+  });
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: (input) => {
+      if (input.shadowOnly) {
+        throw new Error("token leaked at http://internal.example/path");
+      }
+      return "live reply after failed shadow";
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const shadowResult = await service.processDueReplies({
+    shadowOnly: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+  const liveResult = await service.processDueReplies();
+
+  assert.equal(shadowResult.shadowed, 1);
+  assert.equal(shadowResult.results[0].shadow_status, "failed");
+  assert.equal(metrics[0].status, "failed");
+  assert.equal(metrics[0].reason, "shadow_failed");
+  assert.equal(/token|http|url|path/i.test(JSON.stringify(metrics)), false);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(liveResult.replied, 1);
+  assert.equal(db.replies[0].content, "live reply after failed shadow");
+});
+
 test("comment reply service falls back to template when LLM throws", async () => {
   const post = { id: "post_1", mood: "calm", activity: "idle" };
   const db = createFakeDb({
@@ -255,6 +475,46 @@ test("comment reply service falls back to template when LLM throws", async () =>
   assert.equal(db.replies.length, 1);
   assert.ok(db.replies[0].content);
   assert.equal(db.failedMarks.length, 0);
+});
+
+test("comment reply service keeps live replies flowing when context providers fail", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      nickname: "Alice",
+      content: "can you reply even if context fails?",
+      reply_status: "pending",
+      reply_due_at: "2026-06-10T12:00:00.000Z"
+    }]
+  });
+  const service = createHoshiaCommentReplyService({
+    db,
+    aiReplyGenerator: (input) => {
+      assert.equal(input.moduleContext, null);
+      assert.equal(input.moduleEvents, null);
+      return "live reply with provider fallback";
+    },
+    moduleContextProvider: () => {
+      throw new Error("context provider failed");
+    },
+    moduleEventsProvider: {
+      listRecentEvents() {
+        throw new Error("events provider failed");
+      }
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies();
+
+  assert.equal(result.replied, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(db.replies[0].content, "live reply with provider fallback");
 });
 
 test("comment reply service limits each tick to two replies", async () => {
