@@ -155,6 +155,42 @@ export function normalizeCommentReplyDelayConfig(minValue, maxValue) {
   return { minMinutes, maxMinutes };
 }
 
+export function commentReplyRolloutForInteraction(input = {}, {
+  asyncEnabled = true,
+  mode = "live",
+  greyPercent = 100
+} = {}) {
+  if (!asyncEnabled) {
+    return { mode: "off", shouldSchedule: false, reason: "async_comment_reply_disabled" };
+  }
+  const rolloutMode = ["live", "shadow", "off"].includes(mode) ? mode : "live";
+  if (rolloutMode === "off") {
+    return { mode: rolloutMode, shouldSchedule: false, reason: "rollout_off" };
+  }
+  const percent = clampNumber(greyPercent, 0, 100, 100);
+  if (percent <= 0) {
+    return { mode: rolloutMode, shouldSchedule: false, reason: "grey_percent_zero" };
+  }
+  const seed = input?.id || `${input?.post_id || ""}:${input?.user_id || ""}:${input?.created_at || ""}`;
+  const bucket = stablePercentBucket(seed);
+  return {
+    mode: rolloutMode,
+    shouldSchedule: bucket < percent,
+    reason: bucket < percent ? "scheduled" : "grey_percent_skip",
+    bucket
+  };
+}
+
+export function stablePercentBucket(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 100;
+}
+
 export function createHoshiaCommentReplyGeneratedEvent({ post, comment, reply, roomId = "" } = {}) {
   return sanitizeModuleEvent({
     room_id: roomId,

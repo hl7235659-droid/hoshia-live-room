@@ -85,13 +85,64 @@ export async function runDailyPostShadow({
   postInput = null,
   state = null,
   reason = "daily_post",
+  dailyPostEnabled = true,
+  dailyPostPlan = null,
+  dailyPostService = null,
+  planDailyPost = null,
+  planOptions = {},
   ...options
 } = {}) {
+  if (!dailyPostEnabled) {
+    const result = shadowResult(DAILY_POST_EVENT_PREFIX, "skip", {
+      reason: "daily_post_disabled",
+      source: "gateway"
+    });
+    recordShadowMetric(options.recordMetric, result, DAILY_POST_REPLY_MODE);
+    return result;
+  }
+  let safePostInput = postInput;
+  let safeState = state;
+  let skipReason = "daily_post_shadow_no_candidate";
+  if (!prompt) {
+    try {
+      const plan = resolveDailyPostShadowPlan({
+        postInput,
+        state,
+        dailyPostPlan,
+        dailyPostService,
+        planDailyPost,
+        planOptions
+      });
+      safePostInput = plan.postInput;
+      safeState = plan.state;
+      skipReason = plan.skipReason;
+    } catch (error) {
+      const result = shadowResult(DAILY_POST_EVENT_PREFIX, "failed", {
+        reason: cleanMetricReason(error?.message) || "shadow_failed",
+        source: "gateway"
+      });
+      options.logger?.warn?.("hoshiaclaw_daily_post_shadow_plan_failed", {
+        type: cleanIdentifier(error?.name || "Error", 48) || "Error",
+        message: cleanMetricReason(error?.message) || "shadow_failed",
+        reply_mode: DAILY_POST_REPLY_MODE
+      });
+      recordShadowMetric(options.recordMetric, result, DAILY_POST_REPLY_MODE);
+      return result;
+    }
+    if (!hasDailyPostShadowCandidate(safePostInput)) {
+      const result = shadowResult(DAILY_POST_EVENT_PREFIX, "skip", {
+        reason: skipReason,
+        source: "gateway"
+      });
+      recordShadowMetric(options.recordMetric, result, DAILY_POST_REPLY_MODE);
+      return result;
+    }
+  }
   return runHoshiaClawShadow({
     ...options,
     eventPrefix: DAILY_POST_EVENT_PREFIX,
     replyMode: DAILY_POST_REPLY_MODE,
-    prompt: prompt || buildDailyPostShadowPrompt({ postInput, state, reason }),
+    prompt: prompt || buildDailyPostShadowPrompt({ postInput: safePostInput, state: safeState, reason }),
     requirePrompt: true
   });
 }
@@ -103,6 +154,14 @@ export async function runNewsTopicGenerateShadow({
   reason = "news_topic_generate",
   ...options
 } = {}) {
+  if (!hasNewsTopicShadowCandidate(topic)) {
+    const result = shadowResult(NEWS_TOPIC_EVENT_PREFIX, "skip", {
+      reason: hasNewsTopicInput(topic) ? "news_topic_shadow_unsafe_topic" : "news_topic_shadow_no_topic",
+      source: "gateway"
+    });
+    recordShadowMetric(options.recordMetric, result, NEWS_TOPIC_REPLY_MODE);
+    return result;
+  }
   return runHoshiaClawShadow({
     ...options,
     eventPrefix: NEWS_TOPIC_EVENT_PREFIX,
@@ -202,6 +261,34 @@ function recordShadowMetric(recordMetric, result, replyMode) {
   });
 }
 
+function resolveDailyPostShadowPlan({
+  postInput = null,
+  state = null,
+  dailyPostPlan = null,
+  dailyPostService = null,
+  planDailyPost = null,
+  planOptions = {}
+} = {}) {
+  if (postInput && typeof postInput === "object") {
+    return {
+      postInput,
+      state,
+      skipReason: "daily_post_shadow_no_candidate"
+    };
+  }
+
+  const providedPlan = dailyPostPlan && typeof dailyPostPlan === "object" ? dailyPostPlan : null;
+  const planner = typeof planDailyPost === "function"
+    ? planDailyPost
+    : (typeof dailyPostService?.planDailyPost === "function" ? dailyPostService.planDailyPost.bind(dailyPostService) : null);
+  const plan = providedPlan || (planner ? planner(safeObject(planOptions)) : null);
+  return {
+    postInput: plan?.postInput && typeof plan.postInput === "object" ? plan.postInput : null,
+    state: plan?.state && typeof plan.state === "object" ? plan.state : state,
+    skipReason: cleanMetricReason(plan?.reason) || "daily_post_shadow_no_candidate"
+  };
+}
+
 function shadowRoomSession(session = {}, config = {}) {
   return {
     user_id: "room",
@@ -228,6 +315,36 @@ function sanitizeTopicForPrompt(topic) {
     meme_hooks: cleanPromptList(topic.meme_hooks || topic.memeHooks, 4, 90),
     reply_hooks: cleanPromptList(topic.reply_hooks || topic.replyHooks, 4, 90)
   };
+}
+
+function hasDailyPostShadowCandidate(postInput) {
+  if (!postInput || typeof postInput !== "object") return false;
+  return Boolean(cleanPromptLine(postInput.content, 900));
+}
+
+function hasNewsTopicShadowCandidate(topic) {
+  return Boolean(sanitizeTopicForPrompt(topic));
+}
+
+function hasNewsTopicInput(topic) {
+  if (!topic || typeof topic !== "object") return false;
+  const values = [
+    topic.title,
+    topic.headline,
+    topic.what_happened,
+    topic.summary,
+    topic.conversation_starter,
+    topic.starter,
+    topic.post_seed,
+    topic.postSeed,
+    topic.reaction_style,
+    topic.reactionStyle,
+    ...(Array.isArray(topic.meme_hooks) ? topic.meme_hooks : []),
+    ...(Array.isArray(topic.memeHooks) ? topic.memeHooks : []),
+    ...(Array.isArray(topic.reply_hooks) ? topic.reply_hooks : []),
+    ...(Array.isArray(topic.replyHooks) ? topic.replyHooks : [])
+  ];
+  return values.some((value) => String(value || "").trim());
 }
 
 function cleanPrompt(value) {
@@ -263,13 +380,16 @@ function cleanEventPrefix(value) {
 
 function cleanMetricReason(value) {
   const raw = String(value || "").trim();
+  if (forbiddenPattern().test(raw)) return "";
   if (!/^[a-zA-Z0-9_.:-]{1,80}$/.test(raw)) return "";
   const text = cleanIdentifier(raw, 80);
   return /[a-z0-9]/i.test(text) ? text : "";
 }
 
 function cleanMetricSource(value) {
-  return cleanIdentifier(value, 80);
+  const raw = String(value || "").trim();
+  if (forbiddenPattern().test(raw)) return "";
+  return cleanIdentifier(raw, 80);
 }
 
 function cleanIdentifier(value, maxLength) {
@@ -292,6 +412,10 @@ function safeNumber(value) {
   return Number.isFinite(number) && number >= 0 ? Math.round(number) : undefined;
 }
 
+function safeObject(value) {
+  return value && typeof value === "object" ? value : {};
+}
+
 function forbiddenPattern() {
-  return /(?:token|secret|bearer|\.env|ssh|cloudflared|trycloudflare|https?:\/\/|localhost|127\.0\.0\.1|0\.0\.0\.0|(?:\b\d{1,3}(?:\.\d{1,3}){3}\b)|[A-Za-z]:[\\/]|\/home\/|\/root\/|\/users\/|\/var\/|\/etc\/|internal)/i;
+  return /(?:token|secret|bearer|\.env|ssh|cloudflared|trycloudflare|https?:\/\/|localhost|127\.0\.0\.1|0\.0\.0\.0|(?:\b\d{1,3}(?:\.\d{1,3}){3}\b)|\b[A-Za-z]:(?:[\\/]|_)|\/home\/|\/root\/|\/users\/|\/var\/|\/etc\/|\/tmp\/|internal)/i;
 }

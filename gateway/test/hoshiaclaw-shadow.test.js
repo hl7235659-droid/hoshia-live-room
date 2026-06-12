@@ -106,11 +106,175 @@ test("daily post shadow is pure and never ticks or creates posts", async () => {
   assert.equal(JSON.stringify(metrics).includes("planned post content"), false);
 });
 
+test("daily post shadow skips without a safe post candidate", async () => {
+  const metrics = [];
+  let called = false;
+
+  const result = await runDailyPostShadow({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    postInput: null,
+    async generateAiReply() {
+      called = true;
+      return { text: "should not be called" };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.eventType, "hoshiaclaw.daily_post_shadow.skip");
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "daily_post_shadow_no_candidate");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.daily_post_shadow.skip",
+    status: "skip",
+    reason: "daily_post_shadow_no_candidate",
+    source: "gateway"
+  }]);
+});
+
+test("daily post shadow records skip when daily posting is disabled", async () => {
+  const metrics = [];
+  let called = false;
+
+  const result = await runDailyPostShadow({
+    enabled: true,
+    dailyPostEnabled: false,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    postInput: {
+      content: "disabled candidate body must not reach provider"
+    },
+    async generateAiReply() {
+      called = true;
+      return { text: "should not be called" };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.eventType, "hoshiaclaw.daily_post_shadow.skip");
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "daily_post_disabled");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.daily_post_shadow.skip",
+    status: "skip",
+    reason: "daily_post_disabled",
+    source: "gateway"
+  }]);
+  assert.equal(JSON.stringify({ result, metrics }).includes("disabled candidate body"), false);
+});
+
+test("daily post shadow plans a safe candidate without ticking or creating posts", async () => {
+  const metrics = [];
+  const calls = [];
+  const forbiddenService = {
+    planDailyPost(options) {
+      calls.push(options);
+      return {
+        postInput: {
+          content: "planned safe candidate must only appear in prompt",
+          source_type: "daily_state",
+          activity: "thinking",
+          mood: "focused"
+        },
+        state: {
+          activity: "thinking",
+          mood: "focused"
+        }
+      };
+    },
+    tick() {
+      throw new Error("tick should not be called");
+    },
+    db: {
+      createHoshiaPost() {
+        throw new Error("createHoshiaPost should not be called");
+      }
+    }
+  };
+
+  const result = await runDailyPostShadow({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    dailyPostService: forbiddenService,
+    planOptions: {
+      sourceType: "daily_state",
+      sequence: 1
+    },
+    async generateAiReply(_session, prompt, _options, _fetchImpl, metadata) {
+      assert.equal(prompt.includes("planned safe candidate"), true);
+      assert.equal(metadata.replyMode, "daily_post_shadow");
+      return {
+        text: "provider candidate body must not be stored",
+        source: "hoshiaclaw",
+        route: "daily_post_shadow",
+        latency_ms: 15
+      };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.deepEqual(calls, [{ sourceType: "daily_state", sequence: 1 }]);
+  assert.equal(result.eventType, "hoshiaclaw.daily_post_shadow.success");
+  assert.equal(result.status, "success");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.daily_post_shadow.success",
+    status: "success",
+    reason: "daily_post_shadow",
+    source: "hoshiaclaw",
+    latencyMs: 15
+  }]);
+  assert.equal(JSON.stringify({ result, metrics }).includes("planned safe candidate"), false);
+  assert.equal(JSON.stringify({ result, metrics }).includes("provider candidate body"), false);
+});
+
+test("daily post shadow records plan skips without calling provider", async () => {
+  const metrics = [];
+  let called = false;
+
+  const result = await runDailyPostShadow({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    dailyPostPlan: {
+      ok: false,
+      postInput: null,
+      reason: "daily_max_reached"
+    },
+    async generateAiReply() {
+      called = true;
+      return { text: "should not be called" };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.eventType, "hoshiaclaw.daily_post_shadow.skip");
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "daily_max_reached");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.daily_post_shadow.skip",
+    status: "skip",
+    reason: "daily_max_reached",
+    source: "gateway"
+  }]);
+});
+
 test("news topic generate shadow only reads the provided topic", async () => {
   const metrics = [];
   const forbiddenNewsService = {
     async refresh() {
       throw new Error("refresh should not be called");
+    },
+    async fetch() {
+      throw new Error("fetch should not be called");
     },
     async topics() {
       throw new Error("topics should not be called");
@@ -152,6 +316,84 @@ test("news topic generate shadow only reads the provided topic", async () => {
   assert.equal(JSON.stringify(metrics).includes("provided topic seed"), false);
 });
 
+test("news topic generate shadow skips without a topic", async () => {
+  const metrics = [];
+  let called = false;
+  const forbiddenNewsService = {
+    async refresh() {
+      throw new Error("refresh should not be called");
+    },
+    async fetch() {
+      throw new Error("fetch should not be called");
+    },
+    async listTopics() {
+      throw new Error("listTopics should not be called");
+    }
+  };
+
+  const result = await runNewsTopicGenerateShadow({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    newsService: forbiddenNewsService,
+    topic: null,
+    prompt: "prompt override should not run without a topic",
+    async generateAiReply() {
+      called = true;
+      return { text: "should not be called" };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.eventType, "hoshiaclaw.news_topic_generate_shadow.skip");
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "news_topic_shadow_no_topic");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.news_topic_generate_shadow.skip",
+    status: "skip",
+    reason: "news_topic_shadow_no_topic",
+    source: "gateway"
+  }]);
+});
+
+test("news topic generate shadow skips without a safe topic", async () => {
+  const metrics = [];
+  let called = false;
+
+  const result = await runNewsTopicGenerateShadow({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    prompt: "prompt override should not run with an unsafe topic",
+    topic: {
+      title: "http://127.0.0.1/.env",
+      post_seed: "token=secret"
+    },
+    async generateAiReply() {
+      called = true;
+      return { text: "should not be called" };
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.eventType, "hoshiaclaw.news_topic_generate_shadow.skip");
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "news_topic_shadow_unsafe_topic");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.news_topic_generate_shadow.skip",
+    status: "skip",
+    reason: "news_topic_shadow_unsafe_topic",
+    source: "gateway"
+  }]);
+  assert.equal(JSON.stringify({ result, metrics }).includes("prompt override"), false);
+  assert.equal(JSON.stringify({ result, metrics }).includes("token=secret"), false);
+  assert.equal(JSON.stringify({ result, metrics }).includes("127.0.0.1"), false);
+});
+
 test("shadow metrics reject raw response text, token, url, and path-shaped reasons", () => {
   const rawResponse = classifyHoshiaClawShadowReply({
     text: "candidate text",
@@ -177,6 +419,19 @@ test("shadow metrics reject raw response text, token, url, and path-shaped reaso
   assert.equal(JSON.stringify(unsafeSkip).includes("token"), false);
   assert.equal(JSON.stringify(unsafeSkip).includes("127.0.0.1"), false);
   assert.equal(JSON.stringify(unsafeSkip).includes("C:"), false);
+
+  const unsafeSource = classifyHoshiaClawShadowReply({
+    text: "candidate text",
+    source: "C:\\secret\\provider",
+    route: "news_topic_generate_shadow",
+    latency_ms: 2
+  }, {
+    eventPrefix: "hoshiaclaw.news_topic_generate_shadow",
+    fallbackReason: "news_topic_generate_shadow"
+  });
+  assert.equal(unsafeSource.eventType, "hoshiaclaw.news_topic_generate_shadow.success");
+  assert.equal(unsafeSource.source, "hoshiaclaw");
+  assert.equal(JSON.stringify(unsafeSource).includes("C:"), false);
 });
 
 test("shadow prompt builders sanitize topic and post prompt inputs", () => {

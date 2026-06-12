@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  commentReplyRolloutForInteraction,
   createHoshiaCommentReplyGeneratedEvent,
   createHoshiaCommentReplyService,
   defaultCommentReplyGenerator,
-  normalizeCommentReplyDelayConfig
+  normalizeCommentReplyDelayConfig,
+  stablePercentBucket
 } from "../src/hoshia-comment-reply.js";
 
 test("comment reply service schedules comment replies within delay bounds", () => {
@@ -56,6 +58,65 @@ test("comment reply service keeps compatibility pendingFields helper", () => {
   assert.deepEqual(normalizeCommentReplyDelayConfig(20, 3), {
     minMinutes: 3,
     maxMinutes: 20
+  });
+});
+
+test("comment reply rollout schedules shadow pending comments at 100 percent", () => {
+  const input = {
+    id: "comment_shadow",
+    post_id: "post_1",
+    user_id: "user_1",
+    created_at: "2026-06-10T12:00:00.000Z"
+  };
+
+  assert.deepEqual(commentReplyRolloutForInteraction(input, {
+    asyncEnabled: true,
+    mode: "shadow",
+    greyPercent: 100
+  }), {
+    mode: "shadow",
+    shouldSchedule: true,
+    reason: "scheduled",
+    bucket: 23
+  });
+  assert.deepEqual(commentReplyRolloutForInteraction(input, {
+    asyncEnabled: true,
+    mode: "shadow",
+    greyPercent: 0
+  }), {
+    mode: "shadow",
+    shouldSchedule: false,
+    reason: "grey_percent_zero"
+  });
+});
+
+test("comment reply rollout uses deterministic grey percent buckets", () => {
+  const input = {
+    post_id: "post_1",
+    user_id: "user_1",
+    created_at: "2026-06-10T12:00:00.000Z"
+  };
+
+  assert.equal(stablePercentBucket("comment_1"), 30);
+  assert.equal(stablePercentBucket("comment_1"), 30);
+  assert.equal(stablePercentBucket("post_1:user_1:2026-06-10T12:00:00.000Z"), 40);
+  assert.deepEqual(commentReplyRolloutForInteraction(input, {
+    mode: "live",
+    greyPercent: 40
+  }), {
+    mode: "live",
+    shouldSchedule: false,
+    reason: "grey_percent_skip",
+    bucket: 40
+  });
+  assert.deepEqual(commentReplyRolloutForInteraction(input, {
+    mode: "live",
+    greyPercent: 41
+  }), {
+    mode: "live",
+    shouldSchedule: true,
+    reason: "scheduled",
+    bucket: 40
   });
 });
 
@@ -303,6 +364,121 @@ test("comment reply service shadow mode records safe metric without writing repl
   assert.equal(/raw prompt|raw response|token|url|path/i.test(metricJson), false);
 });
 
+test("comment reply service shadow consumes pending comment without reply memory or module event writes", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      user_id: "user_1",
+      nickname: "Alice",
+      type: "comment",
+      content: "can you answer this shadow pending comment?",
+      reply_status: "pending",
+      reply_due_at: "2026-06-10T12:00:00.000Z"
+    }]
+  });
+  const recordedMemories = [];
+  const moduleEvents = [];
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    lifeMemoryService: {
+      buildMemoryPacket() {
+        return ["memory packet"];
+      },
+      recordInteraction(input) {
+        recordedMemories.push(input);
+      }
+    },
+    moduleEventStore: {
+      append(event) {
+        moduleEvents.push(event);
+      }
+    },
+    shadowGenerator: (input) => {
+      assert.equal(input.replyMode, "post_comment_reply_shadow");
+      assert.equal(input.shadowOnly, true);
+      return {
+        text: "shadow reply candidate",
+        source: "hoshiaclaw",
+        route: "post_comment_reply_shadow"
+      };
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({
+    shadowOnly: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.shadowed, 1);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(result.results[0].status, "shadowed");
+  assert.equal(result.results[0].shadow_status, "success");
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.repliedMarks.length, 0);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(db.skippedMarks.length, 0);
+  assert.equal(recordedMemories.length, 0);
+  assert.equal(moduleEvents.length, 0);
+  assert.equal(metrics.length, 1);
+  assert.equal(metrics[0].eventType, "hoshiaclaw.comment_reply_shadow.success");
+});
+
+test("comment reply service shadow low priority skip is not a provider failure", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    dueComments: [{
+      id: "comment_low",
+      post_id: "post_1",
+      user_id: "user_1",
+      nickname: "Alice",
+      type: "comment",
+      content: "hello",
+      reply_status: "pending",
+      reply_due_at: "2026-06-10T12:00:00.000Z"
+    }]
+  });
+  const metrics = [];
+  let shadowCalls = 0;
+  const service = createHoshiaCommentReplyService({
+    db,
+    shadowGenerator: () => {
+      shadowCalls += 1;
+      throw new Error("provider should not be called for low priority comments");
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({
+    shadowOnly: true,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.shadowed, 0);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.results[0].status, "skipped");
+  assert.equal(result.results[0].reason, "low_priority");
+  assert.equal(shadowCalls, 0);
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(db.skippedMarks.length, 0);
+  assert.deepEqual(metrics, []);
+});
+
 test("comment reply service uses caller-provided shadow generator only for shadow mode", async () => {
   const post = { id: "post_1", mood: "calm", activity: "idle" };
   const db = createFakeDb({
@@ -443,6 +619,51 @@ test("comment reply service shadow failed metric is sanitized and leaves live fl
   assert.equal(db.failedMarks.length, 0);
   assert.equal(liveResult.replied, 1);
   assert.equal(db.replies[0].content, "live reply after failed shadow");
+});
+
+test("comment reply service shadow low-priority skip does not call provider or mark db skipped", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "gaming" };
+  const db = createFakeDb({
+    post,
+    dueComments: [
+      { id: "comment_1", post_id: "post_1", type: "comment", content: "can you reply 1?" },
+      { id: "comment_2", post_id: "post_1", type: "comment", content: "can you reply 2?" },
+      { id: "comment_3", post_id: "post_1", type: "comment", content: "ordinary note" }
+    ]
+  });
+  let providerCalls = 0;
+  const metrics = [];
+  const service = createHoshiaCommentReplyService({
+    db,
+    maxRepliesPerTick: 2,
+    aiReplyGenerator: ({ comment, shadowOnly }) => {
+      providerCalls += 1;
+      assert.equal(shadowOnly, true);
+      return {
+        text: `shadow ${comment.id}`,
+        source: "hoshiaclaw",
+        route: "comment_reply_shadow"
+      };
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({
+    shadowOnly: true,
+    limit: 10,
+    recordMetric(metric) {
+      metrics.push(metric);
+    }
+  });
+
+  assert.equal(result.scanned, 3);
+  assert.equal(result.shadowed, 2);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.results[2].reason, "low_priority");
+  assert.equal(providerCalls, 2);
+  assert.equal(metrics.length, 2);
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.skippedMarks.length, 0);
 });
 
 test("comment reply service falls back to template when LLM throws", async () => {

@@ -49,7 +49,10 @@ import {
   publicPost
 } from "./hoshia-life-memory.js";
 import { createHoshiaNewsService } from "./hoshia-news-service.js";
-import { createHoshiaCommentReplyService } from "./hoshia-comment-reply.js";
+import {
+  commentReplyRolloutForInteraction,
+  createHoshiaCommentReplyService
+} from "./hoshia-comment-reply.js";
 import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
 import { createHoshiaInterestKnowledgeService } from "./interest-knowledge.js";
@@ -497,7 +500,11 @@ app.post("/api/hoshia/posts/:id/comment", requireSession, async (req, res) => {
   if (!post) return res.status(404).json({ error: "post_not_found" });
   const input = normalizeCommentInput(req.body, req.session, new Date());
   if (!input) return res.status(400).json({ error: "comment_invalid" });
-  const commentRollout = commentReplyRolloutForInteraction(input);
+  const commentRollout = commentReplyRolloutForInteraction(input, {
+    asyncEnabled: config.hoshiaAsyncCommentReplyEnabled,
+    mode: config.hoshiaCommentReplyRolloutMode,
+    greyPercent: config.hoshiaCommentReplyGreyPercent
+  });
   const replyFields = commentRollout.shouldSchedule
     ? hoshiaCommentReplyService.pendingFields({
       minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
@@ -864,6 +871,7 @@ async function runDailyPostShadowCheck({ session = null, diaryEvent = null, news
       postInput: plan.postInput,
       state: state || hoshiaVisualStateService.publicState(),
       reason: source,
+      dailyPostEnabled: Boolean(force || config.hoshiaDailyPostEnabled),
       config,
       generateAiReply,
       fetchImpl: globalThis.fetch,
@@ -1126,30 +1134,6 @@ function scheduleCommentReplyTick(delayMs = 60000) {
   hoshiaCommentReplyTimer.unref?.();
 }
 
-function commentReplyRolloutForInteraction(input = {}) {
-  if (!config.hoshiaAsyncCommentReplyEnabled) return { mode: "off", shouldSchedule: false, reason: "async_comment_reply_disabled" };
-  const mode = config.hoshiaCommentReplyRolloutMode || "live";
-  if (mode === "off") return { mode, shouldSchedule: false, reason: "rollout_off" };
-  const percent = Math.max(0, Math.min(100, Number(config.hoshiaCommentReplyGreyPercent ?? 100)));
-  if (percent <= 0) return { mode, shouldSchedule: false, reason: "grey_percent_zero" };
-  const seed = input?.id || `${input?.post_id || ""}:${input?.user_id || ""}:${input?.created_at || ""}`;
-  const bucket = stablePercentBucket(seed);
-  return {
-    mode,
-    shouldSchedule: bucket < percent,
-    reason: bucket < percent ? "scheduled" : "grey_percent_skip"
-  };
-}
-
-function stablePercentBucket(value) {
-  const text = String(value || "");
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) % 100;
-}
 function scheduleNextHoshiaVisualTick() {
   if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
   hoshiaVisualTickTimer = setTimeout(
