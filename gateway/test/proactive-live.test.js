@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildProactiveLiveMetadata,
+  buildProactiveLivePrompt,
   classifyProactiveLiveReply,
   runHoshiaClawProactiveLive
 } from "../src/proactive-live.js";
@@ -91,6 +93,114 @@ test("proactive live records skip and failed without fallback text", async () =>
   assert.equal(failed.reason, "proactive_live_failed");
 });
 
+test("proactive live compact prompt and metadata strip unsafe context", () => {
+  const prompt = buildProactiveLivePrompt({
+    idleMs: 120000,
+    onlineCount: 2,
+    unansweredCount: 1,
+    topicHooks: [
+      "Music: current track is safe",
+      "raw prompt http://internal should be removed",
+      "Daily diary: training finished",
+      "localhost debug note should be removed"
+    ],
+    recentMessages: [
+      { role: "user", text: "hello from public chat" },
+      { role: "user", text: "token secret should not pass" },
+      { role: "ai", text: "safe previous line" }
+    ],
+    characterSnapshotContext: {
+      public: {
+        expression: {
+          mood: "curious",
+          activity: "idle",
+          energy: 72
+        },
+        today: {
+          active_event_title: "training recap",
+          theme: "/home/secret should not pass"
+        },
+        relationship: {
+          stage: "familiar"
+        },
+        recent: {
+          interaction_source: "danmaku"
+        },
+        stage: {
+          presentation_suggestion: { mood: "curious", activity: "idle" }
+        }
+      },
+      private: { note: "do not expose" },
+      internal: { path: "C:\\secret" }
+    }
+  });
+
+  assert.equal(prompt.includes("Music: current track is safe"), true);
+  assert.equal(prompt.includes("Daily diary: training finished"), true);
+  assert.equal(prompt.includes("hello from public chat"), true);
+  assert.equal(prompt.includes("safe previous line"), true);
+  assert.equal(prompt.includes("Mood: curious"), true);
+  assert.equal(prompt.includes("Relationship: familiar"), true);
+  assert.equal(prompt.includes("Recent source: danmaku"), true);
+  assert.equal(prompt.includes("Today: training recap"), true);
+  assert.equal(prompt.includes("http://internal"), false);
+  assert.equal(prompt.includes("localhost debug note"), false);
+  assert.equal(prompt.includes("token secret should not pass"), false);
+  assert.equal(prompt.includes("/home/secret"), false);
+  assert.equal(prompt.includes("do not expose"), false);
+  assert.equal(prompt.includes("C:\\secret"), false);
+
+  const metadata = buildProactiveLiveMetadata({
+    latencyTraceId: "trace-1",
+    characterSnapshotContext: {
+      public: {
+        expression: {
+          mood: "curious",
+          activity: "idle"
+        },
+        today: {
+          active_event_title: "training recap"
+        },
+        relationship: {
+          stage: "familiar"
+        },
+        recent: {
+          interaction_source: "danmaku"
+        },
+        stage: {
+          presentation_suggestion: { mood: "curious", activity: "idle" }
+        },
+        presentation: { action: "wave", reason: "raw_prompt" }
+      },
+      private: { token: "hidden" },
+      internal: { path: "/home/app" }
+    }
+  });
+
+  assert.deepEqual(metadata, {
+    roomSession: true,
+    forceReply: true,
+    replyMode: "proactive_idle_live",
+    onDelta: null,
+    latencyTraceId: "trace-1",
+    characterSnapshotContext: {
+      mood: "curious",
+      activity: "idle",
+      relationship_stage: "familiar",
+      daily_canon: "training recap",
+      recent_interaction_source: "danmaku",
+      presentation: {
+        action: "wave"
+      }
+    }
+  });
+  assert.equal("messages" in metadata, false);
+  assert.equal("moduleContext" in metadata, false);
+  assert.equal("moduleEvents" in metadata, false);
+  assert.equal("recentContext" in metadata, false);
+  assert.equal("contextSummary" in metadata, false);
+});
+
 test("proactive live classifier only accepts openai compatible text", () => {
   const unsupported = classifyProactiveLiveReply({
     text: "mock text",
@@ -99,4 +209,12 @@ test("proactive live classifier only accepts openai compatible text", () => {
   });
   assert.equal(unsupported.status, "failed");
   assert.equal(unsupported.reason, "unsupported_source");
+
+  const gatewayError = classifyProactiveLiveReply({
+    text: "bridge unavailable",
+    source: "gateway_error",
+    route: "proactive_idle_live"
+  });
+  assert.equal(gatewayError.status, "failed");
+  assert.equal(gatewayError.reason, "gateway_error");
 });

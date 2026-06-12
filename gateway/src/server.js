@@ -68,7 +68,11 @@ import {
   shouldRunProactiveReply
 } from "./proactive-reply.js";
 import { runHoshiaClawProactiveShadow } from "./proactive-shadow.js";
-import { runHoshiaClawProactiveLive } from "./proactive-live.js";
+import {
+  buildProactiveLiveMetadata,
+  buildProactiveLivePrompt,
+  runHoshiaClawProactiveLive
+} from "./proactive-live.js";
 import {
   runDailyPostShadow,
   runNewsTopicGenerateShadow
@@ -1917,11 +1921,22 @@ async function sendHoshiaClawProactiveLiveReply(idleMs, liveDecision = {}) {
       moduleContext,
       moduleEvents,
       recentMessages,
-      characterSnapshotContext,
-      prompt
+      characterSnapshotContext
     } = await buildProactiveReplyContext({ session, idleMs });
 
     const latencyTraceId = nanoid(10);
+    const prompt = buildProactiveLivePrompt({
+      idleMs,
+      onlineCount: roomInfo().online,
+      unansweredCount: proactiveReplyState.unansweredCount,
+      topicHooks: proactiveTopicHooks({ moduleContext, moduleEvents, recentMessages }),
+      recentMessages,
+      characterSnapshotContext
+    });
+    const liveMetadata = buildProactiveLiveMetadata({
+      latencyTraceId,
+      characterSnapshotContext
+    });
     const reply = await runHoshiaClawProactiveLive({
       enabled: true,
       session,
@@ -1931,16 +1946,8 @@ async function sendHoshiaClawProactiveLiveReply(idleMs, liveDecision = {}) {
       generateAiReply,
       fetchImpl: globalThis.fetch,
       metadata: {
-        roomSession: true,
-        forceReply: true,
-        replyMode: "proactive_idle_live",
-        recentContext: shortTermContext.recentContext,
-        contextSummary: shortTermContext.contextSummary,
-        characterSnapshotContext,
-        moduleContext,
-        moduleEvents,
-        messages: recentMessages,
-        latencyTraceId
+        ...liveMetadata,
+        proactiveContextReady: Boolean(shortTermContext)
       },
       logger: console
     });
