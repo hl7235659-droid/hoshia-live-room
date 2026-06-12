@@ -21,6 +21,32 @@ test("fast-lane module context keeps only safe compact modules", () => {
   ]);
 });
 
+test("fast-lane module context keeps music for Chinese music mentions", () => {
+  const modules = [
+    { module_id: "hoshia_visual_state", enabled: true, current_state: ["idle"] },
+    { module_id: "music", enabled: true, current_state: ["queue 2"] },
+    { module_id: "hoshia_news", enabled: true, current_state: ["topic"] }
+  ];
+  const result = moduleContextForRoute(modules, { fastLane: true }, [{ text: "Hoshia 帮我看一下播放队列" }]);
+
+  assert.deepEqual(result, [
+    { module_id: "hoshia_visual_state", enabled: true, current_state: ["idle"], capabilities: [], limits: [] },
+    { module_id: "music", enabled: true, current_state: ["queue 2"], capabilities: [], limits: [] }
+  ]);
+});
+
+test("fast-lane module context omits music for non-music Chinese messages", () => {
+  const modules = [
+    { module_id: "hoshia_visual_state", enabled: true, current_state: ["idle"] },
+    { module_id: "music", enabled: true, current_state: ["queue 2"] }
+  ];
+  const result = moduleContextForRoute(modules, { fastLane: true }, [{ text: "Hoshia 今天精神怎么样" }]);
+
+  assert.deepEqual(result, [
+    { module_id: "hoshia_visual_state", enabled: true, current_state: ["idle"], capabilities: [], limits: [] }
+  ]);
+});
+
 test("fast-lane module events keep only short summary hints", () => {
   const result = moduleEventsForRoute([
     { summary_hint: "first" },

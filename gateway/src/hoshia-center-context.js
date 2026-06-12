@@ -118,5 +118,5 @@ export function moduleEventsForRoute(moduleEvents = [], contextPolicy = {}) {
 }
 
 function batchMentionsMusic(batch = []) {
-  return (Array.isArray(batch) ? batch : []).some((item) => /(闊充箰|姝寍姝屾洸|鐐规瓕|鎾斁|鏆傚仠|涓嬩竴棣東涓婁竴棣東闃熷垪|music|song|playlist|play|pause|queue)/i.test(String(item?.text || "")));
+  return (Array.isArray(batch) ? batch : []).some((item) => /(音乐|歌曲|点歌|播放|暂停|下一首|上一首|队列|music|song|playlist|play|pause|queue)/i.test(String(item?.text || "")));
 }
