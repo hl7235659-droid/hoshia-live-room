@@ -767,7 +767,7 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
   const newsState = selectedNewsTopic
     ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
     : null;
-  void runDailyPostShadowCheck({ session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source });
+  void runDailyPostShadowCheck({ force, session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source });
   void runNewsTopicGenerateShadowCheck({ session, topic: selectedNewsTopic, state: newsState, source });
   let result = hoshiaDailyPostService.tick({
     force,
@@ -839,8 +839,17 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
   return result;
 }
 
-async function runDailyPostShadowCheck({ session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
+async function runDailyPostShadowCheck({ force = false, session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
   if (!config.hoshiaClawDailyPostShadowEnabled) return null;
+  if (!force && !config.hoshiaDailyPostEnabled) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.daily_post_shadow.skip",
+      status: "skip",
+      reason: "daily_post_disabled",
+      source: "gateway",
+      route: "daily_post_shadow"
+    });
+  }
   try {
     const plan = hoshiaDailyPostService.planDailyPost({
       now: new Date(),
@@ -2925,7 +2934,7 @@ function hasSensitiveMetricMarker(value) {
 }
 
 function safeRevision() {
-  return safeMetricIdentifier(process.env.REVISION || process.env.SOURCE_REVISION || readRevisionFile() || "unknown", 40) || "unknown";
+  return safeMetricIdentifier(process.env.SOURCE_REVISION || process.env.REVISION || readRevisionFile() || "unknown", 40) || "unknown";
 }
 
 let cachedRevisionFileValue = null;
