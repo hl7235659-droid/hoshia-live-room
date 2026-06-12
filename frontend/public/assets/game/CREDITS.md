@@ -52,7 +52,7 @@
 - Source type: AI-generated project asset / procedural pixel drawing / project-specific adaptation
 - Author: Hoshia Live Room project
 - License: Project-owned asset
-- Notes: Hoshia 角色遵循本项目已有角色设定：白发猫耳、蓝白偶像服、紫眼、耳麦、钥匙/肉球元素。新增 `actors-ai` 提供 Hoshia 正式局内动作，`combat-ai` 提供 20 个武器/起手武器的独立战斗特效，`biomes-ai` 提供 6 个场景氛围循环帧。武器和特效围绕电波、赛博、直播间舞台和像素割草玩法统一整理。
+- Notes: Hoshia 角色遵循本项目已有角色设定：白发猫耳、蓝白偶像服、紫眼、耳麦、钥匙/肉球元素。新增 `actors-ai` 提供 Hoshia 正式局内动作，并用 AI Hoshia 帧和 AI 武器 VFX 合成 10 个职业的专属 attack/cast 姿态；`combat-ai` 提供 20 个武器/起手武器的独立战斗特效，`biomes-ai` 提供 6 个场景氛围循环帧。武器和特效围绕电波、赛博、直播间舞台和像素割草玩法统一整理。
 
 ## 后续引入规则
 

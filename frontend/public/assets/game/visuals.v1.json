@@ -224,7 +224,7 @@
         "portrait": "sprites/portraits/jobs/star_idol.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/star_idol",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -309,9 +309,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/star_idol/attack_0",
+                "job-ai/star_idol/attack_1",
+                "job-ai/star_idol/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -324,9 +324,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/star_idol/cast_0",
+                "job-ai/star_idol/cast_1",
+                "job-ai/star_idol/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -392,7 +392,7 @@
         "portrait": "sprites/portraits/jobs/neon_samurai.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/neon_samurai",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -477,9 +477,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/neon_samurai/attack_0",
+                "job-ai/neon_samurai/attack_1",
+                "job-ai/neon_samurai/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -492,9 +492,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/neon_samurai/cast_0",
+                "job-ai/neon_samurai/cast_1",
+                "job-ai/neon_samurai/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -560,7 +560,7 @@
         "portrait": "sprites/portraits/jobs/stream_hacker.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/stream_hacker",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -645,9 +645,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/stream_hacker/attack_0",
+                "job-ai/stream_hacker/attack_1",
+                "job-ai/stream_hacker/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -660,9 +660,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/stream_hacker/cast_0",
+                "job-ai/stream_hacker/cast_1",
+                "job-ai/stream_hacker/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -728,7 +728,7 @@
         "portrait": "sprites/portraits/jobs/radio_miko.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/radio_miko",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -813,9 +813,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/radio_miko/attack_0",
+                "job-ai/radio_miko/attack_1",
+                "job-ai/radio_miko/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -828,9 +828,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/radio_miko/cast_0",
+                "job-ai/radio_miko/cast_1",
+                "job-ai/radio_miko/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -896,7 +896,7 @@
         "portrait": "sprites/portraits/jobs/pixel_nekomata.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/pixel_nekomata",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -981,9 +981,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/pixel_nekomata/attack_0",
+                "job-ai/pixel_nekomata/attack_1",
+                "job-ai/pixel_nekomata/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -996,9 +996,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/pixel_nekomata/cast_0",
+                "job-ai/pixel_nekomata/cast_1",
+                "job-ai/pixel_nekomata/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -1064,7 +1064,7 @@
         "portrait": "sprites/portraits/jobs/quantum_tuner.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/quantum_tuner",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -1149,9 +1149,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/quantum_tuner/attack_0",
+                "job-ai/quantum_tuner/attack_1",
+                "job-ai/quantum_tuner/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -1164,9 +1164,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/quantum_tuner/cast_0",
+                "job-ai/quantum_tuner/cast_1",
+                "job-ai/quantum_tuner/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -1232,7 +1232,7 @@
         "portrait": "sprites/portraits/jobs/barrage_knight.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/barrage_knight",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -1317,9 +1317,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/barrage_knight/attack_0",
+                "job-ai/barrage_knight/attack_1",
+                "job-ai/barrage_knight/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -1332,9 +1332,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/barrage_knight/cast_0",
+                "job-ai/barrage_knight/cast_1",
+                "job-ai/barrage_knight/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -1400,7 +1400,7 @@
         "portrait": "sprites/portraits/jobs/scrap_engineer.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/scrap_engineer",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -1485,9 +1485,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/scrap_engineer/attack_0",
+                "job-ai/scrap_engineer/attack_1",
+                "job-ai/scrap_engineer/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -1500,9 +1500,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/scrap_engineer/cast_0",
+                "job-ai/scrap_engineer/cast_1",
+                "job-ai/scrap_engineer/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -1568,7 +1568,7 @@
         "portrait": "sprites/portraits/jobs/moon_courier.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/moon_courier",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -1653,9 +1653,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/moon_courier/attack_0",
+                "job-ai/moon_courier/attack_1",
+                "job-ai/moon_courier/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -1668,9 +1668,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/moon_courier/cast_0",
+                "job-ai/moon_courier/cast_1",
+                "job-ai/moon_courier/cast_2"
               ],
               "fps": 10,
               "loop": false,
@@ -1736,7 +1736,7 @@
         "portrait": "sprites/portraits/jobs/dream_director.png",
         "sprite": {
           "atlas": "actors-ai",
-          "prefix": "actor/hoshia_ai",
+          "prefix": "job-ai/dream_director",
           "animations": {
             "idle": {
               "atlas": "actors-ai",
@@ -1821,9 +1821,9 @@
             "attack": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/attack_0",
-                "actor/hoshia_ai/attack_1",
-                "actor/hoshia_ai/attack_2"
+                "job-ai/dream_director/attack_0",
+                "job-ai/dream_director/attack_1",
+                "job-ai/dream_director/attack_2"
               ],
               "fps": 12,
               "loop": false,
@@ -1836,9 +1836,9 @@
             "cast": {
               "atlas": "actors-ai",
               "frames": [
-                "actor/hoshia_ai/cast_0",
-                "actor/hoshia_ai/cast_1",
-                "actor/hoshia_ai/cast_2"
+                "job-ai/dream_director/cast_0",
+                "job-ai/dream_director/cast_1",
+                "job-ai/dream_director/cast_2"
               ],
               "fps": 10,
               "loop": false,
