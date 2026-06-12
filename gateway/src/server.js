@@ -1215,10 +1215,13 @@ async function handleAiReplyBatch(batch) {
     moduleEvents,
     activeContext,
     characterSnapshot,
+    characterSnapshotSource,
     lifeMemoryPacket
   } = prepareHoshiaCenterContext({
     batch,
     roomId: config.roomId,
+    characterId: "hoshia",
+    characterStateAuthority: config.characterStateAuthority,
     contextPolicy,
     moduleProviders,
     moduleEventStore,
@@ -1229,13 +1232,16 @@ async function handleAiReplyBatch(batch) {
     audienceUsers: audiencePayload().users,
     buildModuleContext,
     buildActiveContext,
-    buildCharacterSnapshot: buildCurrentCharacterSnapshot
+    buildCharacterSnapshot: buildCurrentCharacterSnapshot,
+    getLatestCharacterSnapshot: ({ roomId, characterId }) => db.getLatestCharacterSnapshot({ roomId, characterId })
   });
-  db.upsertCharacterSnapshot({
-    roomId: config.roomId,
-    characterId: "hoshia",
-    snapshot: characterSnapshot
-  });
+  if (characterSnapshotSource !== "persisted") {
+    db.upsertCharacterSnapshot({
+      roomId: config.roomId,
+      characterId: "hoshia",
+      snapshot: characterSnapshot
+    });
+  }
   const prompt = formatLiveRoomBatchPrompt(batch, lifeMemoryPacket, { activeContext, contextPolicy, moduleContext, moduleEvents });
   const shortTermContext = await buildShortTermAiContext(batch, contextPolicy);
   const moduleMemoryEvents = contextPolicy.consumeModuleMemoryEvents

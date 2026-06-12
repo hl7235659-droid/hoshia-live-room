@@ -86,7 +86,117 @@ test("prepareHoshiaCenterContext aggregates route-scoped context", () => {
   assert.deepEqual(result.moduleEvents, [{ summary_hint: "recent" }, { summary_hint: "extra" }]);
   assert.deepEqual(result.activeContext, { diary: "study", module_count: 1, event_count: 2 });
   assert.deepEqual(result.characterSnapshot, { snapshot: true });
+  assert.equal(result.characterSnapshotSource, "legacy");
   assert.deepEqual(result.lifeMemoryPacket, [{ id: "memory-1" }]);
+});
+
+test("prepareHoshiaCenterContext prefers persisted snapshot in event_log mode", () => {
+  let builtSnapshot = false;
+  const result = prepareHoshiaCenterContext({
+    batch: [{ session: { user_id: "u1" }, text: "hello" }],
+    roomId: "room",
+    characterId: "hoshia",
+    characterStateAuthority: "event_log",
+    contextPolicy: { fastLane: false, includeLifeMemory: false, moduleEventLimit: 4 },
+    moduleProviders: [],
+    moduleEventStore: {
+      append() {},
+      listRecent() {
+        return [];
+      }
+    },
+    hoshiaInterestKnowledgeService: {
+      observeBatch() {
+        return [];
+      }
+    },
+    hoshiaDailyCanonService: {
+      getActiveEvent() {
+        return null;
+      }
+    },
+    hoshiaVisualStateService: {
+      publicState() {
+        return { mood: "calm", activity: "idle" };
+      }
+    },
+    hoshiaLifeMemoryService: {
+      buildMemoryPacket() {
+        return [];
+      }
+    },
+    audienceUsers: [],
+    buildModuleContext() {
+      return [];
+    },
+    buildActiveContext() {
+      return { ok: true };
+    },
+    buildCharacterSnapshot() {
+      builtSnapshot = true;
+      return { snapshot: "legacy" };
+    },
+    getLatestCharacterSnapshot() {
+      return { snapshot: "persisted" };
+    }
+  });
+
+  assert.equal(builtSnapshot, false);
+  assert.deepEqual(result.characterSnapshot, { snapshot: "persisted" });
+  assert.equal(result.characterSnapshotSource, "persisted");
+});
+
+test("prepareHoshiaCenterContext falls back to legacy snapshot when persisted one is missing", () => {
+  const result = prepareHoshiaCenterContext({
+    batch: [{ session: { user_id: "u1" }, text: "hello" }],
+    roomId: "room",
+    characterId: "hoshia",
+    characterStateAuthority: "event_log",
+    contextPolicy: { fastLane: false, includeLifeMemory: false, moduleEventLimit: 4 },
+    moduleProviders: [],
+    moduleEventStore: {
+      append() {},
+      listRecent() {
+        return [];
+      }
+    },
+    hoshiaInterestKnowledgeService: {
+      observeBatch() {
+        return [];
+      }
+    },
+    hoshiaDailyCanonService: {
+      getActiveEvent() {
+        return null;
+      }
+    },
+    hoshiaVisualStateService: {
+      publicState() {
+        return { mood: "calm", activity: "idle" };
+      }
+    },
+    hoshiaLifeMemoryService: {
+      buildMemoryPacket() {
+        return [];
+      }
+    },
+    audienceUsers: [],
+    buildModuleContext() {
+      return [];
+    },
+    buildActiveContext() {
+      return { ok: true };
+    },
+    buildCharacterSnapshot() {
+      return { snapshot: "legacy" };
+    },
+    getLatestCharacterSnapshot() {
+      return null;
+    }
+  });
+
+  assert.deepEqual(result.characterSnapshot, { snapshot: "legacy" });
+  assert.equal(result.characterSnapshotSource, "legacy");
 });
 
 test("buildHoshiaReplyMetadata keeps room reply envelope shape", () => {

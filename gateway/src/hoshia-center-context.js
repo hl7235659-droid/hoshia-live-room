@@ -1,6 +1,8 @@
 export function prepareHoshiaCenterContext({
   batch = [],
   roomId = "",
+  characterId = "hoshia",
+  characterStateAuthority = "legacy",
   contextPolicy = {},
   moduleProviders = [],
   moduleEventStore,
@@ -11,7 +13,8 @@ export function prepareHoshiaCenterContext({
   audienceUsers = [],
   buildModuleContext,
   buildActiveContext,
-  buildCharacterSnapshot
+  buildCharacterSnapshot,
+  getLatestCharacterSnapshot = null
 } = {}) {
   for (const event of hoshiaInterestKnowledgeService.observeBatch(batch, { roomId })) {
     moduleEventStore.append(event);
@@ -30,7 +33,11 @@ export function prepareHoshiaCenterContext({
     batch,
     diaryEvent
   });
-  const characterSnapshot = buildCharacterSnapshot(batch[0]?.session);
+  const persistedCharacterSnapshot = characterStateAuthority === "event_log"
+    ? getLatestCharacterSnapshot?.({ roomId, characterId, session: batch[0]?.session }) || null
+    : null;
+  const characterSnapshot = persistedCharacterSnapshot || buildCharacterSnapshot(batch[0]?.session);
+  const characterSnapshotSource = persistedCharacterSnapshot ? "persisted" : "legacy";
   const lifeMemoryPacket = contextPolicy.includeLifeMemory
     ? hoshiaLifeMemoryService.buildMemoryPacket({ batch, limit: contextPolicy.livingMemoryK || 3 })
     : [];
@@ -40,6 +47,7 @@ export function prepareHoshiaCenterContext({
     moduleEvents,
     activeContext,
     characterSnapshot,
+    characterSnapshotSource,
     lifeMemoryPacket
   };
 }
