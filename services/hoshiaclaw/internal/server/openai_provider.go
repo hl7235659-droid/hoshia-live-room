@@ -145,7 +145,9 @@ func (p *openAICompatibleProvider) complete(ctx context.Context, messages []chat
 		return "", errors.New("build_chat_completion_request")
 	}
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "HoshiaClaw/1.0")
 
 	resp, err := p.client.Do(req)
 	if err != nil {

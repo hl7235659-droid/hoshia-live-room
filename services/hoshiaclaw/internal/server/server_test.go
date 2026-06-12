@@ -156,6 +156,12 @@ func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-openai-key" {
 			t.Fatalf("unexpected authorization header %q", got)
 		}
+		if got := r.Header.Get("Accept"); got != "application/json" {
+			t.Fatalf("unexpected accept header %q", got)
+		}
+		if got := r.Header.Get("User-Agent"); got != "HoshiaClaw/1.0" {
+			t.Fatalf("unexpected user agent %q", got)
+		}
 		if body["model"] != "test-model" {
 			t.Fatalf("unexpected model %#v", body["model"])
 		}
