@@ -61,6 +61,7 @@ type Enemy = {
 type Projectile = {
   id: string;
   weaponId: string;
+  hitEffectId?: string;
   x: number;
   y: number;
   vx: number;
@@ -80,6 +81,7 @@ type Projectile = {
 type Zone = {
   id: string;
   weaponId: string;
+  effectId?: string;
   x: number;
   y: number;
   radius: number;
@@ -94,6 +96,7 @@ type Zone = {
 type Turret = {
   id: string;
   weaponId: string;
+  hitEffectId?: string;
   x: number;
   y: number;
   range: number;
@@ -150,6 +153,8 @@ type EngineState = {
   lastX: number;
   lastY: number;
   attackTimer: number;
+  actionPose: "attack" | "cast" | "";
+  actionPoseUntil: number;
   spawnTimer: number;
   specialEventTimer: number;
   supplyTimer: number;
@@ -401,6 +406,8 @@ function createEngine(run: PixelGamePublicRun, data: PixelGameDataBundle, job: P
     lastX: 900,
     lastY: 600,
     attackTimer: 0,
+    actionPose: "",
+    actionPoseUntil: 0,
     spawnTimer: 0,
     specialEventTimer: 18,
     supplyTimer: 42,
@@ -445,7 +452,7 @@ function updateEngine(engine: EngineState, props: Props, controls: Controls, dt:
   engine.lastY = engine.y;
   engine.x = clamp(engine.x + input.x * engine.speed * dt, 40, engine.worldWidth - 40);
   engine.y = clamp(engine.y + input.y * engine.speed * dt, 40, engine.worldHeight - 40);
-  maybeEmitMovementTrail(engine, input);
+  maybeEmitMovementTrail(engine, input, props.data);
   maybeTriggerDirectorEvent(engine);
 
   spawnEnemies(engine, props.data, dt);
@@ -573,11 +580,15 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
   const baseAngle = Math.atan2(target.y - engine.y, target.x - engine.x);
   const damage = weapon.damage * engine.damageMultiplier;
   const kind = weapon.kind || "projectile";
+  const weaponHitEffectId = resolveWeaponVisualEffectId(data, weapon.id, "hit");
+  engine.actionPose = ["slash", "guard", "dash_echo"].includes(kind) ? "attack" : "cast";
+  engine.actionPoseUntil = engine.elapsed + 0.24;
 
   if (kind === "slash") {
-    const hits = damageEnemiesInArc(engine, engine.x, engine.y, weapon.range, baseAngle, Math.PI * 0.72, damage * 1.16);
+    const hits = damageEnemiesInArc(engine, engine.x, engine.y, weapon.range, baseAngle, Math.PI * 0.72, damage * 1.16, weaponHitEffectId);
     pushNeonEffect(engine, {
       kind: "hit",
+      effectId: weaponHitEffectId,
       x: engine.x + Math.cos(baseAngle) * weapon.range * 0.48,
       y: engine.y + Math.sin(baseAngle) * weapon.range * 0.48,
       duration: 0.22,
@@ -585,16 +596,17 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
       size: weapon.range * (hits ? 0.8 : 0.55)
     });
     if (engine.upgradeIds.includes("blade_afterimage") || engine.specializationId === "neon_samurai") {
-      setTimeoutSafeSlash(engine, baseAngle, weapon, damage * 0.45);
+      setTimeoutSafeSlash(engine, baseAngle, weapon, damage * 0.45, weaponHitEffectId);
     }
     return;
   }
 
   if (kind === "aura" || kind === "pulse" || kind === "orbital_pulse") {
     const radius = kind === "orbital_pulse" ? weapon.range * 0.78 : weapon.range;
-    damageEnemiesInRadius(engine, engine.x, engine.y, radius, damage, weapon.color || "#ffe66d");
+    damageEnemiesInRadius(engine, engine.x, engine.y, radius, damage, weapon.color || "#ffe66d", weaponHitEffectId);
     pushNeonEffect(engine, {
       kind: "hit",
+      effectId: weaponHitEffectId,
       x: engine.x,
       y: engine.y,
       duration: 0.34,
@@ -602,7 +614,7 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
       size: radius
     });
     if (kind === "orbital_pulse" && engine.upgradeIds.includes("orbit_ofuda")) {
-      spawnRingProjectiles(engine, weapon, Math.max(3, engine.projectileCount + 2), damage * 0.45);
+      spawnRingProjectiles(engine, weapon, Math.max(3, engine.projectileCount + 2), damage * 0.45, weaponHitEffectId);
     }
     return;
   }
@@ -619,6 +631,7 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
       tickTimer: 0,
       life: engine.specializationId === "quantum_tuner" ? 3.6 : 2.4,
       color: weapon.color || "#b18cff",
+      effectId: weaponHitEffectId,
       pulse: false
     });
     return;
@@ -635,7 +648,8 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
       cooldownMs: Math.max(220, weapon.cooldown_ms * 0.68),
       timerMs: 0,
       life: engine.specializationId === "scrap_engineer" ? 13 : 8,
-      color: weapon.color || "#c8ff4d"
+      color: weapon.color || "#c8ff4d",
+      hitEffectId: weaponHitEffectId
     });
     if (engine.turrets.length > (engine.specializationId === "scrap_engineer" ? 4 : 2)) engine.turrets.shift();
     return;
@@ -643,19 +657,29 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
 
   if (kind === "guard") {
     engine.shield = Math.min(5, engine.shield + 1);
-    damageEnemiesInArc(engine, engine.x, engine.y, weapon.range, baseAngle, Math.PI * 0.95, damage);
-    spawnRingProjectiles(engine, weapon, Math.max(4, engine.projectileCount + engine.shield), damage * 0.36);
+    damageEnemiesInArc(engine, engine.x, engine.y, weapon.range, baseAngle, Math.PI * 0.95, damage, weaponHitEffectId);
+    pushNeonEffect(engine, {
+      kind: "hit",
+      effectId: weaponHitEffectId,
+      x: engine.x,
+      y: engine.y,
+      duration: 0.26,
+      color: weapon.color || "#ffe66d",
+      size: 58 + engine.shield * 8
+    });
+    spawnRingProjectiles(engine, weapon, Math.max(4, engine.projectileCount + engine.shield), damage * 0.36, weaponHitEffectId);
     return;
   }
 
   if (kind === "dash_echo") {
     const echoX = engine.x - Math.cos(baseAngle) * 18;
     const echoY = engine.y - Math.sin(baseAngle) * 18;
-    damageEnemiesInRadius(engine, echoX, echoY, weapon.range * 0.55, damage * 0.86, weapon.color || "#6c7bff");
+    damageEnemiesInRadius(engine, echoX, echoY, weapon.range * 0.55, damage * 0.86, weapon.color || "#6c7bff", weaponHitEffectId);
     spawnProjectile(engine, weapon, baseAngle, damage * 0.72, {
       pierce: 2,
       speed: engine.projectileSpeed * 0.9,
-      range: weapon.range * 1.4
+      range: weapon.range * 1.4,
+      hitEffectId: weaponHitEffectId
     });
     return;
   }
@@ -666,7 +690,8 @@ function autoAttack(engine: EngineState, data: PixelGameDataBundle) {
     spawnProjectile(engine, weapon, baseAngle + spread, damage, {
       homing: kind === "homing",
       pierce: kind === "pierce" ? 3 : 1,
-      chain: engine.upgradeIds.includes("static_chain") || weapon.tags?.includes("chain") ? 1 : 0
+      chain: engine.upgradeIds.includes("static_chain") || weapon.tags?.includes("chain") ? 1 : 0,
+      hitEffectId: weaponHitEffectId
     });
   }
   maybeAddBonusWeapon(engine, data, weapon, baseAngle, damage);
@@ -699,7 +724,7 @@ function updateProjectiles(engine: EngineState, dt: number) {
       if (enemy.hp <= 0) continue;
       if (projectile.hitIds.has(enemy.id)) continue;
       if (distance(projectile.x, projectile.y, enemy.x, enemy.y) > enemy.size + projectile.size) continue;
-      const killed = damageEnemy(engine, enemy, projectile.damage, projectile.color, projectile.size * 5);
+      const killed = damageEnemy(engine, enemy, projectile.damage, projectile.color, projectile.size * 5, projectile.hitEffectId);
       projectile.hitIds.add(enemy.id);
       projectile.pierce -= 1;
       if (projectile.chain > 0 && (killed || engine.rng() < 0.32)) {
@@ -709,7 +734,8 @@ function updateProjectiles(engine: EngineState, dt: number) {
           spawnProjectileById(engine, projectile.weaponId, projectile.x, projectile.y, angle, projectile.damage * 0.62, projectile.color, {
             homing: true,
             chain: projectile.chain - 1,
-            range: 180
+            range: 180,
+            hitEffectId: projectile.hitEffectId
           });
         }
       }
@@ -727,9 +753,10 @@ function updateZones(engine: EngineState, dt: number) {
     zone.tickTimer -= dt;
     if (zone.tickTimer <= 0) {
       zone.tickTimer = zone.tickEvery;
-      damageEnemiesInRadius(engine, zone.x, zone.y, zone.radius, zone.damage, zone.color);
+      damageEnemiesInRadius(engine, zone.x, zone.y, zone.radius, zone.damage, zone.color, zone.effectId);
       pushNeonEffect(engine, {
         kind: "hit",
+        effectId: zone.effectId,
         x: zone.x,
         y: zone.y,
         duration: 0.18,
@@ -754,7 +781,8 @@ function updateTurrets(engine: EngineState, dt: number) {
     spawnProjectileById(engine, turret.weaponId, turret.x, turret.y, angle, turret.damage, turret.color, {
       range: turret.range,
       speed: engine.projectileSpeed * 0.78,
-      pierce: engine.upgradeIds.includes("repair_drone") ? 2 : 1
+      pierce: engine.upgradeIds.includes("repair_drone") ? 2 : 1,
+      hitEffectId: turret.hitEffectId
     });
   }
   engine.turrets = engine.turrets.filter((turret) => turret.life > 0).slice(-6);
@@ -765,7 +793,7 @@ function spawnProjectile(
   weapon: PixelGameWeaponTuning,
   angle: number,
   damage: number,
-  options: Partial<Pick<Projectile, "homing" | "pierce" | "chain" | "range">> & { speed?: number } = {}
+  options: Partial<Pick<Projectile, "homing" | "pierce" | "chain" | "range" | "hitEffectId">> & { speed?: number } = {}
 ) {
   spawnProjectileById(engine, weapon.id, engine.x, engine.y, angle, damage, weapon.color || engine.biomePalette[1] || "#44f5ff", {
     ...options,
@@ -782,12 +810,13 @@ function spawnProjectileById(
   angle: number,
   damage: number,
   color: string,
-  options: Partial<Pick<Projectile, "homing" | "pierce" | "chain" | "range">> & { speed?: number } = {}
+  options: Partial<Pick<Projectile, "homing" | "pierce" | "chain" | "range" | "hitEffectId">> & { speed?: number } = {}
 ) {
   const speed = options.speed || engine.projectileSpeed;
   engine.projectiles.push({
     id: `shot-${Date.now()}-${Math.floor(engine.rng() * 999999)}`,
     weaponId,
+    hitEffectId: options.hitEffectId,
     x,
     y,
     vx: Math.cos(angle) * speed,
@@ -805,25 +834,27 @@ function spawnProjectileById(
   });
 }
 
-function spawnRingProjectiles(engine: EngineState, weapon: PixelGameWeaponTuning, count: number, damage: number) {
+function spawnRingProjectiles(engine: EngineState, weapon: PixelGameWeaponTuning, count: number, damage: number, hitEffectId?: string) {
   const safeCount = Math.max(3, Math.min(12, Math.floor(count)));
   for (let index = 0; index < safeCount; index += 1) {
     const angle = (Math.PI * 2 * index) / safeCount + engine.elapsed * 0.1;
     spawnProjectile(engine, weapon, angle, damage, {
       pierce: 1,
       range: weapon.range * 1.25,
-      speed: engine.projectileSpeed * 0.74
+      speed: engine.projectileSpeed * 0.74,
+      hitEffectId
     });
   }
 }
 
-function damageEnemy(engine: EngineState, enemy: Enemy, amount: number, color: string, size: number) {
+function damageEnemy(engine: EngineState, enemy: Enemy, amount: number, color: string, size: number, effectId?: string) {
   const critical = shouldCrit(engine, enemy);
   const damage = amount * (critical ? 1.85 : 1);
   const willKill = enemy.hp - damage <= 0;
   enemy.hp -= damage;
   pushNeonEffect(engine, {
     kind: "hit",
+    effectId,
     x: enemy.x,
     y: enemy.y,
     duration: willKill ? 0.16 : 0.22,
@@ -839,18 +870,18 @@ function damageEnemy(engine: EngineState, enemy: Enemy, amount: number, color: s
   return false;
 }
 
-function damageEnemiesInRadius(engine: EngineState, x: number, y: number, radius: number, damage: number, color: string) {
+function damageEnemiesInRadius(engine: EngineState, x: number, y: number, radius: number, damage: number, color: string, effectId?: string) {
   let hits = 0;
   for (const enemy of engine.enemies) {
     if (enemy.hp <= 0) continue;
     if (distance(x, y, enemy.x, enemy.y) > radius + enemy.size) continue;
     hits += 1;
-    damageEnemy(engine, enemy, damage, color, radius * 0.28);
+    damageEnemy(engine, enemy, damage, color, radius * 0.28, effectId);
   }
   return hits;
 }
 
-function damageEnemiesInArc(engine: EngineState, x: number, y: number, radius: number, angle: number, arc: number, damage: number) {
+function damageEnemiesInArc(engine: EngineState, x: number, y: number, radius: number, angle: number, arc: number, damage: number, effectId?: string) {
   let hits = 0;
   for (const enemy of engine.enemies) {
     if (enemy.hp <= 0) continue;
@@ -859,17 +890,18 @@ function damageEnemiesInArc(engine: EngineState, x: number, y: number, radius: n
     const targetAngle = Math.atan2(enemy.y - y, enemy.x - x);
     if (Math.abs(angleDelta(angle, targetAngle)) > arc / 2) continue;
     hits += 1;
-    damageEnemy(engine, enemy, damage, engine.primaryWeapon.color || enemy.color, radius * 0.32);
+    damageEnemy(engine, enemy, damage, engine.primaryWeapon.color || enemy.color, radius * 0.32, effectId);
   }
   return hits;
 }
 
-function addAfterimageSlash(engine: EngineState, angle: number, weapon: PixelGameWeaponTuning, damage: number) {
+function addAfterimageSlash(engine: EngineState, angle: number, weapon: PixelGameWeaponTuning, damage: number, effectId?: string) {
   const x = engine.x + Math.cos(angle) * weapon.range * 0.35;
   const y = engine.y + Math.sin(angle) * weapon.range * 0.35;
-  damageEnemiesInArc(engine, x, y, weapon.range * 0.9, angle, Math.PI * 0.64, damage);
+  damageEnemiesInArc(engine, x, y, weapon.range * 0.9, angle, Math.PI * 0.64, damage, effectId);
   pushNeonEffect(engine, {
     kind: "hit",
+    effectId,
     x,
     y,
     duration: 0.2,
@@ -878,18 +910,18 @@ function addAfterimageSlash(engine: EngineState, angle: number, weapon: PixelGam
   });
 }
 
-function setTimeoutSafeSlash(engine: EngineState, angle: number, weapon: PixelGameWeaponTuning, damage: number) {
-  addAfterimageSlash(engine, angle, weapon, damage);
+function setTimeoutSafeSlash(engine: EngineState, angle: number, weapon: PixelGameWeaponTuning, damage: number, effectId?: string) {
+  addAfterimageSlash(engine, angle, weapon, damage, effectId);
 }
 
 function maybeAddBonusWeapon(engine: EngineState, data: PixelGameDataBundle, weapon: PixelGameWeaponTuning, angle: number, damage: number) {
   if (!engine.upgradeIds.includes("counter_burst") && engine.specializationId !== "barrage_knight") return;
   if (engine.rng() > 0.24) return;
   const shieldWeapon = findWeapon(data, "bullet_shield") || weapon;
-  spawnRingProjectiles(engine, shieldWeapon, 5, damage * 0.42);
+  spawnRingProjectiles(engine, shieldWeapon, 5, damage * 0.42, resolveWeaponVisualEffectId(data, shieldWeapon.id, "hit"));
 }
 
-function maybeEmitMovementTrail(engine: EngineState, input: { x: number; y: number }) {
+function maybeEmitMovementTrail(engine: EngineState, input: { x: number; y: number }, data: PixelGameDataBundle) {
   if (engine.dashTrailTimer > 0) return;
   const moved = Math.hypot(engine.x - engine.lastX, engine.y - engine.lastY);
   if (moved < 1) return;
@@ -902,6 +934,7 @@ function maybeEmitMovementTrail(engine: EngineState, input: { x: number; y: numb
   engine.dashTrailTimer = engine.specializationId === "pixel_nekomata" ? 0.22 : 0.34;
   const x = engine.x - input.x * 22;
   const y = engine.y - input.y * 22;
+  const effectId = resolveWeaponVisualEffectId(data, engine.primaryWeapon.id, "hit");
   engine.zones.push({
     id: `trail-${Date.now()}-${Math.floor(engine.rng() * 9999)}`,
     weaponId: engine.primaryWeapon.id,
@@ -913,6 +946,7 @@ function maybeEmitMovementTrail(engine: EngineState, input: { x: number; y: numb
     tickTimer: 0,
     life: 0.8,
     color: engine.primaryWeapon.color || "#6c7bff",
+    effectId,
     pulse: true
   });
 }
@@ -1005,6 +1039,7 @@ function killEnemy(engine: EngineState, enemy: Enemy) {
   if (enemy.boss) engine.bossResult = "defeated";
   pushNeonEffect(engine, {
     kind: "kill",
+    effectId: enemy.boss ? "effect/kill_burst_boss" : "effect/kill_burst_noise",
     x: enemy.x,
     y: enemy.y,
     duration: enemy.boss ? 0.72 : 0.42,
@@ -1149,7 +1184,7 @@ function applySpecialization(engine: EngineState, job: PixelGameJob, data: Pixel
     engine.primaryWeapon = { ...engine.primaryWeapon, kind: "homing", tags: uniqueStrings([...(engine.primaryWeapon.tags || []), "chain"]) };
   } else if (job.id === "radio_miko") {
     engine.shield = Math.min(5, engine.shield + 2);
-    engine.zones.push({ id: `miko-${Date.now()}`, weaponId: "antenna_ofuda", x: engine.x, y: engine.y, radius: 128, damage: 5, tickEvery: 0.5, tickTimer: 0, life: 5, color: "#ffe66d", pulse: false });
+    engine.zones.push({ id: `miko-${Date.now()}`, weaponId: "antenna_ofuda", effectId: resolveWeaponVisualEffectId(data, "antenna_ofuda", "hit"), x: engine.x, y: engine.y, radius: 128, damage: 5, tickEvery: 0.5, tickTimer: 0, life: 5, color: "#ffe66d", pulse: false });
   } else if (job.id === "pixel_nekomata") {
     engine.speed *= 1.12;
     engine.pickupRange *= 1.2;
@@ -1269,6 +1304,13 @@ function findWeapon(data: PixelGameDataBundle, weaponId: string) {
   const id = cleanId(weaponId);
   if (!id) return undefined;
   return data.weapons.find((weapon) => weapon.id === id || weapon.aliases?.includes(id));
+}
+
+function resolveWeaponVisualEffectId(data: PixelGameDataBundle, weaponId: string, effectKey: string) {
+  const id = cleanId(weaponId);
+  if (!id) return undefined;
+  const entity = data.visuals?.entities.weapons?.[id] || data.visuals?.entities.starterWeapons?.[id];
+  return entity?.effects?.[effectKey] || entity?.effects?.hit;
 }
 
 function enemySpawnWeight(enemy: PixelGameEnemyTuning, engine: EngineState) {
@@ -1476,6 +1518,7 @@ function drawEngine(
     actors.lineStyle(0);
   }
   for (const effect of engine.effects) {
+    if (visualResult?.effects.has(effect.id)) continue;
     const x = effect.x - camX;
     const y = effect.y - camY;
     const progress = clamp(effect.age / Math.max(0.001, effect.duration), 0, 1);

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "visuals",
   "packId": "hoshia-radio-cyber-pixel-mowdown",
-  "packVersion": "1.0.0",
+  "packVersion": "1.1.0",
   "assetBase": "assets/game/",
   "pixelSpec": {
     "tileSize": 16,
@@ -36,6 +36,21 @@
       "id": "ui-icons",
       "image": "sprites/atlases/ui-icons.v1.png",
       "data": "sprites/atlases/ui-icons.v1.json"
+    },
+    {
+      "id": "actors-ai",
+      "image": "sprites/atlases/actors-ai.v1.png",
+      "data": "sprites/atlases/actors-ai.v1.json"
+    },
+    {
+      "id": "combat-ai",
+      "image": "sprites/atlases/combat-ai.v1.png",
+      "data": "sprites/atlases/combat-ai.v1.json"
+    },
+    {
+      "id": "biomes-ai",
+      "image": "sprites/atlases/biomes-ai.v1.png",
+      "data": "sprites/atlases/biomes-ai.v1.json"
     }
   ],
   "entities": {
@@ -43,77 +58,158 @@
       "icon": "ui/hoshia/icon",
       "portrait": "sprites/portraits/hoshia.png",
       "sprite": {
-        "atlas": "actors",
-        "prefix": "actor/hoshia",
+        "atlas": "actors-ai",
+        "prefix": "actor/hoshia_ai",
         "animations": {
           "idle": {
-            "atlas": "actors",
+            "atlas": "actors-ai",
             "frames": [
-              "actor/hoshia/idle_0",
-              "actor/hoshia/idle_1"
+              "actor/hoshia_ai/idle_0",
+              "actor/hoshia_ai/idle_1",
+              "actor/hoshia_ai/idle_2",
+              "actor/hoshia_ai/idle_3"
             ],
             "fps": 4,
             "loop": true,
-            "scale": 2,
+            "scale": 1.08,
             "anchor": {
               "x": 0.5,
               "y": 0.5
             }
           },
           "run": {
-            "atlas": "actors",
+            "atlas": "actors-ai",
             "frames": [
-              "actor/hoshia/run_0",
-              "actor/hoshia/run_1",
-              "actor/hoshia/run_2",
-              "actor/hoshia/run_3"
+              "actor/hoshia_ai/run_front_0",
+              "actor/hoshia_ai/run_front_1",
+              "actor/hoshia_ai/run_front_2",
+              "actor/hoshia_ai/run_front_3"
             ],
-            "fps": 8,
+            "fps": 9,
             "loop": true,
-            "scale": 2,
+            "scale": 1.08,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "run_front": {
+            "atlas": "actors-ai",
+            "frames": [
+              "actor/hoshia_ai/run_front_0",
+              "actor/hoshia_ai/run_front_1",
+              "actor/hoshia_ai/run_front_2",
+              "actor/hoshia_ai/run_front_3"
+            ],
+            "fps": 9,
+            "loop": true,
+            "scale": 1.08,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "run_side": {
+            "atlas": "actors-ai",
+            "frames": [
+              "actor/hoshia_ai/run_side_0",
+              "actor/hoshia_ai/run_side_1",
+              "actor/hoshia_ai/run_side_2",
+              "actor/hoshia_ai/run_side_3"
+            ],
+            "fps": 9,
+            "loop": true,
+            "scale": 1.08,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "run_back": {
+            "atlas": "actors-ai",
+            "frames": [
+              "actor/hoshia_ai/run_back_0",
+              "actor/hoshia_ai/run_back_1",
+              "actor/hoshia_ai/run_back_2",
+              "actor/hoshia_ai/run_back_3"
+            ],
+            "fps": 9,
+            "loop": true,
+            "scale": 1.08,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "attack": {
+            "atlas": "actors-ai",
+            "frames": [
+              "actor/hoshia_ai/attack_0",
+              "actor/hoshia_ai/attack_1",
+              "actor/hoshia_ai/attack_2"
+            ],
+            "fps": 12,
+            "loop": false,
+            "scale": 1.04,
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            }
+          },
+          "cast": {
+            "atlas": "actors-ai",
+            "frames": [
+              "actor/hoshia_ai/cast_0",
+              "actor/hoshia_ai/cast_1",
+              "actor/hoshia_ai/cast_2"
+            ],
+            "fps": 10,
+            "loop": false,
+            "scale": 1.0,
             "anchor": {
               "x": 0.5,
               "y": 0.5
             }
           },
           "hurt": {
-            "atlas": "actors",
+            "atlas": "actors-ai",
             "frames": [
-              "actor/hoshia/hurt_0",
-              "actor/hoshia/hurt_1"
+              "actor/hoshia_ai/hurt_0",
+              "actor/hoshia_ai/hurt_1"
             ],
             "fps": 10,
             "loop": false,
-            "scale": 2,
+            "scale": 1.08,
             "anchor": {
               "x": 0.5,
               "y": 0.5
             }
           },
           "level_up": {
-            "atlas": "actors",
+            "atlas": "actors-ai",
             "frames": [
-              "actor/hoshia/level_up_0",
-              "actor/hoshia/level_up_1",
-              "actor/hoshia/level_up_2"
+              "actor/hoshia_ai/level_up_0",
+              "actor/hoshia_ai/level_up_1",
+              "actor/hoshia_ai/level_up_2",
+              "actor/hoshia_ai/level_up_3"
             ],
             "fps": 8,
             "loop": false,
-            "scale": 2,
+            "scale": 1.0,
             "anchor": {
               "x": 0.5,
               "y": 0.5
             }
           },
           "ko": {
-            "atlas": "actors",
+            "atlas": "actors-ai",
             "frames": [
-              "actor/hoshia/ko_0",
-              "actor/hoshia/ko_1"
+              "actor/hoshia_ai/ko_0",
+              "actor/hoshia_ai/ko_1"
             ],
             "fps": 5,
             "loop": false,
-            "scale": 2,
+            "scale": 1.08,
             "anchor": {
               "x": 0.5,
               "y": 0.5
@@ -127,77 +223,158 @@
         "icon": "ui/jobs/star_idol",
         "portrait": "sprites/portraits/jobs/star_idol.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/star_idol",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/star_idol/idle_0",
-                "job/star_idol/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/star_idol/run_0",
-                "job/star_idol/run_1",
-                "job/star_idol/run_2",
-                "job/star_idol/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/star_idol/hurt_0",
-                "job/star_idol/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/star_idol/level_up_0",
-                "job/star_idol/level_up_1",
-                "job/star_idol/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/star_idol/ko_0",
-                "job/star_idol/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -214,77 +391,158 @@
         "icon": "ui/jobs/neon_samurai",
         "portrait": "sprites/portraits/jobs/neon_samurai.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/neon_samurai",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/neon_samurai/idle_0",
-                "job/neon_samurai/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/neon_samurai/run_0",
-                "job/neon_samurai/run_1",
-                "job/neon_samurai/run_2",
-                "job/neon_samurai/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/neon_samurai/hurt_0",
-                "job/neon_samurai/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/neon_samurai/level_up_0",
-                "job/neon_samurai/level_up_1",
-                "job/neon_samurai/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/neon_samurai/ko_0",
-                "job/neon_samurai/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -301,77 +559,158 @@
         "icon": "ui/jobs/stream_hacker",
         "portrait": "sprites/portraits/jobs/stream_hacker.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/stream_hacker",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/stream_hacker/idle_0",
-                "job/stream_hacker/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/stream_hacker/run_0",
-                "job/stream_hacker/run_1",
-                "job/stream_hacker/run_2",
-                "job/stream_hacker/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/stream_hacker/hurt_0",
-                "job/stream_hacker/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/stream_hacker/level_up_0",
-                "job/stream_hacker/level_up_1",
-                "job/stream_hacker/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/stream_hacker/ko_0",
-                "job/stream_hacker/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -388,77 +727,158 @@
         "icon": "ui/jobs/radio_miko",
         "portrait": "sprites/portraits/jobs/radio_miko.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/radio_miko",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/radio_miko/idle_0",
-                "job/radio_miko/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/radio_miko/run_0",
-                "job/radio_miko/run_1",
-                "job/radio_miko/run_2",
-                "job/radio_miko/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/radio_miko/hurt_0",
-                "job/radio_miko/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/radio_miko/level_up_0",
-                "job/radio_miko/level_up_1",
-                "job/radio_miko/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/radio_miko/ko_0",
-                "job/radio_miko/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -475,77 +895,158 @@
         "icon": "ui/jobs/pixel_nekomata",
         "portrait": "sprites/portraits/jobs/pixel_nekomata.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/pixel_nekomata",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/pixel_nekomata/idle_0",
-                "job/pixel_nekomata/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/pixel_nekomata/run_0",
-                "job/pixel_nekomata/run_1",
-                "job/pixel_nekomata/run_2",
-                "job/pixel_nekomata/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/pixel_nekomata/hurt_0",
-                "job/pixel_nekomata/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/pixel_nekomata/level_up_0",
-                "job/pixel_nekomata/level_up_1",
-                "job/pixel_nekomata/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/pixel_nekomata/ko_0",
-                "job/pixel_nekomata/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -562,77 +1063,158 @@
         "icon": "ui/jobs/quantum_tuner",
         "portrait": "sprites/portraits/jobs/quantum_tuner.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/quantum_tuner",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/quantum_tuner/idle_0",
-                "job/quantum_tuner/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/quantum_tuner/run_0",
-                "job/quantum_tuner/run_1",
-                "job/quantum_tuner/run_2",
-                "job/quantum_tuner/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/quantum_tuner/hurt_0",
-                "job/quantum_tuner/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/quantum_tuner/level_up_0",
-                "job/quantum_tuner/level_up_1",
-                "job/quantum_tuner/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/quantum_tuner/ko_0",
-                "job/quantum_tuner/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -649,77 +1231,158 @@
         "icon": "ui/jobs/barrage_knight",
         "portrait": "sprites/portraits/jobs/barrage_knight.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/barrage_knight",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/barrage_knight/idle_0",
-                "job/barrage_knight/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/barrage_knight/run_0",
-                "job/barrage_knight/run_1",
-                "job/barrage_knight/run_2",
-                "job/barrage_knight/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/barrage_knight/hurt_0",
-                "job/barrage_knight/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/barrage_knight/level_up_0",
-                "job/barrage_knight/level_up_1",
-                "job/barrage_knight/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/barrage_knight/ko_0",
-                "job/barrage_knight/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -736,77 +1399,158 @@
         "icon": "ui/jobs/scrap_engineer",
         "portrait": "sprites/portraits/jobs/scrap_engineer.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/scrap_engineer",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/scrap_engineer/idle_0",
-                "job/scrap_engineer/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/scrap_engineer/run_0",
-                "job/scrap_engineer/run_1",
-                "job/scrap_engineer/run_2",
-                "job/scrap_engineer/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/scrap_engineer/hurt_0",
-                "job/scrap_engineer/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/scrap_engineer/level_up_0",
-                "job/scrap_engineer/level_up_1",
-                "job/scrap_engineer/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/scrap_engineer/ko_0",
-                "job/scrap_engineer/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -823,77 +1567,158 @@
         "icon": "ui/jobs/moon_courier",
         "portrait": "sprites/portraits/jobs/moon_courier.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/moon_courier",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/moon_courier/idle_0",
-                "job/moon_courier/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/moon_courier/run_0",
-                "job/moon_courier/run_1",
-                "job/moon_courier/run_2",
-                "job/moon_courier/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/moon_courier/hurt_0",
-                "job/moon_courier/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/moon_courier/level_up_0",
-                "job/moon_courier/level_up_1",
-                "job/moon_courier/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/moon_courier/ko_0",
-                "job/moon_courier/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -910,77 +1735,158 @@
         "icon": "ui/jobs/dream_director",
         "portrait": "sprites/portraits/jobs/dream_director.png",
         "sprite": {
-          "atlas": "actors",
-          "prefix": "job/dream_director",
+          "atlas": "actors-ai",
+          "prefix": "actor/hoshia_ai",
           "animations": {
             "idle": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/dream_director/idle_0",
-                "job/dream_director/idle_1"
+                "actor/hoshia_ai/idle_0",
+                "actor/hoshia_ai/idle_1",
+                "actor/hoshia_ai/idle_2",
+                "actor/hoshia_ai/idle_3"
               ],
               "fps": 4,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "run": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/dream_director/run_0",
-                "job/dream_director/run_1",
-                "job/dream_director/run_2",
-                "job/dream_director/run_3"
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
               ],
-              "fps": 8,
+              "fps": 9,
               "loop": true,
-              "scale": 2,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_front": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_front_0",
+                "actor/hoshia_ai/run_front_1",
+                "actor/hoshia_ai/run_front_2",
+                "actor/hoshia_ai/run_front_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_side": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_side_0",
+                "actor/hoshia_ai/run_side_1",
+                "actor/hoshia_ai/run_side_2",
+                "actor/hoshia_ai/run_side_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "run_back": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/run_back_0",
+                "actor/hoshia_ai/run_back_1",
+                "actor/hoshia_ai/run_back_2",
+                "actor/hoshia_ai/run_back_3"
+              ],
+              "fps": 9,
+              "loop": true,
+              "scale": 1.08,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "attack": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/attack_0",
+                "actor/hoshia_ai/attack_1",
+                "actor/hoshia_ai/attack_2"
+              ],
+              "fps": 12,
+              "loop": false,
+              "scale": 1.04,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            },
+            "cast": {
+              "atlas": "actors-ai",
+              "frames": [
+                "actor/hoshia_ai/cast_0",
+                "actor/hoshia_ai/cast_1",
+                "actor/hoshia_ai/cast_2"
+              ],
+              "fps": 10,
+              "loop": false,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "hurt": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/dream_director/hurt_0",
-                "job/dream_director/hurt_1"
+                "actor/hoshia_ai/hurt_0",
+                "actor/hoshia_ai/hurt_1"
               ],
               "fps": 10,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "level_up": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/dream_director/level_up_0",
-                "job/dream_director/level_up_1",
-                "job/dream_director/level_up_2"
+                "actor/hoshia_ai/level_up_0",
+                "actor/hoshia_ai/level_up_1",
+                "actor/hoshia_ai/level_up_2",
+                "actor/hoshia_ai/level_up_3"
               ],
               "fps": 8,
               "loop": false,
-              "scale": 2,
+              "scale": 1.0,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
               }
             },
             "ko": {
-              "atlas": "actors",
+              "atlas": "actors-ai",
               "frames": [
-                "job/dream_director/ko_0",
-                "job/dream_director/ko_1"
+                "actor/hoshia_ai/ko_0",
+                "actor/hoshia_ai/ko_1"
               ],
               "fps": 5,
               "loop": false,
-              "scale": 2,
+              "scale": 1.08,
               "anchor": {
                 "x": 0.5,
                 "y": 0.5
@@ -998,101 +1904,121 @@
       "sparkle_mic": {
         "icon": "ui/starter_weapons/sparkle_mic",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/sparkle_mic/projectile_note"
+          "atlas": "combat-ai",
+          "frame": "weapon/sparkle_mic/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_charm"
+          "hit": "effect/weapon/sparkle_mic",
+          "projectile": "effect/weapon/sparkle_mic",
+          "cast": "effect/weapon/sparkle_mic"
         }
       },
       "neon_katana": {
         "icon": "ui/starter_weapons/neon_katana",
         "sprite": {
-          "atlas": "combat",
-          "frame": "slash/neon_katana/arc"
+          "atlas": "combat-ai",
+          "frame": "weapon/neon_katana/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_cut"
+          "hit": "effect/weapon/neon_katana",
+          "projectile": "effect/weapon/neon_katana",
+          "cast": "effect/weapon/neon_katana"
         }
       },
       "packet_spike": {
         "icon": "ui/starter_weapons/packet_spike",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/packet_spike/spike"
+          "atlas": "combat-ai",
+          "frame": "weapon/packet_spike/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_data_burst"
+          "hit": "effect/weapon/packet_spike",
+          "projectile": "effect/weapon/packet_spike",
+          "cast": "effect/weapon/packet_spike"
         }
       },
       "antenna_ofuda": {
         "icon": "ui/starter_weapons/antenna_ofuda",
         "sprite": {
-          "atlas": "combat",
-          "frame": "orbit/antenna_ofuda/ofuda"
+          "atlas": "combat-ai",
+          "frame": "weapon/antenna_ofuda/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_purify"
+          "hit": "effect/weapon/antenna_ofuda",
+          "projectile": "effect/weapon/antenna_ofuda",
+          "cast": "effect/weapon/antenna_ofuda"
         }
       },
       "cat_cursor": {
         "icon": "ui/starter_weapons/cat_cursor",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/cat_cursor/claw"
+          "atlas": "combat-ai",
+          "frame": "weapon/cat_cursor/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_scratch"
+          "hit": "effect/weapon/cat_cursor",
+          "projectile": "effect/weapon/cat_cursor",
+          "cast": "effect/weapon/cat_cursor"
         }
       },
       "phase_tuning_fork": {
         "icon": "ui/starter_weapons/phase_tuning_fork",
         "sprite": {
-          "atlas": "combat",
-          "frame": "zone/phase_tuning_fork/ring"
+          "atlas": "combat-ai",
+          "frame": "weapon/phase_tuning_fork/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_resonance"
+          "hit": "effect/weapon/phase_tuning_fork",
+          "projectile": "effect/weapon/phase_tuning_fork",
+          "cast": "effect/weapon/phase_tuning_fork"
         }
       },
       "bullet_shield": {
         "icon": "ui/starter_weapons/bullet_shield",
         "sprite": {
-          "atlas": "combat",
-          "frame": "guard/bullet_shield/shield"
+          "atlas": "combat-ai",
+          "frame": "weapon/bullet_shield/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_counter_star"
+          "hit": "effect/weapon/bullet_shield",
+          "projectile": "effect/weapon/bullet_shield",
+          "cast": "effect/weapon/bullet_shield"
         }
       },
       "junk_turret": {
         "icon": "ui/starter_weapons/junk_turret",
         "sprite": {
-          "atlas": "combat",
-          "frame": "summon/junk_turret/body"
+          "atlas": "combat-ai",
+          "frame": "weapon/junk_turret/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_machine"
+          "hit": "effect/weapon/junk_turret",
+          "projectile": "effect/weapon/junk_turret",
+          "cast": "effect/weapon/junk_turret"
         }
       },
       "lunar_booster": {
         "icon": "ui/starter_weapons/lunar_booster",
         "sprite": {
-          "atlas": "combat",
-          "frame": "dash/lunar_booster/flame"
+          "atlas": "combat-ai",
+          "frame": "weapon/lunar_booster/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_fire"
+          "hit": "effect/weapon/lunar_booster",
+          "projectile": "effect/weapon/lunar_booster",
+          "cast": "effect/weapon/lunar_booster"
         }
       },
       "cutboard_remote": {
         "icon": "ui/starter_weapons/cutboard_remote",
         "sprite": {
-          "atlas": "combat",
-          "frame": "zone/cutboard_remote/frame"
+          "atlas": "combat-ai",
+          "frame": "weapon/cutboard_remote/projectile_ai"
         },
         "effects": {
-          "hit": "effect/hit_dream_cut"
+          "hit": "effect/weapon/cutboard_remote",
+          "projectile": "effect/weapon/cutboard_remote",
+          "cast": "effect/weapon/cutboard_remote"
         }
       }
     },
@@ -1100,111 +2026,121 @@
       "signal_mic": {
         "icon": "ui/weapons/signal_mic",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/signal_mic/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/signal_mic/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/signal_mic/cast",
-          "hit": "effect/hit_sound"
+          "cast": "effect/weapon/signal_mic",
+          "hit": "effect/weapon/signal_mic",
+          "projectile": "effect/weapon/signal_mic"
         }
       },
       "neon_blade": {
         "icon": "ui/weapons/neon_blade",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/neon_blade/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/neon_blade/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/neon_blade/cast",
-          "hit": "effect/hit_blade"
+          "cast": "effect/weapon/neon_blade",
+          "hit": "effect/weapon/neon_blade",
+          "projectile": "effect/weapon/neon_blade"
         }
       },
       "packet_drone": {
         "icon": "ui/weapons/packet_drone",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/packet_drone/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/packet_drone/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/packet_drone/cast",
-          "hit": "effect/hit_data"
+          "cast": "effect/weapon/packet_drone",
+          "hit": "effect/weapon/packet_drone",
+          "projectile": "effect/weapon/packet_drone"
         }
       },
       "synth_charm": {
         "icon": "ui/weapons/synth_charm",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/synth_charm/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/synth_charm/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/synth_charm/cast",
-          "hit": "effect/hit_signal"
+          "cast": "effect/weapon/synth_charm",
+          "hit": "effect/weapon/synth_charm",
+          "projectile": "effect/weapon/synth_charm"
         }
       },
       "chat_barrage": {
         "icon": "ui/weapons/chat_barrage",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/chat_barrage/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/chat_barrage/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/chat_barrage/cast",
-          "hit": "effect/hit_cute"
+          "cast": "effect/weapon/chat_barrage",
+          "hit": "effect/weapon/chat_barrage",
+          "projectile": "effect/weapon/chat_barrage"
         }
       },
       "repair_turret": {
         "icon": "ui/weapons/repair_turret",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/repair_turret/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/repair_turret/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/repair_turret/cast",
-          "hit": "effect/hit_machine"
+          "cast": "effect/weapon/repair_turret",
+          "hit": "effect/weapon/repair_turret",
+          "projectile": "effect/weapon/repair_turret"
         }
       },
       "heart_pulse": {
         "icon": "ui/weapons/heart_pulse",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/heart_pulse/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/heart_pulse/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/heart_pulse/cast",
-          "hit": "effect/hit_heart"
+          "cast": "effect/weapon/heart_pulse",
+          "hit": "effect/weapon/heart_pulse",
+          "projectile": "effect/weapon/heart_pulse"
         }
       },
       "relay_tower": {
         "icon": "ui/weapons/relay_tower",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/relay_tower/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/relay_tower/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/relay_tower/cast",
-          "hit": "effect/hit_resonance"
+          "cast": "effect/weapon/relay_tower",
+          "hit": "effect/weapon/relay_tower",
+          "projectile": "effect/weapon/relay_tower"
         }
       },
       "static_broom": {
         "icon": "ui/weapons/static_broom",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/static_broom/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/static_broom/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/static_broom/cast",
-          "hit": "effect/hit_static"
+          "cast": "effect/weapon/static_broom",
+          "hit": "effect/weapon/static_broom",
+          "projectile": "effect/weapon/static_broom"
         }
       },
       "afterimage_wheel": {
         "icon": "ui/weapons/afterimage_wheel",
         "sprite": {
-          "atlas": "combat",
-          "frame": "weapon/afterimage_wheel/projectile"
+          "atlas": "combat-ai",
+          "frame": "weapon/afterimage_wheel/projectile_ai"
         },
         "effects": {
-          "cast": "weapon/afterimage_wheel/cast",
-          "hit": "effect/hit_echo"
+          "cast": "effect/weapon/afterimage_wheel",
+          "hit": "effect/weapon/afterimage_wheel",
+          "projectile": "effect/weapon/afterimage_wheel"
         }
       }
     },
@@ -1702,7 +2638,7 @@
           "frame": "biome/neon_radio_rooftop/background"
         },
         "effects": {
-          "ambient": "biome/neon_radio_rooftop/ambient_fx"
+          "ambient": "effect/biome/neon_radio_rooftop/ambient_ai"
         }
       },
       "ranked_arcade_matrix": {
@@ -1713,7 +2649,7 @@
           "frame": "biome/ranked_arcade_matrix/background"
         },
         "effects": {
-          "ambient": "biome/ranked_arcade_matrix/ambient_fx"
+          "ambient": "effect/biome/ranked_arcade_matrix/ambient_ai"
         }
       },
       "midnight_cache_rain": {
@@ -1724,7 +2660,7 @@
           "frame": "biome/midnight_cache_rain/background"
         },
         "effects": {
-          "ambient": "biome/midnight_cache_rain/ambient_fx"
+          "ambient": "effect/biome/midnight_cache_rain/ambient_ai"
         }
       },
       "starlight_signal_plaza": {
@@ -1735,7 +2671,7 @@
           "frame": "biome/starlight_signal_plaza/background"
         },
         "effects": {
-          "ambient": "biome/starlight_signal_plaza/ambient_fx"
+          "ambient": "effect/biome/starlight_signal_plaza/ambient_ai"
         }
       },
       "data_library_loop": {
@@ -1746,7 +2682,7 @@
           "frame": "biome/data_library_loop/background"
         },
         "effects": {
-          "ambient": "biome/data_library_loop/ambient_fx"
+          "ambient": "effect/biome/data_library_loop/ambient_ai"
         }
       },
       "static_back_alley": {
@@ -1757,7 +2693,7 @@
           "frame": "biome/static_back_alley/background"
         },
         "effects": {
-          "ambient": "biome/static_back_alley/ambient_fx"
+          "ambient": "effect/biome/static_back_alley/ambient_ai"
         }
       }
     },
@@ -1986,6 +2922,627 @@
         "sprite": {
           "atlas": "combat",
           "frame": "effect/level_up"
+        }
+      },
+      "effect/weapon/signal_mic": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/signal_mic",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/signal_mic_0",
+                "effect/weapon/signal_mic_1",
+                "effect/weapon/signal_mic_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/sparkle_mic": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/sparkle_mic",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/sparkle_mic_0",
+                "effect/weapon/sparkle_mic_1",
+                "effect/weapon/sparkle_mic_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/neon_blade": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/neon_blade",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/neon_blade_0",
+                "effect/weapon/neon_blade_1",
+                "effect/weapon/neon_blade_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/neon_katana": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/neon_katana",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/neon_katana_0",
+                "effect/weapon/neon_katana_1",
+                "effect/weapon/neon_katana_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/packet_drone": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/packet_drone",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/packet_drone_0",
+                "effect/weapon/packet_drone_1",
+                "effect/weapon/packet_drone_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/packet_spike": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/packet_spike",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/packet_spike_0",
+                "effect/weapon/packet_spike_1",
+                "effect/weapon/packet_spike_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/synth_charm": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/synth_charm",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/synth_charm_0",
+                "effect/weapon/synth_charm_1",
+                "effect/weapon/synth_charm_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/chat_barrage": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/chat_barrage",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/chat_barrage_0",
+                "effect/weapon/chat_barrage_1",
+                "effect/weapon/chat_barrage_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/repair_turret": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/repair_turret",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/repair_turret_0",
+                "effect/weapon/repair_turret_1",
+                "effect/weapon/repair_turret_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/heart_pulse": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/heart_pulse",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/heart_pulse_0",
+                "effect/weapon/heart_pulse_1",
+                "effect/weapon/heart_pulse_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/relay_tower": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/relay_tower",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/relay_tower_0",
+                "effect/weapon/relay_tower_1",
+                "effect/weapon/relay_tower_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/static_broom": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/static_broom",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/static_broom_0",
+                "effect/weapon/static_broom_1",
+                "effect/weapon/static_broom_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/afterimage_wheel": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/afterimage_wheel",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/afterimage_wheel_0",
+                "effect/weapon/afterimage_wheel_1",
+                "effect/weapon/afterimage_wheel_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/antenna_ofuda": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/antenna_ofuda",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/antenna_ofuda_0",
+                "effect/weapon/antenna_ofuda_1",
+                "effect/weapon/antenna_ofuda_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/cat_cursor": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/cat_cursor",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/cat_cursor_0",
+                "effect/weapon/cat_cursor_1",
+                "effect/weapon/cat_cursor_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/phase_tuning_fork": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/phase_tuning_fork",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/phase_tuning_fork_0",
+                "effect/weapon/phase_tuning_fork_1",
+                "effect/weapon/phase_tuning_fork_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/bullet_shield": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/bullet_shield",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/bullet_shield_0",
+                "effect/weapon/bullet_shield_1",
+                "effect/weapon/bullet_shield_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/junk_turret": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/junk_turret",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/junk_turret_0",
+                "effect/weapon/junk_turret_1",
+                "effect/weapon/junk_turret_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/lunar_booster": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/lunar_booster",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/lunar_booster_0",
+                "effect/weapon/lunar_booster_1",
+                "effect/weapon/lunar_booster_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/weapon/cutboard_remote": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/weapon/cutboard_remote",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/weapon/cutboard_remote_0",
+                "effect/weapon/cutboard_remote_1",
+                "effect/weapon/cutboard_remote_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/hit_dream_cut": {
+        "sprite": {
+          "atlas": "combat-ai",
+          "prefix": "effect/hit_dream_cut",
+          "animations": {
+            "idle": {
+              "atlas": "combat-ai",
+              "frames": [
+                "effect/hit_dream_cut_0",
+                "effect/hit_dream_cut_1",
+                "effect/hit_dream_cut_2"
+              ],
+              "fps": 14,
+              "loop": false,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/neon_radio_rooftop/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/neon_radio_rooftop/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/neon_radio_rooftop/ambient_ai_0",
+                "biome/neon_radio_rooftop/ambient_ai_1",
+                "biome/neon_radio_rooftop/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/ranked_arcade_matrix/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/ranked_arcade_matrix/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/ranked_arcade_matrix/ambient_ai_0",
+                "biome/ranked_arcade_matrix/ambient_ai_1",
+                "biome/ranked_arcade_matrix/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/midnight_cache_rain/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/midnight_cache_rain/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/midnight_cache_rain/ambient_ai_0",
+                "biome/midnight_cache_rain/ambient_ai_1",
+                "biome/midnight_cache_rain/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/starlight_signal_plaza/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/starlight_signal_plaza/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/starlight_signal_plaza/ambient_ai_0",
+                "biome/starlight_signal_plaza/ambient_ai_1",
+                "biome/starlight_signal_plaza/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/data_library_loop/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/data_library_loop/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/data_library_loop/ambient_ai_0",
+                "biome/data_library_loop/ambient_ai_1",
+                "biome/data_library_loop/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
+        }
+      },
+      "effect/biome/static_back_alley/ambient_ai": {
+        "sprite": {
+          "atlas": "biomes-ai",
+          "prefix": "effect/biome/static_back_alley/ambient_ai",
+          "animations": {
+            "idle": {
+              "atlas": "biomes-ai",
+              "frames": [
+                "biome/static_back_alley/ambient_ai_0",
+                "biome/static_back_alley/ambient_ai_1",
+                "biome/static_back_alley/ambient_ai_2"
+              ],
+              "fps": 6,
+              "loop": true,
+              "scale": 1.0,
+              "anchor": {
+                "x": 0.5,
+                "y": 0.5
+              }
+            }
+          }
         }
       }
     }

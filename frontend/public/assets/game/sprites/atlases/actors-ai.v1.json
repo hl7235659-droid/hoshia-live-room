@@ -1,0 +1,696 @@
+{
+  "frames": {
+    "actor/hoshia_ai/idle_0": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/idle_1": {
+      "frame": {
+        "x": 68,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/idle_2": {
+      "frame": {
+        "x": 134,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/idle_3": {
+      "frame": {
+        "x": 200,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_front_0": {
+      "frame": {
+        "x": 266,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_front_1": {
+      "frame": {
+        "x": 332,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_front_2": {
+      "frame": {
+        "x": 398,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_front_3": {
+      "frame": {
+        "x": 464,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_side_0": {
+      "frame": {
+        "x": 530,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_side_1": {
+      "frame": {
+        "x": 596,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_side_2": {
+      "frame": {
+        "x": 662,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_side_3": {
+      "frame": {
+        "x": 728,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_back_0": {
+      "frame": {
+        "x": 794,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_back_1": {
+      "frame": {
+        "x": 860,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_back_2": {
+      "frame": {
+        "x": 926,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_back_3": {
+      "frame": {
+        "x": 2,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/attack_0": {
+      "frame": {
+        "x": 68,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/attack_1": {
+      "frame": {
+        "x": 134,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/attack_2": {
+      "frame": {
+        "x": 200,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/cast_0": {
+      "frame": {
+        "x": 266,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/cast_1": {
+      "frame": {
+        "x": 332,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/cast_2": {
+      "frame": {
+        "x": 398,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/hurt_0": {
+      "frame": {
+        "x": 464,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/hurt_1": {
+      "frame": {
+        "x": 530,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/level_up_0": {
+      "frame": {
+        "x": 596,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/level_up_1": {
+      "frame": {
+        "x": 662,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/level_up_2": {
+      "frame": {
+        "x": 728,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/level_up_3": {
+      "frame": {
+        "x": 794,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/ko_0": {
+      "frame": {
+        "x": 860,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/ko_1": {
+      "frame": {
+        "x": 926,
+        "y": 68,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_0": {
+      "frame": {
+        "x": 2,
+        "y": 134,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_1": {
+      "frame": {
+        "x": 68,
+        "y": 134,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_2": {
+      "frame": {
+        "x": 134,
+        "y": 134,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "actor/hoshia_ai/run_3": {
+      "frame": {
+        "x": 200,
+        "y": 134,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    }
+  },
+  "animations": {},
+  "meta": {
+    "app": "Hoshia Live Room AI asset packer",
+    "version": "1.1",
+    "image": "actors-ai.v1.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 992,
+      "h": 200
+    },
+    "scale": "1"
+  }
+}

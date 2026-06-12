@@ -12,6 +12,8 @@ const gameRoot = path.join(frontendRoot, 'public', 'assets', 'game');
 const visualsPath = path.join(gameRoot, 'visuals.v1.json');
 const manifestPath = path.join(gameRoot, 'manifest.v1.json');
 const creditsPath = path.join(gameRoot, 'CREDITS.md');
+const jobsPath = path.join(gameRoot, 'data', 'jobs.v1.json');
+const weaponsPath = path.join(gameRoot, 'data', 'weapons.v1.json');
 
 const failures = [];
 const checkedRefs = [];
@@ -147,6 +149,34 @@ function assertAtlasFrame(label, atlasId, frame) {
   }
 }
 
+function hasAtlasFrame(atlasId, frame) {
+  return typeof atlasId === 'string' && typeof frame === 'string' && atlasFrames.get(atlasId)?.has(frame);
+}
+
+function assertSpriteAnimations(label, entry, requiredAnimations = []) {
+  const animations = entry?.sprite?.animations;
+  if (!animations || typeof animations !== 'object' || Array.isArray(animations)) {
+    fail(`${label} must have sprite animations`);
+    return;
+  }
+
+  const animationNames = Object.keys(animations);
+  if (animationNames.length === 0) {
+    fail(`${label} must have at least one sprite animation`);
+  }
+
+  for (const name of requiredAnimations) {
+    const animation = animations[name];
+    if (!animation) {
+      fail(`${label} missing sprite animation: ${name}`);
+      continue;
+    }
+    if (!Array.isArray(animation.frames) || animation.frames.length === 0) {
+      fail(`${label}.sprite.animations.${name}.frames must be a non-empty array`);
+    }
+  }
+}
+
 function walkSpriteRefs(node, trail = '$') {
   if (!node || typeof node !== 'object') {
     return;
@@ -184,6 +214,102 @@ function walkSpriteRefs(node, trail = '$') {
   }
 }
 
+function checkJobsCoverage(visuals, jobsData) {
+  const jobs = jobsData?.jobs;
+  if (!Array.isArray(jobs)) {
+    fail('data/jobs.v1.json jobs must be an array');
+    return;
+  }
+
+  const jobVisuals = visuals?.entities?.jobs;
+  if (!jobVisuals || typeof jobVisuals !== 'object' || Array.isArray(jobVisuals)) {
+    fail('visuals.entities.jobs must be an object');
+    return;
+  }
+
+  for (const job of jobs) {
+    const id = job?.id;
+    if (typeof id !== 'string' || id.trim() === '') {
+      fail('data/jobs.v1.json contains a job without a valid id');
+      continue;
+    }
+    const visual = jobVisuals[id];
+    if (!visual) {
+      fail(`job ${id} missing visuals.entities.jobs entry`);
+      continue;
+    }
+    assertSpriteAnimations(`visuals.entities.jobs.${id}`, visual);
+  }
+}
+
+function findWeaponVisual(visuals, weaponId) {
+  const groups = ['weapons', 'starterWeapons'];
+  for (const group of groups) {
+    const entry = visuals?.entities?.[group]?.[weaponId];
+    if (entry) {
+      return { group, entry };
+    }
+  }
+  return null;
+}
+
+function hasEffectReference(entry) {
+  return (
+    entry?.effects &&
+    typeof entry.effects === 'object' &&
+    !Array.isArray(entry.effects) &&
+    Object.values(entry.effects).some((value) => typeof value === 'string' && value.trim() !== '')
+  );
+}
+
+function assertWeaponEffectReferences(label, visuals, entry) {
+  if (!entry?.effects || typeof entry.effects !== 'object' || Array.isArray(entry.effects)) {
+    return;
+  }
+
+  for (const [effectName, effectRef] of Object.entries(entry.effects)) {
+    if (typeof effectRef !== 'string' || effectRef.trim() === '') {
+      fail(`${label}.effects.${effectName} must be a non-empty effect reference`);
+      continue;
+    }
+    if (!visuals?.entities?.effects?.[effectRef] && !hasAtlasFrame('combat', effectRef)) {
+      fail(`${label}.effects.${effectName} references missing effect or combat atlas frame: ${effectRef}`);
+    }
+  }
+}
+
+function checkWeaponCoverage(visuals, weaponsData) {
+  const weapons = weaponsData?.weapons;
+  if (!Array.isArray(weapons)) {
+    fail('data/weapons.v1.json weapons must be an array');
+    return;
+  }
+
+  for (const weapon of weapons) {
+    const id = weapon?.id;
+    if (typeof id !== 'string' || id.trim() === '') {
+      fail('data/weapons.v1.json contains a weapon without a valid id');
+      continue;
+    }
+
+    const visualMatch = findWeaponVisual(visuals, id);
+    if (!visualMatch) {
+      fail(`weapon ${id} missing from visuals.entities.weapons or visuals.entities.starterWeapons`);
+      continue;
+    }
+
+    const { group, entry } = visualMatch;
+    const label = `visuals.entities.${group}.${id}`;
+    if (typeof entry.icon !== 'string' || entry.icon.trim() === '') {
+      fail(`${label}.icon must be a non-empty ui-icons frame`);
+    }
+    if (!entry?.sprite?.frame && !hasEffectReference(entry)) {
+      fail(`${label} must have sprite.frame or at least one effect reference`);
+    }
+    assertWeaponEffectReferences(label, visuals, entry);
+  }
+}
+
 function scanPublicText(filePath) {
   const label = path.relative(frontendRoot, filePath);
   const text = readUtf8(filePath);
@@ -214,10 +340,23 @@ function scanPublicText(filePath) {
 }
 
 const visuals = readJson(visualsPath);
+const jobsData = readJson(jobsPath);
+const weaponsData = readJson(weaponsPath);
 if (visuals) {
   checkAtlases(visuals);
   walkVisualRefs(visuals);
   walkSpriteRefs(visuals.entities);
+  checkJobsCoverage(visuals, jobsData);
+  checkWeaponCoverage(visuals, weaponsData);
+  assertSpriteAnimations('visuals.entities.hoshia', visuals.entities?.hoshia, [
+    'idle',
+    'run',
+    'attack',
+    'cast',
+    'hurt',
+    'level_up',
+    'ko',
+  ]);
   if (visuals.fallbacks?.missingIcon) assertAtlasFrame('visuals.fallbacks.missingIcon', 'ui-icons', visuals.fallbacks.missingIcon);
   if (visuals.fallbacks?.missingActor) assertAtlasFrame('visuals.fallbacks.missingActor', 'actors', visuals.fallbacks.missingActor);
   if (visuals.fallbacks?.missingEffect) assertAtlasFrame('visuals.fallbacks.missingEffect', 'combat', visuals.fallbacks.missingEffect);

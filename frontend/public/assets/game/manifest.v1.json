@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "packId": "hoshia-radio-cyber-pixel-mowdown",
-  "packVersion": "1.0.0",
+  "packVersion": "1.1.0",
   "title": "电波赛博像素割草",
   "locale": "zh-CN",
   "summary": "面向直播间的轻量像素割草小游戏公开配置：职业、导演规则和升级三选一池。",

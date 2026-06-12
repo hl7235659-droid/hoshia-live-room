@@ -16,6 +16,7 @@ type PixiSpritesheetData = ConstructorParameters<typeof import("pixi.js").Sprite
 export type PixelGameVisualEffect = {
   id: string;
   kind: "hit" | "kill";
+  effectId?: string;
   x: number;
   y: number;
   age: number;
@@ -45,6 +46,8 @@ export type PixelGameVisualRenderState = {
   }[];
   projectiles: {
     id: string;
+    weaponId: string;
+    hitEffectId?: string;
     x: number;
     y: number;
     color: string;
@@ -56,6 +59,11 @@ export type PixelGameVisualRenderState = {
     xp: number;
   }[];
   effects: PixelGameVisualEffect[];
+  hp?: number;
+  lastX?: number;
+  lastY?: number;
+  actionPose?: "attack" | "cast" | "";
+  actionPoseUntil?: number;
 };
 
 export type PixelGameVisualRenderResult = {
@@ -182,16 +190,27 @@ export function createPixelGameVisualRenderer(
   }
 
   function renderProjectiles(state: PixelGameVisualRenderState, camera: { x: number; y: number }) {
-    const entity = visuals?.entities.effects?.["effect/hit_signal"] || visuals?.entities.effects?.[fallbackEffectFrame];
     for (const projectile of state.projectiles) {
-      if (renderEntitySprite(buckets.projectiles, projectile.id, entity, "idle", state.elapsed, {
-        x: projectile.x - camera.x,
-        y: projectile.y - camera.y,
-        zIndex: projectile.y + 2,
-        scale: 0.32,
-        tint: colorToTint(PIXI, projectile.color)
-      })) {
-        result.projectiles.add(projectile.id);
+      const weapon = resolveWeaponEntity(projectile.weaponId);
+      const effectId = weapon?.effects?.projectile || projectile.hitEffectId || weapon?.effects?.cast || weapon?.effects?.hit;
+      const candidates = [
+        weapon,
+        visuals?.entities.effects?.[effectId || ""],
+        visuals?.entities.effects?.[projectile.hitEffectId || ""],
+        visuals?.entities.effects?.["effect/hit_signal"],
+        visuals?.entities.effects?.[fallbackEffectFrame]
+      ];
+      for (const entity of candidates) {
+        if (renderEntitySprite(buckets.projectiles, projectile.id, entity, "idle", state.elapsed, {
+          x: projectile.x - camera.x,
+          y: projectile.y - camera.y,
+          zIndex: projectile.y + 2,
+          scale: 0.32,
+          tint: colorToTint(PIXI, projectile.color)
+        })) {
+          result.projectiles.add(projectile.id);
+          break;
+        }
       }
     }
   }
@@ -217,8 +236,13 @@ export function createPixelGameVisualRenderer(
     const jobs = visuals?.entities.jobs || {};
     const entity = jobs[state.specializationId || state.classId] || jobs[state.classId] || visuals?.entities.hoshia;
     const hurt = state.hurtCooldown > 0;
-    const animationTime = hurt ? Math.max(0, 0.45 - state.hurtCooldown) : state.elapsed;
-    if (renderEntitySprite(buckets.hoshia, "hoshia", entity, hurt ? "hurt" : "idle", animationTime, {
+    const knockedOut = typeof state.hp === "number" && state.hp <= 0;
+    const actionPose = state.actionPoseUntil && state.actionPoseUntil > state.elapsed ? state.actionPose : "";
+    const moved = Math.hypot(state.x - (state.lastX ?? state.x), state.y - (state.lastY ?? state.y)) > 0.2;
+    const animationName = knockedOut ? "ko" : hurt ? "hurt" : actionPose || (moved ? "run" : "idle");
+    const actionTime = actionPose ? Math.max(0, 0.24 - Math.max(0, (state.actionPoseUntil || 0) - state.elapsed)) : state.elapsed;
+    const animationTime = hurt ? Math.max(0, 0.45 - state.hurtCooldown) : actionTime;
+    if (renderEntitySprite(buckets.hoshia, "hoshia", entity, animationName, animationTime, {
       x: state.x - camera.x,
       y: state.y - camera.y,
       zIndex: state.y + 1
@@ -227,15 +251,20 @@ export function createPixelGameVisualRenderer(
     }
   }
 
+  function resolveWeaponEntity(weaponId: string) {
+    const id = cleanId(weaponId);
+    return visuals?.entities.weapons?.[id] || visuals?.entities.starterWeapons?.[id];
+  }
+
   function renderEffects(state: PixelGameVisualRenderState, camera: { x: number; y: number }) {
     const effects = visuals?.entities.effects || {};
     const enemies = visuals?.entities.enemies || {};
     const bosses = visuals?.entities.bosses || {};
     for (const effect of state.effects) {
       const target = effect.boss ? bosses[effect.targetTypeId || ""] : enemies[effect.targetTypeId || ""];
-      const effectId = effect.kind === "kill"
+      const effectId = effect.effectId || (effect.kind === "kill"
         ? target?.effects?.killBurst || (effect.boss ? "effect/kill_burst_boss" : "effect/kill_burst_noise")
-        : visuals?.fallbacks?.missingEffect || fallbackEffectFrame;
+        : visuals?.fallbacks?.missingEffect || fallbackEffectFrame);
       const entity = effects[effectId] || effects[fallbackEffectFrame];
       const progress = clamp(effect.age / Math.max(0.001, effect.duration), 0, 1);
       const rendered = renderEntitySprite(buckets.effects, effect.id, entity, "idle", effect.age, {
@@ -480,4 +509,8 @@ function colorToTint(PIXI: PixiModule, color: string) {
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
+}
+
+function cleanId(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "").slice(0, 48);
 }
