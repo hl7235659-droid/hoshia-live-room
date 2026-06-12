@@ -8,7 +8,14 @@
       "damage": 14,
       "cooldown_ms": 720,
       "range": 210,
-      "color": "#44f5ff"
+      "color": "#44f5ff",
+      "tags": [
+        "sound",
+        "damage"
+      ],
+      "aliases": [
+        "sparkle_mic"
+      ]
     },
     {
       "id": "neon_blade",
@@ -17,7 +24,14 @@
       "damage": 24,
       "cooldown_ms": 620,
       "range": 92,
-      "color": "#ff5fd7"
+      "color": "#ff5fd7",
+      "tags": [
+        "blade",
+        "crit"
+      ],
+      "aliases": [
+        "neon_katana"
+      ]
     },
     {
       "id": "packet_drone",
@@ -26,7 +40,14 @@
       "damage": 12,
       "cooldown_ms": 540,
       "range": 260,
-      "color": "#8bff7a"
+      "color": "#8bff7a",
+      "tags": [
+        "data",
+        "chain"
+      ],
+      "aliases": [
+        "packet_spike"
+      ]
     },
     {
       "id": "synth_charm",
@@ -35,7 +56,11 @@
       "damage": 10,
       "cooldown_ms": 900,
       "range": 150,
-      "color": "#ffe66d"
+      "color": "#ffe66d",
+      "tags": [
+        "charm",
+        "pickup"
+      ]
     },
     {
       "id": "chat_barrage",
@@ -44,7 +69,11 @@
       "damage": 9,
       "cooldown_ms": 360,
       "range": 320,
-      "color": "#ff8a4c"
+      "color": "#ff8a4c",
+      "tags": [
+        "tempo",
+        "projectile"
+      ]
     },
     {
       "id": "repair_turret",
@@ -53,7 +82,14 @@
       "damage": 11,
       "cooldown_ms": 480,
       "range": 250,
-      "color": "#9ad1ff"
+      "color": "#9ad1ff",
+      "tags": [
+        "summon",
+        "machine"
+      ],
+      "aliases": [
+        "junk_turret"
+      ]
     },
     {
       "id": "heart_pulse",
@@ -62,7 +98,11 @@
       "damage": 13,
       "cooldown_ms": 760,
       "range": 180,
-      "color": "#ff7aa8"
+      "color": "#ff7aa8",
+      "tags": [
+        "recovery",
+        "pulse"
+      ]
     },
     {
       "id": "relay_tower",
@@ -71,7 +111,14 @@
       "damage": 16,
       "cooldown_ms": 960,
       "range": 190,
-      "color": "#b18cff"
+      "color": "#b18cff",
+      "tags": [
+        "resonance",
+        "zone"
+      ],
+      "aliases": [
+        "phase_tuning_fork"
+      ]
     },
     {
       "id": "static_broom",
@@ -80,7 +127,11 @@
       "damage": 12,
       "cooldown_ms": 520,
       "range": 260,
-      "color": "#c8ff4d"
+      "color": "#c8ff4d",
+      "tags": [
+        "glitch",
+        "pierce"
+      ]
     },
     {
       "id": "afterimage_wheel",
@@ -89,7 +140,174 @@
       "damage": 18,
       "cooldown_ms": 700,
       "range": 160,
-      "color": "#6c7bff"
+      "color": "#6c7bff",
+      "tags": [
+        "dream",
+        "dash"
+      ],
+      "aliases": [
+        "cutboard_remote"
+      ]
+    },
+    {
+      "id": "sparkle_mic",
+      "name": "?????",
+      "kind": "projectile",
+      "damage": 14,
+      "cooldown_ms": 620,
+      "range": 300,
+      "color": "#44f5ff",
+      "tags": [
+        "sound",
+        "charm"
+      ],
+      "aliases": [
+        "signal_mic"
+      ]
+    },
+    {
+      "id": "neon_katana",
+      "name": "????",
+      "kind": "slash",
+      "damage": 30,
+      "cooldown_ms": 660,
+      "range": 118,
+      "color": "#ff5fd7",
+      "tags": [
+        "blade",
+        "crit"
+      ],
+      "aliases": [
+        "neon_blade"
+      ]
+    },
+    {
+      "id": "packet_spike",
+      "name": "????",
+      "kind": "homing",
+      "damage": 13,
+      "cooldown_ms": 520,
+      "range": 330,
+      "color": "#8bff7a",
+      "tags": [
+        "data",
+        "chain",
+        "mark"
+      ],
+      "aliases": [
+        "packet_drone"
+      ]
+    },
+    {
+      "id": "antenna_ofuda",
+      "name": "????",
+      "kind": "orbital_pulse",
+      "damage": 12,
+      "cooldown_ms": 760,
+      "range": 175,
+      "color": "#ffe66d",
+      "tags": [
+        "signal",
+        "orbit",
+        "shield"
+      ],
+      "aliases": [
+        "signal_mic"
+      ]
+    },
+    {
+      "id": "cat_cursor",
+      "name": "????",
+      "kind": "dash_echo",
+      "damage": 16,
+      "cooldown_ms": 430,
+      "range": 150,
+      "color": "#ff7aa8",
+      "tags": [
+        "cute",
+        "dash",
+        "pickup"
+      ]
+    },
+    {
+      "id": "phase_tuning_fork",
+      "name": "????",
+      "kind": "zone",
+      "damage": 17,
+      "cooldown_ms": 920,
+      "range": 185,
+      "color": "#b18cff",
+      "tags": [
+        "resonance",
+        "zone",
+        "stack"
+      ],
+      "aliases": [
+        "relay_tower"
+      ]
+    },
+    {
+      "id": "bullet_shield",
+      "name": "???",
+      "kind": "guard",
+      "damage": 15,
+      "cooldown_ms": 740,
+      "range": 150,
+      "color": "#9ad1ff",
+      "tags": [
+        "guard",
+        "shield",
+        "counter"
+      ]
+    },
+    {
+      "id": "junk_turret",
+      "name": "????",
+      "kind": "turret",
+      "damage": 12,
+      "cooldown_ms": 700,
+      "range": 270,
+      "color": "#c8ff4d",
+      "tags": [
+        "machine",
+        "summon",
+        "zone"
+      ],
+      "aliases": [
+        "repair_turret"
+      ]
+    },
+    {
+      "id": "lunar_booster",
+      "name": "?????",
+      "kind": "dash_echo",
+      "damage": 15,
+      "cooldown_ms": 560,
+      "range": 175,
+      "color": "#6c7bff",
+      "tags": [
+        "fire",
+        "dash",
+        "supply",
+        "mobility"
+      ]
+    },
+    {
+      "id": "cutboard_remote",
+      "name": "?????",
+      "kind": "pulse",
+      "damage": 20,
+      "cooldown_ms": 880,
+      "range": 220,
+      "color": "#ff8a4c",
+      "tags": [
+        "dream",
+        "director",
+        "zone"
+      ],
+      "aliases": [
+        "afterimage_wheel"
+      ]
     }
   ]
 }

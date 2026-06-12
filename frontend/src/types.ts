@@ -348,6 +348,18 @@ export type PixelGameUpgradeOption = {
   effects?: PixelGameUpgradeEffects;
 };
 
+export type PixelGameWeaponTuning = {
+  id: string;
+  name?: string;
+  kind?: string;
+  damage: number;
+  cooldown_ms: number;
+  range: number;
+  color?: string;
+  tags?: string[];
+  aliases?: string[];
+};
+
 export type PixelGameJob = {
   id: string;
   name: string;
@@ -369,6 +381,12 @@ export type PixelGameJob = {
   };
   passive?: string;
   upgradeTags?: string[];
+  hoshiaMapping?: {
+    moodTags?: string[];
+    activityTags?: string[];
+    commentaryTone?: string;
+    directorTags?: string[];
+  };
 };
 
 export type PixelGameEnemyTuning = {
@@ -412,6 +430,42 @@ export type PixelGameWaveRule = {
   spawn_rate: number;
   families?: string[];
   boss?: boolean;
+};
+
+export type PixelGameDirectorMoodRule = {
+  mood: string;
+  displayName?: string;
+  directorModifiers?: {
+    spawnTempo?: number;
+    eliteRate?: number;
+    pickupBias?: string[];
+    palette?: string;
+  };
+  announcerHints?: string[];
+};
+
+export type PixelGameDirectorActivityRule = {
+  activity: string;
+  displayName?: string;
+  directorShift?: string;
+  preferredEventTags?: string[];
+};
+
+export type PixelGameDirectorEventCard = {
+  id: string;
+  name?: string;
+  tags?: string[];
+  effect?: string;
+};
+
+export type PixelGameDirectorRules = {
+  schemaVersion: 1;
+  kind: "directorRules";
+  packId?: string;
+  directorId?: string;
+  hoshiaMoodMap?: PixelGameDirectorMoodRule[];
+  hoshiaActivityMap?: PixelGameDirectorActivityRule[];
+  eventCards?: PixelGameDirectorEventCard[];
 };
 
 export type PixelGameVisualAnimation = {
@@ -482,11 +536,13 @@ export type PixelGameVisualManifest = {
 
 export type PixelGameDataBundle = {
   jobs: PixelGameJob[];
+  weapons: PixelGameWeaponTuning[];
   upgrades: PixelGameUpgradeOption[];
   enemies: PixelGameEnemyTuning[];
   bosses: PixelGameBossTuning[];
   biomes: PixelGameBiome[];
   waves: PixelGameWaveRule[];
+  directorRules: PixelGameDirectorRules | null;
   visuals: PixelGameVisualManifest | null;
   source: "assets" | "fallback" | "mixed";
 };

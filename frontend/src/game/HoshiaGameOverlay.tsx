@@ -14,6 +14,7 @@ import type {
   Session
 } from "../types";
 import { loadPixelGameData } from "./pixelGameData";
+import { buildDirectorProfile } from "./pixelGameDirector";
 import { PixiGameHost, type PixelGameClassPick, type PixelGameUpgradePick } from "./PixiGameHost";
 
 type Phase = "boot" | "menu" | "playing" | "upgrade" | "class_select" | "settling" | "result";
@@ -497,12 +498,15 @@ function ResultPanel({ data, run, result, payload, leaderboard, onRestart, onClo
 }) {
   const accepted = result?.accepted !== false && !result?.suspicious;
   const settledRun = result?.run || run;
+  const settledJob = data?.jobs.find((job) => job.id === settledRun?.class_id);
+  const director = data && settledRun ? buildDirectorProfile(data, settledRun, settledJob) : null;
   const jobVisual = data?.visuals?.entities.jobs?.[settledRun?.class_id || ""];
   const stageVisual = data?.visuals?.entities.biomes?.[settledRun?.stage_id || ""];
   const portrait = visualAssetUrl(data, jobVisual?.portrait);
   const icon = visualAssetUrl(data, jobVisual?.icon, data?.visuals?.fallbacks?.missingIcon);
   const stagePreview = visualAssetUrl(data, stageVisual?.preview);
   const stageIcon = visualAssetUrl(data, stageVisual?.icon);
+  const weaponLabel = startingWeaponLabel(data, settledJob);
   return (
     <div className="pixel-game-result-backdrop">
       <section className="pixel-game-result-card">
@@ -524,6 +528,31 @@ function ResultPanel({ data, run, result, payload, leaderboard, onRestart, onClo
           <em>Tier {result?.run?.score_tier || "C"}</em>
           <em>{payload?.boss_result === "defeated" ? "BOSS defeated" : "BOSS survived"}</em>
         </div>
+        {director && settledRun ? (
+          <div className="pixel-game-director-report">
+            <div className="pixel-game-director-locks">
+              <span><b>Mood</b><em>{director.moodName}</em><small>{settledRun.locked_mood || "calm"}</small></span>
+              <span><b>Activity</b><em>{director.activityName}</em><small>{settledRun.locked_activity || "idle"}</small></span>
+              <span><b>Energy</b><em>{Math.round(director.energy)}</em><small>enemy pressure</small></span>
+              <span><b>Social</b><em>{Math.round(director.socialNeed)}</em><small>drop flow</small></span>
+            </div>
+            <div className="pixel-game-director-weapon">
+              <b>Weapon data</b>
+              <span>{weaponLabel}</span>
+              <small>{settledJob?.startingWeapon?.pattern || "Driven by weapons.v1.json and class tags."}</small>
+            </div>
+            <div className="pixel-game-director-columns">
+              <section>
+                <strong>本局具体影响</strong>
+                {director.impactLines.slice(0, 5).map((line) => <p key={line}>{line}</p>)}
+              </section>
+              <section>
+                <strong>为什么是这个环境 / 怪物 / BOSS</strong>
+                {director.reasonLines.slice(0, 5).map((line) => <p key={line}>{line}</p>)}
+              </section>
+            </div>
+          </div>
+        ) : null}
         <p>{result?.report || result?.error || "Hoshia is still sorting this signal."}</p>
         {result?.unlocked_classes?.length ? (
           <div className="pixel-game-unlocks">Unlocked: {result.unlocked_classes.join(" / ")}</div>
@@ -620,6 +649,14 @@ function jobName(data: PixelGameDataBundle | null, classId: string | undefined) 
 function biomeName(data: PixelGameDataBundle | null, stageId: string | undefined) {
   const biome = data?.biomes.find((item) => item.id === stageId);
   return biome?.name || (stageId ? humanizeId(stageId) : "");
+}
+
+function startingWeaponLabel(data: PixelGameDataBundle | null, job: PixelGameJob | undefined) {
+  const weaponId = job?.startingWeapon?.id || "";
+  const damageType = job?.startingWeapon?.damageType || "";
+  const weapon = data?.weapons.find((item) => item.id === weaponId || item.aliases?.includes(weaponId) || item.tags?.includes(damageType));
+  const kind = weapon?.kind ? ` / ${weapon.kind}` : "";
+  return `${weapon?.name || job?.startingWeapon?.name || humanizeId(weaponId || "weapon")}${kind}`;
 }
 
 function humanizeId(value: string) {

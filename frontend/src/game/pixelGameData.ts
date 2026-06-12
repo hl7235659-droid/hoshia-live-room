@@ -2,10 +2,12 @@ import type {
   PixelGameBiome,
   PixelGameBossTuning,
   PixelGameDataBundle,
+  PixelGameDirectorRules,
   PixelGameEnemyTuning,
   PixelGameJob,
   PixelGameUpgradeOption,
   PixelGameVisualManifest,
+  PixelGameWeaponTuning,
   PixelGameWaveRule
 } from "../types";
 
@@ -27,17 +29,20 @@ async function loadJson<T>(path: string): Promise<T | null> {
 }
 
 export async function loadPixelGameData(): Promise<PixelGameDataBundle> {
-  const [jobsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw, visualsRaw] = await Promise.all([
+  const [jobsRaw, weaponsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw, directorRaw, visualsRaw] = await Promise.all([
     loadJson<{ jobs?: PixelGameJob[] }>("data/jobs.v1.json"),
+    loadJson<{ weapons?: PixelGameWeaponTuning[] }>("data/weapons.v1.json"),
     loadJson<{ upgradePool?: PixelGameUpgradeOption[]; jobExclusiveUpgrades?: PixelGameUpgradeOption[] }>("data/upgrades.v1.json"),
     loadJson<{ enemies?: PixelGameEnemyTuning[] }>("data/enemies.v1.json"),
     loadJson<{ bosses?: PixelGameBossTuning[] }>("data/bosses.v1.json"),
     loadJson<{ biomes?: PixelGameBiome[] }>("data/biomes.v1.json"),
     loadJson<{ waves?: PixelGameWaveRule[] }>("data/waves.v1.json"),
+    loadJson<PixelGameDirectorRules>("data/director-rules.v1.json"),
     loadJson<PixelGameVisualManifest>("visuals.v1.json")
   ]);
 
   const jobs = normalizeJobs(jobsRaw?.jobs);
+  const weapons = normalizeWeapons(weaponsRaw?.weapons);
   const upgrades = normalizeUpgrades([
     ...(upgradesRaw?.upgradePool || []),
     ...(upgradesRaw?.jobExclusiveUpgrades || [])
@@ -46,17 +51,19 @@ export async function loadPixelGameData(): Promise<PixelGameDataBundle> {
   const bosses = normalizeBosses(bossesRaw?.bosses);
   const biomes = normalizeBiomes(biomesRaw?.biomes);
   const waves = normalizeWaves(wavesRaw?.waves);
-  const loadedCount = [jobsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw].filter(Boolean).length;
+  const loadedCount = [jobsRaw, weaponsRaw, upgradesRaw, enemiesRaw, bossesRaw, biomesRaw, wavesRaw, directorRaw].filter(Boolean).length;
 
   return {
     jobs,
+    weapons,
     upgrades,
     enemies,
     bosses,
     biomes,
     waves,
+    directorRules: normalizeDirectorRules(directorRaw),
     visuals: normalizeVisuals(visualsRaw),
-    source: loadedCount === 6 ? "assets" : loadedCount === 0 ? "fallback" : "mixed"
+    source: loadedCount === 8 ? "assets" : loadedCount === 0 ? "fallback" : "mixed"
   };
 }
 
@@ -96,6 +103,22 @@ function normalizeJobs(items: PixelGameJob[] | undefined): PixelGameJob[] {
       luck: Number(job.baseStats?.luck || 1)
     },
     upgradeTags: Array.isArray(job.upgradeTags) ? job.upgradeTags.map(cleanId).filter(Boolean) : []
+  }));
+}
+
+function normalizeWeapons(items: PixelGameWeaponTuning[] | undefined): PixelGameWeaponTuning[] {
+  const weapons = Array.isArray(items) && items.length ? items : fallbackWeapons;
+  return weapons.map((weapon) => ({
+    ...weapon,
+    id: cleanId(weapon.id) || "sparkle_mic",
+    name: String(weapon.name || weapon.id || "Pixel weapon"),
+    kind: cleanId(weapon.kind) || "projectile",
+    damage: Math.max(1, Number(weapon.damage || 12)),
+    cooldown_ms: clampNumber(Number(weapon.cooldown_ms || 620), 120, 4000),
+    range: clampNumber(Number(weapon.range || 240), 40, 800),
+    color: weapon.color || "#44f5ff",
+    tags: Array.isArray(weapon.tags) ? weapon.tags.map(cleanId).filter(Boolean) : [],
+    aliases: Array.isArray(weapon.aliases) ? weapon.aliases.map(cleanId).filter(Boolean) : []
   }));
 }
 
@@ -163,14 +186,60 @@ function normalizeWaves(items: PixelGameWaveRule[] | undefined): PixelGameWaveRu
   })).sort((a, b) => a.minute - b.minute);
 }
 
+function normalizeDirectorRules(item: PixelGameDirectorRules | null): PixelGameDirectorRules | null {
+  if (!item || item.schemaVersion !== 1 || item.kind !== "directorRules") return null;
+  return {
+    ...item,
+    hoshiaMoodMap: Array.isArray(item.hoshiaMoodMap) ? item.hoshiaMoodMap.map((rule) => ({
+      ...rule,
+      mood: cleanId(rule.mood),
+      displayName: String(rule.displayName || rule.mood || ""),
+      directorModifiers: {
+        ...rule.directorModifiers,
+        spawnTempo: Number(rule.directorModifiers?.spawnTempo || 1),
+        eliteRate: Number(rule.directorModifiers?.eliteRate || 1),
+        pickupBias: Array.isArray(rule.directorModifiers?.pickupBias)
+          ? rule.directorModifiers.pickupBias.map(cleanId).filter(Boolean)
+          : []
+      },
+      announcerHints: Array.isArray(rule.announcerHints) ? rule.announcerHints.map(String).filter(Boolean) : []
+    })).filter((rule) => rule.mood) : [],
+    hoshiaActivityMap: Array.isArray(item.hoshiaActivityMap) ? item.hoshiaActivityMap.map((rule) => ({
+      ...rule,
+      activity: cleanId(rule.activity),
+      displayName: String(rule.displayName || rule.activity || ""),
+      directorShift: String(rule.directorShift || ""),
+      preferredEventTags: Array.isArray(rule.preferredEventTags) ? rule.preferredEventTags.map(cleanId).filter(Boolean) : []
+    })).filter((rule) => rule.activity) : [],
+    eventCards: Array.isArray(item.eventCards) ? item.eventCards.map((card) => ({
+      ...card,
+      id: cleanId(card.id) || "signal_event",
+      name: String(card.name || card.id || "Signal event"),
+      tags: Array.isArray(card.tags) ? card.tags.map(cleanId).filter(Boolean) : [],
+      effect: String(card.effect || "")
+    })) : []
+  };
+}
+
 function cleanId(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "").slice(0, 48);
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
 }
 
 const fallbackJobs: PixelGameJob[] = [
   { id: "star_idol", name: "Star Idol", role: "mid-range tempo", tagline: "Clear noise with radio sparks.", baseStats: { maxHp: 90, speed: 1.05, attack: 1, cooldown: 0.95, pickup: 1.15, luck: 1.08 }, upgradeTags: ["sound", "pickup"] },
   { id: "neon_samurai", name: "Neon Samurai", role: "melee burst", tagline: "Slice glitches into pixel rain.", baseStats: { maxHp: 115, speed: 1.08, attack: 1.12, cooldown: 1.02, pickup: 0.92, luck: 0.98 }, upgradeTags: ["blade", "crit"] },
   { id: "stream_hacker", name: "Stream Hacker", role: "ranged chain", tagline: "Rewrite enemy waves into XP.", baseStats: { maxHp: 86, speed: 1.02, attack: 1.08, cooldown: 0.9, pickup: 1.05, luck: 1.02 }, upgradeTags: ["data", "chain"] }
+];
+
+const fallbackWeapons: PixelGameWeaponTuning[] = [
+  { id: "sparkle_mic", name: "Sparkle Mic", kind: "projectile", damage: 14, cooldown_ms: 620, range: 280, color: "#44f5ff", tags: ["sound"] },
+  { id: "neon_katana", name: "Neon Katana", kind: "slash", damage: 28, cooldown_ms: 680, range: 104, color: "#ff5fd7", tags: ["blade"] },
+  { id: "packet_spike", name: "Packet Spike", kind: "homing", damage: 13, cooldown_ms: 520, range: 300, color: "#8bff7a", tags: ["data", "chain"] }
 ];
 
 const fallbackUpgrades: PixelGameUpgradeOption[] = [
