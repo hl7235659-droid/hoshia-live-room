@@ -882,24 +882,40 @@ async function runDailyPostShadowCheck({ force = false, session = null, diaryEve
       route: "daily_post_shadow"
     });
   }
+  let plan = null;
+  let shadowMetadata = null;
   try {
-    const plan = hoshiaDailyPostService.planDailyPost({
+    plan = hoshiaDailyPostService.planDailyPost({
       now: new Date(),
       state: state || hoshiaVisualStateService.publicState(),
       sourceType: newsTopic ? "news_topic" : "daily_state",
       topic: newsTopic,
       diaryEvent
     });
-    if (!plan?.postInput) {
-      return recordShadowMetricEvent({
-        eventType: "hoshiaclaw.daily_post_shadow.skip",
-        status: "skip",
-        reason: plan?.reason || "daily_post_shadow_no_candidate",
-        source: "gateway",
-        route: "daily_post_shadow"
-      });
-    }
-    return runDailyPostShadow({
+    shadowMetadata = {
+      moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+      moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 })
+    };
+  } catch {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.daily_post_shadow.skip",
+      status: "skip",
+      reason: "daily_post_shadow_no_candidate",
+      source: "gateway",
+      route: "daily_post_shadow"
+    });
+  }
+  if (!plan?.postInput) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.daily_post_shadow.skip",
+      status: "skip",
+      reason: plan?.reason || "daily_post_shadow_no_candidate",
+      source: "gateway",
+      route: "daily_post_shadow"
+    });
+  }
+  try {
+    return await runDailyPostShadow({
       enabled: true,
       session: shadowSession(session),
       postInput: plan.postInput,
@@ -909,10 +925,7 @@ async function runDailyPostShadowCheck({ force = false, session = null, diaryEve
       config,
       generateAiReply,
       fetchImpl: globalThis.fetch,
-      metadata: {
-        moduleContext: buildModuleContext({ providers: moduleProviders, session }),
-        moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 })
-      },
+      metadata: shadowMetadata,
       recordMetric: (metric) => recordShadowMetricEvent({ ...metric, route: "daily_post_shadow" }),
       logger: console
     });
