@@ -644,6 +644,15 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
     return () => window.clearTimeout(timer);
   }, [codeCooldown]);
 
+  useEffect(() => {
+    if (!error && !notice) return;
+    const timer = window.setTimeout(() => {
+      setError("");
+      setNotice("");
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [error, notice]);
+
   async function sendVerificationCode() {
     setError("");
     setNotice("");
@@ -796,8 +805,6 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
               </div>
             </label>
           ) : null}
-          {error ? <span className="login-error">{error}</span> : null}
-          {notice ? <span className="login-success">{notice}</span> : null}
           <div className="login-submit-wrap">
             <button disabled={busy || !canSubmitAuth(authMode, { username, password, verificationCode })} type="submit">
               <KeyRound size={16} />
@@ -820,6 +827,11 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
           </div>
         </form>
       </section>
+      {error || notice ? (
+        <div className={`login-toast ${error ? "is-error" : "is-success"}`} role={error ? "alert" : "status"}>
+          {error || notice}
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -847,7 +859,7 @@ function authErrorMessage(error: string | undefined, mode: "login" | "register")
   if (error === "email_code_used") return "验证码已经使用，请重新获取";
   if (error === "email_code_expired") return "验证码已过期，请重新获取";
   if (error === "email_code_rate_limited") return "验证码发送太频繁，请稍后再试";
-  if (error === "email_send_failed") return "验证码邮件发送失败，请检查 SMTP 配置";
+  if (error === "email_send_failed") return "验证码邮件发送失败，邮箱服务暂时不可用";
   return mode === "register" ? "注册失败，请检查 QQ 邮箱和验证码" : "登录失败";
 }
 
