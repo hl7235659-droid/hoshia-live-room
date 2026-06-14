@@ -315,6 +315,57 @@ test("music service skips unplayable search candidates", async (t) => {
   assert.equal(result.track.title, "Playable Candidate");
 });
 
+test("music service fails fast from QQMusicVIP media errors to the next source", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const searchCalls = [];
+  const mediaCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.includes("/api/search/online")) {
+      const parsed = new URL(href);
+      const plugin = parsed.searchParams.get("plugin");
+      searchCalls.push(plugin);
+      if (plugin === "QQMusicVIP") {
+        return jsonResponse({
+          success: true,
+          data: [
+            { title: "Locked Song 1", artist: "Jay", platform: "QQMusicVIP" },
+            { title: "Locked Song 2", artist: "Jay", platform: "QQMusicVIP" }
+          ]
+        });
+      }
+      return jsonResponse({
+        success: true,
+        data: [{ title: "Playable Backup", artist: "Jay", platform: "musicfree" }]
+      });
+    }
+    if (href.includes("/api/play/getMediaSource")) {
+      const song = JSON.parse(options.body);
+      mediaCalls.push(song.title);
+      if (song.platform === "QQMusicVIP") {
+        return jsonResponse({ success: false, error: "qqmusic_unplayable" });
+      }
+      return jsonResponse({ success: true, data: { url: "/music/playable-backup.mp3" } });
+    }
+    throw new Error(`unexpected fetch ${href}`);
+  };
+
+  const service = new MusicService(
+    { ...baseConfig, musicXiaomusicSearchChain: "musicfree:QQMusicVIP,musicfree:all" },
+    { store: new TestStore() }
+  );
+  const result = await service.requestSong("Jay locked song", { user_id: "u-fallback", username: "friend" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.track.title, "Playable Backup");
+  assert.deepEqual(searchCalls, ["QQMusicVIP", "all"]);
+  assert.deepEqual(mediaCalls, ["Locked Song 1", "Playable Backup"]);
+});
+
 test("music service bulk requests clamp to five and skip duplicates or unplayable candidates", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

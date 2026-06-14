@@ -358,15 +358,24 @@ export class MusicService {
           continue;
         }
 
+        let mediaFailures = 0;
         for (const candidate of candidates.slice(0, 12)) {
           if (results.length >= count) break;
           if (seen.has(songSignature(candidate))) continue;
           const song = await this.resolveXiaomusicCandidate(baseUrl, query, attempt, candidate).catch((error) => {
             errors.push(`${attempt.label}:${safeMusicError(error)}`);
+            mediaFailures += 1;
             return null;
           });
-          if (!song) continue;
+          if (!song) {
+            if (shouldStopAttemptAfterMediaFailures(attempt, mediaFailures)) break;
+            continue;
+          }
           addResolvedSong(results, seen, { ...song, query }, count);
+          mediaFailures = 0;
+        }
+        if (shouldStopAttemptAfterMediaFailures(attempt, mediaFailures)) {
+          errors.push(`${attempt.label}:music_source_degraded`);
         }
       }
     }
@@ -379,9 +388,14 @@ export class MusicService {
 
   async resolveXiaomusicSong(baseUrl, query, attempt) {
     const candidates = await this.searchXiaomusicCandidates(baseUrl, query, attempt, 8);
+    let mediaFailures = 0;
     for (const song of candidates.slice(0, 8)) {
-      const resolved = await this.resolveXiaomusicCandidate(baseUrl, query, attempt, song).catch(() => null);
+      const resolved = await this.resolveXiaomusicCandidate(baseUrl, query, attempt, song).catch(() => {
+        mediaFailures += 1;
+        return null;
+      });
       if (resolved) return resolved;
+      if (shouldStopAttemptAfterMediaFailures(attempt, mediaFailures)) break;
     }
 
     throw new Error("music_unplayable");
@@ -610,6 +624,13 @@ function parseXiaomusicSearchChain(value) {
     { label: "qqmusic", apiType: 2, plugin: "tx" },
     { label: "musicfree", apiType: 1, plugin: "all" }
   ];
+}
+
+function shouldStopAttemptAfterMediaFailures(attempt, failureCount) {
+  if (failureCount < 1) return false;
+  const plugin = String(attempt?.plugin || "").toLowerCase();
+  const label = String(attempt?.label || "").toLowerCase();
+  return plugin === "qqmusicvip" || label.includes("qqmusicvip");
 }
 
 function normalizeSource(value) {
