@@ -37,6 +37,19 @@ export function openLiveRoomDatabase(databasePath) {
     CREATE INDEX IF NOT EXISTS idx_registration_codes_unused
       ON registration_codes(used_at, expires_at);
 
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_email_verification_codes_lookup
+      ON email_verification_codes(email, purpose, used_at, expires_at, created_at);
+
     CREATE TABLE IF NOT EXISTS room_messages (
       id TEXT PRIMARY KEY,
       room_id TEXT NOT NULL,
@@ -365,6 +378,41 @@ export class LiveRoomDatabase {
     `).all();
   }
 
+  createUser({ user, now = new Date().toISOString() }) {
+    const normalized = normalizeUsername(user.username);
+    try {
+      this.db.prepare(`
+        INSERT INTO users (
+          id,
+          username,
+          username_normalized,
+          password_hash,
+          nickname,
+          avatar_url,
+          onboarding_completed,
+          created_at,
+          last_login_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        user.id,
+        user.username,
+        normalized,
+        user.passwordHash,
+        user.nickname,
+        user.avatarUrl || null,
+        0,
+        now,
+        now
+      );
+      return this.findUserByUsername(user.username);
+    } catch (error) {
+      if (isSqliteUniqueError(error)) {
+        throw new DatabaseError("username_taken");
+      }
+      throw error;
+    }
+  }
+
   createUserWithRegistrationCode({ user, registrationCodeHash, now = new Date().toISOString() }) {
     const normalized = normalizeUsername(user.username);
     let committed = false;
@@ -446,6 +494,57 @@ export class LiveRoomDatabase {
       total: Number(row.total || 0),
       available: Number(row.available || 0)
     };
+  }
+
+  insertEmailVerificationCode({ id, email, purpose = "register", codeHash, createdAt = new Date().toISOString(), expiresAt }) {
+    this.db.prepare(`
+      UPDATE email_verification_codes
+      SET used_at = ?
+      WHERE email = ? AND purpose = ? AND used_at IS NULL
+    `).run(createdAt, normalizeUsername(email), purpose);
+    this.db.prepare(`
+      INSERT INTO email_verification_codes (id, email, purpose, code_hash, created_at, expires_at, used_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL)
+    `).run(id, normalizeUsername(email), purpose, codeHash, createdAt, expiresAt);
+    return this.getLatestEmailVerificationCode({ email, purpose });
+  }
+
+  getLatestEmailVerificationCode({ email, purpose = "register" }) {
+    return this.db.prepare(`
+      SELECT id, email, purpose, code_hash, created_at, expires_at, used_at
+      FROM email_verification_codes
+      WHERE email = ? AND purpose = ?
+      ORDER BY datetime(created_at) DESC, id DESC
+      LIMIT 1
+    `).get(normalizeUsername(email), purpose) || null;
+  }
+
+  consumeEmailVerificationCode({ email, purpose = "register", codeHash, now = new Date().toISOString() }) {
+    let committed = false;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const code = this.getLatestEmailVerificationCode({ email, purpose });
+      if (!code || code.code_hash !== codeHash) {
+        throw new DatabaseError("email_code_invalid");
+      }
+      if (code.used_at) {
+        throw new DatabaseError("email_code_used");
+      }
+      if (Date.parse(code.expires_at) <= Date.parse(now)) {
+        throw new DatabaseError("email_code_expired");
+      }
+      this.db.prepare(`
+        UPDATE email_verification_codes
+        SET used_at = ?
+        WHERE id = ? AND used_at IS NULL
+      `).run(now, code.id);
+      this.db.exec("COMMIT");
+      committed = true;
+      return code;
+    } catch (error) {
+      if (!committed) this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   insertRoomMessage(event, now = new Date().toISOString()) {

@@ -1,14 +1,12 @@
 import cookie from "cookie";
+import { createHash, randomInt } from "node:crypto";
 import { nanoid } from "nanoid";
-import { DatabaseError, normalizeUsername } from "./database.js";
+import nodemailer from "nodemailer";
+import { DatabaseError } from "./database.js";
 import {
   cookieName,
   encodeSessionCookie,
-  gateCookieName,
-  decodeSessionCookie,
-  hashAccessCode,
   hashPassword,
-  verifyAccessCode,
   verifyPassword
 } from "./security.js";
 
@@ -31,7 +29,8 @@ export function registerAccountRoutes(app, deps) {
     sessionFromUser,
     shouldScheduleWelcomeGreeting,
     store,
-    uniqueOnlineCount
+    uniqueOnlineCount,
+    mailTransporter
   } = deps;
 
   app.get("/api/room/preview", (_req, res) => {
@@ -46,53 +45,100 @@ export function registerAccountRoutes(app, deps) {
     });
   });
 
-  app.get("/api/auth/gate", (req, res) => {
-    res.json({ ok: true, passed: hasGateAccess(req, config) });
-  });
-
-  app.post("/api/auth/gate", (req, res) => {
-    const roomToken = String(req.body?.roomToken || "");
-    if (!config.roomTokenHashes.length || !verifyAccessCode(roomToken, config.roomTokenHashes)) {
-      return res.status(403).json({ error: "invalid_room_token" });
-    }
-
-    setGateCookie(res, config);
+  app.get("/api/auth/gate", (_req, res) => {
     res.json({ ok: true, passed: true });
   });
 
-  app.post("/api/auth/register", async (req, res) => {
-    const username = String(req.body?.username || "").trim().slice(0, 48);
-    const nickname = username.slice(0, 32);
-    const password = String(req.body?.password || "");
-    const registrationCode = String(req.body?.registrationCode || "");
+  app.post("/api/auth/gate", (_req, res) => {
+    res.json({ ok: true, passed: true });
+  });
 
-    if (!hasGateAccess(req, config)) {
-      return res.status(403).json({ error: "gate_required" });
+  app.post("/api/auth/register-code/send", async (req, res) => {
+    const email = normalizeQqEmail(req.body?.email || req.body?.username || "");
+    if (!isValidQqEmail(email)) {
+      return res.status(400).json({ error: "qq_email_invalid" });
     }
-    if (!isValidUsername(username)) {
-      return res.status(400).json({ error: "username_invalid" });
+    if (db.findUserByUsername(email)) {
+      return res.status(409).json({ error: "username_taken" });
+    }
+
+    const nowMs = Date.now();
+    const previous = db.getLatestEmailVerificationCode({ email, purpose: "register" });
+    const cooldownMs = Math.max(0, Number(config.registerCodeCooldownSeconds || 60)) * 1000;
+    if (previous?.created_at && nowMs - Date.parse(previous.created_at) < cooldownMs) {
+      return res.status(429).json({ error: "email_code_rate_limited" });
+    }
+
+    const code = String(randomInt(0, 1000000)).padStart(6, "0");
+    const createdAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + Math.max(60, Number(config.registerCodeTtlSeconds || 600)) * 1000).toISOString();
+    db.insertEmailVerificationCode({
+      id: nanoid(12),
+      email,
+      purpose: "register",
+      codeHash: hashEmailCode(email, code, config.sessionSecret),
+      createdAt,
+      expiresAt
+    });
+
+    try {
+      await sendRegisterCodeEmail(config, email, code, mailTransporter);
+    } catch (error) {
+      console.warn("register_code_email_failed", {
+        type: error?.name || "Error",
+        message: error?.message || String(error)
+      });
+      return res.status(503).json({ error: "email_send_failed" });
+    }
+
+    res.json({
+      ok: true,
+      expires_at: expiresAt,
+      cooldown_seconds: Math.max(0, Number(config.registerCodeCooldownSeconds || 60))
+    });
+  });
+
+  app.post("/api/auth/register", async (req, res) => {
+    const email = normalizeQqEmail(req.body?.username || req.body?.email || "");
+    const nickname = nicknameFromEmail(email);
+    const password = String(req.body?.password || "");
+    const verificationCode = String(req.body?.verificationCode || req.body?.code || "");
+
+    if (!isValidQqEmail(email)) {
+      return res.status(400).json({ error: "qq_email_invalid" });
     }
     if (!isValidPassword(password)) {
       return res.status(400).json({ error: "password_invalid" });
     }
+    if (!isValidEmailCode(verificationCode)) {
+      return res.status(400).json({ error: "email_code_invalid" });
+    }
     if (config.allowedNicknames.length && !config.allowedNicknames.includes(nickname)) {
       return res.status(403).json({ error: "nickname_not_allowed" });
+    }
+    if (db.findUserByUsername(email)) {
+      return res.status(409).json({ error: "username_taken" });
     }
 
     let user;
     try {
-      user = db.createUserWithRegistrationCode({
-        registrationCodeHash: hashAccessCode(registrationCode),
+      db.consumeEmailVerificationCode({
+        email,
+        purpose: "register",
+        codeHash: hashEmailCode(email, verificationCode, config.sessionSecret)
+      });
+      user = db.createUser({
         user: {
           id: nanoid(12),
-          username,
+          username: email,
           passwordHash: hashPassword(password),
           nickname
         }
       });
     } catch (error) {
       if (error instanceof DatabaseError) {
-        return res.status(error.code === "username_taken" ? 409 : 403).json({ error: error.code });
+        const status = error.code === "username_taken" ? 409 : 403;
+        return res.status(status).json({ error: error.code });
       }
       throw error;
     }
@@ -108,12 +154,8 @@ export function registerAccountRoutes(app, deps) {
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    const username = String(req.body?.username || "").trim();
+    const username = String(req.body?.username || req.body?.email || "").trim();
     const password = String(req.body?.password || "");
-
-    if (!hasGateAccess(req, config)) {
-      return res.status(403).json({ error: "gate_required" });
-    }
 
     const user = db.findUserByUsername(username);
 
@@ -210,11 +252,6 @@ export function registerAccountRoutes(app, deps) {
   });
 }
 
-function hasGateAccess(req, config) {
-  const cookies = cookie.parse(req.headers.cookie || "");
-  return decodeSessionCookie(cookies[gateCookieName], config.sessionSecret) === "passed";
-}
-
 function setSessionCookie(res, sessionId, config) {
   res.setHeader(
     "Set-Cookie",
@@ -228,26 +265,62 @@ function setSessionCookie(res, sessionId, config) {
   );
 }
 
-function setGateCookie(res, config) {
-  res.setHeader(
-    "Set-Cookie",
-    cookie.serialize(gateCookieName, encodeSessionCookie("passed", config.sessionSecret), {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: config.cookieSecure,
-      path: "/",
-      maxAge: config.sessionTtlSeconds
-    })
-  );
-}
-
 function sessionKey(id) {
   return `live-room:session:${id}`;
 }
 
-function isValidUsername(username) {
-  const normalized = normalizeUsername(username);
-  return normalized.length >= 3 && normalized.length <= 32 && /^[a-z0-9_.-]+$/.test(normalized);
+function normalizeQqEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidQqEmail(value) {
+  const email = normalizeQqEmail(value);
+  return /^[1-9]\d{4,11}@qq\.com$/.test(email);
+}
+
+function nicknameFromEmail(email) {
+  return normalizeQqEmail(email).split("@")[0].slice(0, 24) || "QQ用户";
+}
+
+function isValidEmailCode(code) {
+  return /^\d{6}$/.test(String(code || "").trim());
+}
+
+function hashEmailCode(email, code, secret) {
+  return createHash("sha256")
+    .update(`${normalizeQqEmail(email)}:${String(code || "").trim()}:${secret}`, "utf8")
+    .digest("hex");
+}
+
+async function sendRegisterCodeEmail(config, email, code, mailTransporter) {
+  if (!config.smtp?.host || !config.smtp?.from) {
+    throw new Error("smtp_not_configured");
+  }
+  const transporter = mailTransporter || nodemailer.createTransport({
+    host: config.smtp.host,
+    port: config.smtp.port,
+    secure: config.smtp.secure,
+    auth: config.smtp.user || config.smtp.pass ? {
+      user: config.smtp.user,
+      pass: config.smtp.pass
+    } : undefined
+  });
+  await transporter.sendMail({
+    from: config.smtp.from,
+    to: email,
+    subject: "Hoshia Live Room 注册验证码",
+    text: `你的 Hoshia Live Room 注册验证码是：${code}。验证码将在 ${Math.floor(Number(config.registerCodeTtlSeconds || 600) / 60)} 分钟后过期。`,
+    html: `<p>你的 Hoshia Live Room 注册验证码是：</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${escapeHtml(code)}</p><p>验证码将在 ${Math.floor(Number(config.registerCodeTtlSeconds || 600) / 60)} 分钟后过期。</p>`
+  });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function isValidPassword(password) {

@@ -1,6 +1,6 @@
 import { type CSSProperties, FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ChevronDown, ChevronLeft, ChevronUp, Clock, Gamepad2, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Send, Settings, ShieldCheck, Signal, Sparkles, UserPlus, Users, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clock, Gamepad2, KeyRound, Lock, LockKeyhole, LogIn, Menu, Music, Play, Send, Settings, Signal, Sparkles, UserPlus, Users, X } from "lucide-react";
 import { CharacterStage, getAnimatedStageLabel } from "./CharacterStage";
 import { AccountAvatar, AccountSettingsModal, RoomSettingsModal } from "./components/AccountPanels";
 import { HoshiaTimelineOverlay } from "./components/TimelineOverlay";
@@ -12,13 +12,49 @@ import { isHoshiaPresentation, toCharacterState } from "./types";
 import "./styles.css";
 
 const appBase = import.meta.env.BASE_URL || "/";
-const loginMascotUrl = appPath("assets/hoshia-login-chibi.png");
 const awakeningBgUrl = appPath("assets/hoshia-awakening-bg.jpg");
 const awakeningCharacterUrl = appPath("assets/hoshia-awakening-character.png");
 const awakeningSoloBgUrl = appPath("assets/hoshia-awakening-solo-bg.jpg");
 const awakeningFinalBgUrl = appPath("assets/hoshia-awakening-final-bg.jpg");
 const introStorageKey = "hoshia:lastRegisteredUsername";
+const autoLoginStorageKey = "hoshia:autoLogin:v1";
 const maxHistoryMessages = 100;
+
+type GameCatalogItem = {
+  id: string;
+  title: string;
+  genre: string;
+  status: "available" | "soon";
+  description: string;
+  meta: string;
+};
+
+const gameCatalog: GameCatalogItem[] = [
+  {
+    id: "hoshia_pixel_mowdown",
+    title: "Radio Pixel Mowdown",
+    genre: "Survivors-like",
+    status: "available",
+    description: "锁定 Hoshia 当前心情与活动，进入 15 分钟像素割草波次。",
+    meta: "1P / Hoshia mood director"
+  },
+  {
+    id: "signal_puzzle_shift",
+    title: "Signal Puzzle Shift",
+    genre: "Puzzle",
+    status: "soon",
+    description: "把直播间信号块调到同一频率，预留给后续小游戏扩充。",
+    meta: "COMING SOON"
+  },
+  {
+    id: "catwalk_rhythm_dash",
+    title: "Catwalk Rhythm Dash",
+    genre: "Rhythm runner",
+    status: "soon",
+    description: "跟随弹幕节拍冲刺、闪避和收集星屑，后续开放。",
+    meta: "COMING SOON"
+  }
+];
 const demoParams = new URLSearchParams(window.location.search);
 const isStageDemo = import.meta.env.DEV && demoParams.get("demo") === "stage";
 const isAwakeningDemo = isStageDemo && demoParams.get("intro") === "awake";
@@ -203,11 +239,52 @@ function shouldPlayAwakeningForUser(user: Session) {
   }
 }
 
+type AutoLoginRecord = {
+  enabled: boolean;
+  username: string;
+  password: string;
+};
+
+function loadAutoLoginRecord(): AutoLoginRecord | null {
+  try {
+    const raw = window.localStorage.getItem(autoLoginStorageKey);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<AutoLoginRecord>;
+    if (!value?.enabled || typeof value.username !== "string" || typeof value.password !== "string") return null;
+    return {
+      enabled: true,
+      username: value.username,
+      password: value.password
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveAutoLoginRecord(username: string, password: string) {
+  try {
+    window.localStorage.setItem(autoLoginStorageKey, JSON.stringify({
+      enabled: true,
+      username,
+      password
+    } satisfies AutoLoginRecord));
+  } catch {
+    // Auto login is optional. Login still succeeds when local storage is unavailable.
+  }
+}
+
+function clearAutoLoginRecord() {
+  try {
+    window.localStorage.removeItem(autoLoginStorageKey);
+  } catch {
+    // Ignore unavailable local storage.
+  }
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(() => (isStageDemo ? demoSession : null));
   const [room, setRoom] = useState<RoomInfo | null>(() => (isStageDemo ? demoRoom : null));
   const [audience, setAudience] = useState<AudiencePayload | null>(() => (isStageDemo ? demoAudience : null));
-  const [gatePassed, setGatePassed] = useState(isStageDemo);
   const [authChecked, setAuthChecked] = useState(isStageDemo);
   const [messages, setMessages] = useState<LiveMessage[]>(seedMessages);
   const [musicState, setMusicState] = useState<MusicState>(demoMusicState);
@@ -235,14 +312,10 @@ function App() {
             online_count: payload.room?.online ?? current.online_count,
             registered_count: payload.room?.registered ?? current.registered_count
           } : current);
-          setGatePassed(true);
           return;
         }
-
-        const gate = await fetch(appPath("api/auth/gate")).then((res) => (res.ok ? res.json() : null));
-        if (!disposed) setGatePassed(Boolean(gate?.passed));
       } catch {
-        if (!disposed) setGatePassed(false);
+        // The QQ email account entry remains available even if the session check fails.
       } finally {
         if (!disposed) setAuthChecked(true);
       }
@@ -453,10 +526,6 @@ function App() {
     return <GateLoadingView />;
   }
 
-  if (!session && !gatePassed) {
-    return <GateView onUnlock={() => setGatePassed(true)} />;
-  }
-
   if (!session) {
     return <LoginView onLogin={(user, nextRoom, playAwakeningIntro) => {
       setSession(user);
@@ -530,81 +599,17 @@ function GateLoadingView() {
   );
 }
 
-function GateView({ onUnlock }: { onUnlock: () => void }) {
-  const [roomToken, setRoomToken] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-
-    const response = await fetch(appPath("api/auth/gate"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomToken })
-    });
-    setBusy(false);
-
-    if (!response.ok) {
-      setError("联系入口口令不正确。");
-      return;
-    }
-
-    onUnlock();
-  }
-
-  return (
-    <main className="phone-shell">
-      <section className="login-card gate-only-card">
-        <div className="gate-header">
-          <div className="login-mark" />
-          <div className="gate-status">
-            <span>联系入口</span>
-            <strong>星见终端</strong>
-          </div>
-        </div>
-        <h1>星见终端</h1>
-        <p>先输入联系入口口令。入口打开后，可以登录或创建账号。</p>
-        <section className="login-welcome" aria-label="Hoshia 联系入口">
-          <div className="login-mascot">
-            <img src={loginMascotUrl} alt="Hoshia 在联系入口等你" draggable={false} />
-          </div>
-          <div className="welcome-bubble">
-            <strong>私密联系入口。</strong>
-            <span>口令匹配后，我会打开星见终端。</span>
-          </div>
-        </section>
-        <div className="gate-strip" aria-label="联系入口安全说明">
-          <span><ShieldCheck size={14} /> 特别联系人</span>
-          <span><LockKeyhole size={14} /> 口令入口</span>
-        </div>
-        <form onSubmit={submit}>
-          <label>
-            <span>入口口令</span>
-            <input value={roomToken} onChange={(event) => setRoomToken(event.target.value)} type="password" placeholder="入口口令" />
-          </label>
-          {error ? <span className="login-error">{error}</span> : null}
-          <button disabled={busy || !roomToken} type="submit">
-            <KeyRound size={16} />
-            {busy ? "正在确认入口..." : "打开联系入口"}
-          </button>
-        </form>
-      </section>
-    </main>
-  );
-}
-
 function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playAwakeningIntro: boolean) => void }) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [registrationCode, setRegistrationCode] = useState("");
+  const [autoLoginEnabled, setAutoLoginEnabled] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeCooldown, setCodeCooldown] = useState(0);
   const [roomPreview, setRoomPreview] = useState<{ online: number; private: boolean }>({ online: 0, private: true });
 
   useEffect(() => {
@@ -621,19 +626,97 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
       .catch(() => undefined);
   }, []);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  useEffect(() => {
+    const saved = loadAutoLoginRecord();
+    if (!saved) return;
+    setAuthMode("login");
+    setUsername(saved.username);
+    setPassword(saved.password);
+    setAutoLoginEnabled(true);
+    if (isQqEmail(saved.username) && saved.password.length >= 8) {
+      void loginWithCredentials(saved.username, saved.password, { automatic: true, persistAutoLogin: true });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!codeCooldown) return;
+    const timer = window.setTimeout(() => setCodeCooldown((current) => Math.max(0, current - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [codeCooldown]);
+
+  async function sendVerificationCode() {
+    setError("");
+    setNotice("");
+    if (!isQqEmail(username)) {
+      setError("请先填写有效的 QQ 邮箱");
+      return;
+    }
+    setCodeBusy(true);
+    const response = await fetch(appPath("api/auth/register-code/send"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: username })
+    });
+    setCodeBusy(false);
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setError(authErrorMessage(payload?.error, "register"));
+      return;
+    }
+    setCodeCooldown(Number(payload?.cooldown_seconds || 60));
+    setNotice("验证码已发送到 QQ 邮箱，10 分钟内有效");
+  }
+
+  async function loginWithCredentials(
+    loginUsername: string,
+    loginPassword: string,
+    options: { automatic?: boolean; persistAutoLogin?: boolean } = {}
+  ) {
     setBusy(true);
     setError("");
     setNotice("");
 
-    const isRegistering = authMode === "register";
-    const response = await fetch(appPath(isRegistering ? "api/auth/register" : "api/auth/login"), {
+    const response = await fetch(appPath("api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isRegistering
-        ? { username, password, registrationCode }
-        : { username, password })
+      body: JSON.stringify({ username: loginUsername, password: loginPassword })
+    });
+    setBusy(false);
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setError(options.automatic ? "自动登录失败，请检查账号或密码" : authErrorMessage(payload?.error, "login"));
+      return;
+    }
+
+    if (options.persistAutoLogin) {
+      saveAutoLoginRecord(loginUsername, loginPassword);
+    } else {
+      clearAutoLoginRecord();
+    }
+
+    const payload = await response.json();
+    const me = await fetch(appPath("api/auth/me")).then((res) => res.json());
+    onLogin(payload.user, me.room, shouldPlayAwakeningForUser(payload.user));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const isRegistering = authMode === "register";
+
+    if (!isRegistering) {
+      await loginWithCredentials(username, password, { persistAutoLogin: autoLoginEnabled });
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    const response = await fetch(appPath("api/auth/register"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, verificationCode })
     });
     setBusy(false);
 
@@ -643,62 +726,31 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
       return;
     }
 
-    if (isRegistering) {
-      rememberRegisteredUsername(username);
-      setAuthMode("login");
-      setPassword("");
-      setRegistrationCode("");
-      setNotice("账号已创建。输入密码后即可进入星见终端。");
-      return;
-    }
-
-    const payload = await response.json();
-    const me = await fetch(appPath("api/auth/me")).then((res) => res.json());
-    onLogin(payload.user, me.room, shouldPlayAwakeningForUser(payload.user));
+    rememberRegisteredUsername(username);
+    setAuthMode("login");
+    setPassword("");
+    setVerificationCode("");
+    setNotice("QQ 邮箱注册成功，请使用密码登录");
   }
 
   return (
-    <main className="phone-shell">
+    <main className="phone-shell login-shell">
       <section className="login-card">
-        <div className="gate-header">
-          <div className="login-mark" />
-          <div className="gate-status">
-            <span>账号入口</span>
-            <strong>{authMode === "register" ? "创建联系入口" : "私密联系入口"}</strong>
-          </div>
-          <button type="button" className="room-preview-button" onClick={() => setPreviewOpen((current) => !current)}>
-            <Users size={14} />
-            <span>{roomPreview.online} 位联系人</span>
-            {previewOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-        </div>
-        {previewOpen ? (
-          <div className="room-preview-panel">
-            <div className="preview-avatar-stack" aria-hidden="true">
-              <span />
-              <span />
-              <span />
+        <header className="login-glass-header">
+          <div className="login-title-copy">
+            <span>Hoshia Live Room</span>
+            <div className="login-title-row">
+              <h1>{authMode === "register" ? "注册" : "登录"}</h1>
+              <div className="login-presence" aria-label="在线人数">
+                <span className="presence-dot" aria-hidden="true" />
+                <Users size={14} />
+                <span>{roomPreview.online} 人在线</span>
+              </div>
             </div>
-            <p>{roomPreview.online ? "已有特别联系人接入。" : "暂时还没有可见联系人。"}</p>
-            <small>账号系统接入后，会显示昵称和头像。</small>
+            <p>{authMode === "register" ? "使用 QQ 邮箱接收验证码，完成账号注册" : "使用 QQ 邮箱和密码登录"}</p>
           </div>
-        ) : null}
-        <h1>星见终端</h1>
-        <p>{authMode === "register" ? "使用一次性代码创建你的账号。" : "使用账号进入特别联系人入口。"}</p>
-        <section className="login-welcome" aria-label="Hoshia welcome">
-          <div className="login-mascot">
-            <img src={loginMascotUrl} alt="Hoshia 在联系入口等你" draggable={false} />
-          </div>
-          <div className="welcome-bubble">
-            <strong>{authMode === "register" ? "First visit?" : "Welcome back."}</strong>
-            <span>{authMode === "register" ? "之后可以在资料里调整你的联系人信息。" : "联系入口已锁定。密码匹配后我会为你打开。"}</span>
-          </div>
-        </section>
-        <div className="gate-strip" aria-label="联系入口安全说明">
-          <span><ShieldCheck size={14} /> 特别联系人</span>
-          <span><LockKeyhole size={14} /> 账号保护</span>
-        </div>
-        <form onSubmit={submit}>
+        </header>
+        <form className={`login-form ${authMode === "register" ? "is-register" : "is-login"}`} onSubmit={submit}>
           <div className="auth-switch" role="tablist" aria-label="Authentication mode">
             <button
               type="button"
@@ -710,7 +762,7 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
               }}
             >
               <LogIn size={15} />
-              <span>Login</span>
+              <span>登录</span>
             </button>
             <button
               type="button"
@@ -722,31 +774,50 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
               }}
             >
               <UserPlus size={15} />
-              <span>Register</span>
+              <span>注册</span>
             </button>
           </div>
           <label>
-            <span>Account</span>
-            <input value={username} onChange={(event) => setUsername(event.target.value)} maxLength={32} placeholder="hoshia_friend" autoComplete="username" />
+            <span>QQ 邮箱</span>
+            <input value={username} onChange={(event) => setUsername(event.target.value)} maxLength={64} placeholder="123456@qq.com" autoComplete="email" inputMode="email" />
           </label>
           <label>
-            <span>Password</span>
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" autoComplete={authMode === "register" ? "new-password" : "current-password"} />
+            <span>密码</span>
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="至少 8 位" autoComplete={authMode === "register" ? "new-password" : "current-password"} />
           </label>
           {authMode === "register" ? (
-            <>
-              <label>
-                <span>Register code</span>
-                <input value={registrationCode} onChange={(event) => setRegistrationCode(event.target.value.toUpperCase())} placeholder="HOSHA-7K2P-MQ9A" />
-              </label>
-            </>
+            <label>
+              <span>邮箱验证码</span>
+              <div className="verification-code-row">
+                <input value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} placeholder="6 位验证码" inputMode="numeric" autoComplete="one-time-code" />
+                <button type="button" className="inline-code-button" disabled={codeBusy || codeCooldown > 0 || !isQqEmail(username)} onClick={sendVerificationCode}>
+                  {codeBusy ? "发送中" : codeCooldown > 0 ? `${codeCooldown}s` : "发送验证码"}
+                </button>
+              </div>
+            </label>
           ) : null}
           {error ? <span className="login-error">{error}</span> : null}
           {notice ? <span className="login-success">{notice}</span> : null}
-          <button disabled={busy || !canSubmitAuth(authMode, { username, password, registrationCode })} type="submit">
-            <KeyRound size={16} />
-            {busy ? "正在确认入口..." : authMode === "register" ? "创建账号" : "进入星见终端"}
-          </button>
+          <div className="login-submit-wrap">
+            <button disabled={busy || !canSubmitAuth(authMode, { username, password, verificationCode })} type="submit">
+              <KeyRound size={16} />
+              {busy ? "处理中..." : authMode === "register" ? "注册" : "登录"}
+            </button>
+            {authMode === "login" ? (
+              <label className="auto-login-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoLoginEnabled}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setAutoLoginEnabled(checked);
+                    if (!checked) clearAutoLoginRecord();
+                  }}
+                />
+                <span>自动登录</span>
+              </label>
+            ) : null}
+          </div>
         </form>
       </section>
     </main>
@@ -755,24 +826,29 @@ function LoginView({ onLogin }: { onLogin: (user: Session, room: RoomInfo, playA
 
 function canSubmitAuth(
   mode: "login" | "register",
-  values: { username: string; password: string; registrationCode: string }
+  values: { username: string; password: string; verificationCode: string }
 ) {
-  if (!values.username.trim() || !values.password) return false;
+  if (!isQqEmail(values.username) || values.password.length < 8) return false;
   if (mode === "login") return true;
-  return Boolean(values.registrationCode.trim());
+  return /^\d{6}$/.test(values.verificationCode.trim());
+}
+
+function isQqEmail(value: string) {
+  return /^[1-9]\d{4,11}@qq\.com$/i.test(value.trim());
 }
 
 function authErrorMessage(error: string | undefined, mode: "login" | "register") {
-  if (error === "invalid_credentials") return "Account or password is not correct.";
-  if (error === "username_invalid") return "Use 3-32 letters, numbers, dots, dashes, or underscores.";
-  if (error === "password_invalid") return "Password needs at least 8 characters.";
-  if (error === "nickname_required") return "Display name needs at least 2 characters.";
-  if (error === "username_taken") return "That account already exists. Choose another account name.";
-  if (error === "gate_required") return "请先打开联系入口。";
-  if (error === "registration_code_invalid") return "Register code is not valid.";
-  if (error === "registration_code_used") return "Register code has already been used.";
-  if (error === "registration_code_expired") return "Register code has expired.";
-  return mode === "register" ? "账号创建失败，请检查口令。" : "无法进入星见终端。";
+  if (error === "invalid_credentials") return "QQ 邮箱或密码不正确";
+  if (error === "qq_email_invalid" || error === "username_invalid") return "请输入 QQ 邮箱，例如 123456@qq.com";
+  if (error === "password_invalid") return "密码至少 8 位";
+  if (error === "nickname_required") return "昵称至少 2 个字符";
+  if (error === "username_taken") return "这个 QQ 邮箱已经注册过";
+  if (error === "email_code_invalid") return "验证码不正确";
+  if (error === "email_code_used") return "验证码已经使用，请重新获取";
+  if (error === "email_code_expired") return "验证码已过期，请重新获取";
+  if (error === "email_code_rate_limited") return "验证码发送太频繁，请稍后再试";
+  if (error === "email_send_failed") return "验证码邮件发送失败，请检查 SMTP 配置";
+  return mode === "register" ? "注册失败，请检查 QQ 邮箱和验证码" : "登录失败";
 }
 
 function formatDuration(totalSeconds: number) {
@@ -841,7 +917,8 @@ function LiveMobile({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [musicPlaybackNotice, setMusicPlaybackNotice] = useState("");
   const [timelineOpen, setTimelineOpen] = useState(false);
-  const [gameOpen, setGameOpen] = useState(false);
+  const [gameLauncherOpen, setGameLauncherOpen] = useState(false);
+  const [activeGameId, setActiveGameId] = useState("");
   const [hoshiaPosts, setHoshiaPosts] = useState<HoshiaPost[]>(() => (isDemo ? demoHoshiaPosts : []));
 
   useEffect(() => {
@@ -925,7 +1002,7 @@ function LiveMobile({
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenTimeline={() => setTimelineOpen(true)}
-          onOpenGame={() => setGameOpen(true)}
+          onOpenGame={() => setGameLauncherOpen(true)}
           onLeave={onLeave}
         />
         <BottomDock
@@ -965,12 +1042,21 @@ function LiveMobile({
             onSessionUpdate={onSessionUpdate}
           />
         ) : null}
-        {gameOpen ? (
+        {gameLauncherOpen ? (
+          <GameLauncherOverlay
+            onClose={() => setGameLauncherOpen(false)}
+            onLaunch={(gameId) => {
+              setGameLauncherOpen(false);
+              setActiveGameId(gameId);
+            }}
+          />
+        ) : null}
+        {activeGameId === "hoshia_pixel_mowdown" ? (
           <HoshiaGameOverlay
             session={session}
             isDemo={isDemo}
             hoshiaState={hoshiaState}
-            onClose={() => setGameOpen(false)}
+            onClose={() => setActiveGameId("")}
           />
         ) : null}
         {timelineOpen ? (
@@ -993,6 +1079,65 @@ function LiveMobile({
         ) : null}
       </section>
     </main>
+  );
+}
+
+function GameLauncherOverlay({
+  onClose,
+  onLaunch
+}: {
+  onClose: () => void;
+  onLaunch: (gameId: string) => void;
+}) {
+  return (
+    <section className="game-launcher-backdrop" aria-label="Hoshia arcade game selector">
+      <div className="game-launcher-scanline" aria-hidden="true" />
+      <div className="game-launcher-panel">
+        <header className="game-launcher-header">
+          <div>
+            <span>HOSHIA ARCADE</span>
+            <strong>星见像素游戏机</strong>
+          </div>
+          <button type="button" className="game-launcher-close" aria-label="关闭游戏机菜单" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="game-launcher-screen">
+          <div className="game-launcher-status">
+            <span>GAME SLOT</span>
+            <b>01 / {String(gameCatalog.length).padStart(2, "0")}</b>
+          </div>
+          <div className="game-launcher-grid">
+            {gameCatalog.map((game, index) => {
+              const available = game.status === "available";
+              return (
+                <article key={game.id} className={`game-launcher-card ${available ? "available" : "soon"}`}>
+                  <div className="game-launcher-cartridge" aria-hidden="true">
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <i />
+                  </div>
+                  <div className="game-launcher-copy">
+                    <em>{game.genre}</em>
+                    <strong>{game.title}</strong>
+                    <p>{game.description}</p>
+                    <small>{game.meta}</small>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!available}
+                    onClick={() => onLaunch(game.id)}
+                    aria-label={available ? `启动 ${game.title}` : `${game.title} 尚未开放`}
+                  >
+                    {available ? <Play size={14} /> : null}
+                    {available ? "启动" : "COMING SOON"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1140,9 +1285,9 @@ function LiveOverlay({
       <button
         type="button"
         className="game-open-link"
-        aria-label="Open Hoshia pixel game"
+        aria-label="打开 Hoshia 游戏机 / Open Hoshia arcade"
         onClick={onOpenGame}
-        title="Hoshia pixel game"
+        title="Hoshia 像素游戏机"
       >
         <Gamepad2 size={18} strokeWidth={2.2} />
       </button>

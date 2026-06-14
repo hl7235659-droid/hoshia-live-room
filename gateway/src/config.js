@@ -5,6 +5,16 @@ export const config = {
   sessionSecret: required("SESSION_SECRET"),
   sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS || 43200),
   cookieSecure: parseBool(process.env.COOKIE_SECURE, false),
+  smtp: {
+    host: process.env.SMTP_HOST || "",
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: parseBool(process.env.SMTP_SECURE, false),
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || ""
+  },
+  registerCodeTtlSeconds: Number(process.env.REGISTER_CODE_TTL_SECONDS || 600),
+  registerCodeCooldownSeconds: Number(process.env.REGISTER_CODE_COOLDOWN_SECONDS || 60),
   inviteCodeHashes: split(process.env.INVITE_CODE_HASHES),
   roomTokenHashes: split(process.env.ROOM_TOKEN_HASHES || process.env.INVITE_CODE_HASHES),
   sqliteDbPath: process.env.SQLITE_DB_PATH || "./data/live-room.sqlite",
