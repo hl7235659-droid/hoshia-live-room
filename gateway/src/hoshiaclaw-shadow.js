@@ -147,6 +147,16 @@ export async function runDailyPostShadow({
   });
 }
 
+export function dailyPostShadowPreflightSkipReason({
+  shadowEnabled = false,
+  dailyPostEnabled = true,
+  force = false
+} = {}) {
+  if (!shadowEnabled) return "daily_post_shadow_disabled";
+  if (!force && !dailyPostEnabled) return "daily_post_disabled";
+  return "";
+}
+
 export async function runNewsTopicGenerateShadow({
   prompt = "",
   topic = null,

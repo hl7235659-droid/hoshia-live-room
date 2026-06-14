@@ -4,6 +4,7 @@ import {
   buildDailyPostShadowPrompt,
   buildNewsTopicGenerateShadowPrompt,
   classifyHoshiaClawShadowReply,
+  dailyPostShadowPreflightSkipReason,
   runDailyPostShadow,
   runHoshiaClawShadow,
   runNewsTopicGenerateShadow
@@ -166,6 +167,29 @@ test("daily post shadow records skip when daily posting is disabled", async () =
     source: "gateway"
   }]);
   assert.equal(JSON.stringify({ result, metrics }).includes("disabled candidate body"), false);
+});
+
+test("daily post shadow preflight skips before planning when live daily posting is disabled", () => {
+  assert.equal(dailyPostShadowPreflightSkipReason({
+    shadowEnabled: false,
+    dailyPostEnabled: false,
+    force: false
+  }), "daily_post_shadow_disabled");
+  assert.equal(dailyPostShadowPreflightSkipReason({
+    shadowEnabled: true,
+    dailyPostEnabled: false,
+    force: false
+  }), "daily_post_disabled");
+  assert.equal(dailyPostShadowPreflightSkipReason({
+    shadowEnabled: true,
+    dailyPostEnabled: false,
+    force: true
+  }), "");
+  assert.equal(dailyPostShadowPreflightSkipReason({
+    shadowEnabled: true,
+    dailyPostEnabled: true,
+    force: false
+  }), "");
 });
 
 test("daily post shadow plans a safe candidate without ticking or creating posts", async () => {

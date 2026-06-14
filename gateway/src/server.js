@@ -77,6 +77,7 @@ import {
 } from "./proactive-live.js";
 import {
   runDailyPostShadow,
+  dailyPostShadowPreflightSkipReason,
   runNewsTopicGenerateShadow
 } from "./hoshiaclaw-shadow.js";
 import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
@@ -866,7 +867,21 @@ async function runDailyPostTick({ force = false, ignoreLimit = false, session = 
 }
 
 async function runDailyPostShadowCheck({ force = false, session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
-  if (!config.hoshiaClawDailyPostShadowEnabled) return null;
+  const preflightSkipReason = dailyPostShadowPreflightSkipReason({
+    shadowEnabled: config.hoshiaClawDailyPostShadowEnabled,
+    dailyPostEnabled: config.hoshiaDailyPostEnabled,
+    force
+  });
+  if (preflightSkipReason === "daily_post_shadow_disabled") return null;
+  if (preflightSkipReason) {
+    return recordShadowMetricEvent({
+      eventType: "hoshiaclaw.daily_post_shadow.skip",
+      status: "skip",
+      reason: preflightSkipReason,
+      source: "gateway",
+      route: "daily_post_shadow"
+    });
+  }
   try {
     const plan = hoshiaDailyPostService.planDailyPost({
       now: new Date(),
