@@ -10,13 +10,13 @@ export function parseMusicRequestText(text) {
   const slash = value.match(/^\/song\s+(.{1,160})$/i);
   if (slash) return cleanMusicRequestQuery(slash[1]);
 
-  const direct = value.match(/^点歌\s*[:： ]?\s*(.{1,160})$/i);
+  const direct = value.match(/^\u70b9\u6b4c(?:\s*[\uff1a:]\s*|\s+)(.{1,160})$/u);
   if (direct) return cleanMusicRequestQuery(direct[1]);
 
   const mentionCleaned = value
-    .replace(/@(?:Hoshia|hoshia|星娅)\s*/gi, "")
+    .replace(/@(?:Hoshia|hoshia|\u661f\u5a05|\u4e3b\u64ad)\s*/giu, "")
     .trim();
-  const mentioned = mentionCleaned.match(/^点歌\s*[:： ]?\s*(.{1,160})$/i);
+  const mentioned = mentionCleaned.match(/^\u70b9\u6b4c(?:\s*[\uff1a:]\s*|\s+)(.{1,160})$/u);
   if (mentioned) return cleanMusicRequestQuery(mentioned[1]);
   return "";
 }
@@ -25,25 +25,25 @@ export function parseLocalMusicControlText(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
   const value = raw
-    .replace(/@(?:Hoshia|hoshia|星娅)\s*/gi, "")
+    .replace(/@(?:Hoshia|hoshia|\u661f\u5a05|\u4e3b\u64ad)\s*/giu, "")
     .replace(/\s+/g, "")
     .toLowerCase();
   if (!value) return null;
 
-  if (/(现在|当前|正在).*(放|播|唱|歌|队列)|歌单|队列|播放列表|什么歌/.test(value)) {
-    return localMusicIntent("status", 0.96, "♪ Hoshia 看了一下当前播放和待播队列。");
+  if (/(\u73b0\u5728|\u5f53\u524d|\u6b63\u5728).*(\u64ad\u653e|\u5531|\u6b4c\u66f2|\u961f\u5217)|\u6b4c\u5355|\u961f\u5217|\u64ad\u653e\u5217\u8868|\u4ec0\u4e48\u6b4c/.test(value)) {
+    return localMusicIntent("status", 0.96, "\u266a Hoshia \u770b\u4e86\u4e00\u4e0b\u5f53\u524d\u64ad\u653e\u548c\u5f85\u64ad\u961f\u5217\u3002");
   }
-  if (/(下一首|下首|切歌|跳过|换歌|换一首|跳下一首)/.test(value)) {
-    return localMusicIntent("next", 0.97, "♪ Hoshia 已切到下一首。");
+  if (/(\u4e0b\u4e00\u9996|\u4e0b\u9996|\u5207\u6b4c|\u8df3\u8fc7|\u6362\u6b4c|\u6362\u4e00\u9996|\u8df3\u4e0b\u4e00\u9996)/.test(value)) {
+    return localMusicIntent("next", 0.97, "\u266a Hoshia \u5df2\u5207\u5230\u4e0b\u4e00\u9996\u3002");
   }
-  if (/(上一首|上首|回上一首|返回上一首|前一首)/.test(value)) {
-    return localMusicIntent("previous", 0.97, "♪ Hoshia 已切回上一首。");
+  if (/(\u4e0a\u4e00\u9996|\u4e0a\u9996|\u56de\u4e0a\u4e00\u9996|\u8fd4\u56de\u4e0a\u4e00\u9996|\u524d\u4e00\u9996)/.test(value)) {
+    return localMusicIntent("previous", 0.97, "\u266a Hoshia \u5df2\u5207\u56de\u4e0a\u4e00\u9996\u3002");
   }
-  if (/(暂停|停一下|先停|停止播放|别放了|关音乐|停音乐|暂停音乐)/.test(value)) {
-    return localMusicIntent("pause", 0.97, "♪ Hoshia 已暂停播放。");
+  if (/(\u6682\u505c|\u505c\u4e00\u4e0b|\u5148\u505c|\u505c\u6b62\u64ad\u653e|\u522b\u653e\u4e86|\u5173\u97f3\u4e50|\u505c\u97f3\u4e50|\u6682\u505c\u97f3\u4e50)/.test(value)) {
+    return localMusicIntent("pause", 0.97, "\u266a Hoshia \u5df2\u6682\u505c\u64ad\u653e\u3002");
   }
-  if (/(继续播放|继续放|恢复播放|接着放|播放音乐|放音乐|继续音乐)/.test(value)) {
-    return localMusicIntent("resume", 0.97, "♪ Hoshia 已继续播放。");
+  if (/(\u7ee7\u7eed\u64ad\u653e|\u7ee7\u7eed\u653e|\u6062\u590d\u64ad\u653e|\u63a5\u7740\u653e|\u64ad\u653e\u97f3\u4e50|\u653e\u97f3\u4e50|\u7ee7\u7eed\u97f3\u4e50)/.test(value)) {
+    return localMusicIntent("resume", 0.97, "\u266a Hoshia \u5df2\u7ee7\u7eed\u64ad\u653e\u3002");
   }
   return null;
 }

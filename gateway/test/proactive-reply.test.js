@@ -24,7 +24,7 @@ test("HoshiaClaw remaining shadow rollouts are conservative by default", async (
   const { config } = await import(`../src/config.js?remaining_shadow_defaults=${Date.now()}`);
   assert.equal(config.hoshiaClawDailyPostShadowEnabled, false);
   assert.equal(config.hoshiaClawNewsTopicGenerateShadowEnabled, false);
-  assert.equal(config.hoshiaCommentReplyRolloutMode, "live");
+  assert.equal(config.hoshiaCommentReplyRolloutMode, "off");
   assert.equal(config.hoshiaCommentReplyGreyPercent, 100);
 });
 

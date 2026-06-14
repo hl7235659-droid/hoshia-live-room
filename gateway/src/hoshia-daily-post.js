@@ -233,6 +233,111 @@ export function createHoshiaDailyPostService({
   };
 }
 
+export async function runDailyPostShadow({
+  service,
+  provider = null,
+  generator = null,
+  enabled = false,
+  now = new Date(),
+  state = null,
+  sequence = 1,
+  sourceType = dailySourceType
+} = {}) {
+  const route = "daily_post_shadow";
+  if (!enabled) return shadowResult({ status: "skip", route, sourceType, reason: "disabled" });
+  if (!service || typeof service.planDailyPost !== "function") {
+    return shadowResult({ status: "skip", route, sourceType, reason: "no_service" });
+  }
+
+  const plan = safePlanDailyPost(service, { now, state, sequence, sourceType });
+  if (!plan) return shadowResult({ status: "skip", route, sourceType, reason: "no_plan" });
+  if (!plan.postInput) {
+    return shadowResult({
+      status: "skip",
+      route,
+      sourceType: plan.source_type || sourceType,
+      id: plan.postInput?.id,
+      reason: "no_post_input"
+    });
+  }
+
+  return runPostShadowCandidate({
+    route,
+    sourceType: plan.source_type || plan.postInput.source_type || sourceType,
+    id: plan.postInput.id,
+    provider,
+    generator,
+    payload: {
+      route,
+      postInput: plan.postInput,
+      state: plan.state,
+      source_type: plan.source_type || plan.postInput.source_type || sourceType
+    }
+  });
+}
+
+export async function runNewsTopicGenerateShadow({
+  service,
+  dailyPostService = null,
+  topic = null,
+  provider = null,
+  generator = null,
+  enabled = false,
+  now = new Date(),
+  state = null
+} = {}) {
+  const route = "news_topic_generate_shadow";
+  const sourceType = newsTopicSourceType;
+  if (!enabled) return shadowResult({ status: "skip", route, sourceType, reason: "disabled" });
+
+  const selectedTopic = topic || safeFeaturedTopic(service);
+  if (!selectedTopic) return shadowResult({ status: "skip", route, sourceType, reason: "no_topic" });
+
+  const planner = dailyPostService || (typeof service?.planDailyPost === "function" ? service : null);
+  if (!planner || typeof planner.planDailyPost !== "function") {
+    return shadowResult({
+      status: "skip",
+      route,
+      sourceType,
+      topicCategory: selectedTopic.category,
+      reason: "no_service"
+    });
+  }
+
+  const plan = safePlanDailyPost(planner, {
+    now,
+    state,
+    sequence: 1,
+    sourceType,
+    topic: selectedTopic
+  });
+  if (!plan || !plan.postInput) {
+    return shadowResult({
+      status: "skip",
+      route,
+      sourceType,
+      topicCategory: selectedTopic.category,
+      reason: "unsafe_topic"
+    });
+  }
+
+  return runPostShadowCandidate({
+    route,
+    sourceType: plan.source_type || sourceType,
+    id: plan.postInput.id,
+    topicCategory: selectedTopic.category,
+    provider,
+    generator,
+    payload: {
+      route,
+      postInput: plan.postInput,
+      topic: plan.topic,
+      state: plan.state,
+      source_type: plan.source_type || sourceType
+    }
+  });
+}
+
 export function createHoshiaDailyPostCreatedEvent(post, state, {
   roomId = "",
   occurredAt = new Date().toISOString(),
@@ -630,6 +735,152 @@ function reasonForSourceType(sourceType) {
   if (sourceType === pulseSourceType) return "internal_state_pulse_post";
   if (sourceType === newsTopicSourceType) return "internal_news_topic_post";
   return "internal_state_daily_post";
+}
+
+async function runPostShadowCandidate({
+  route,
+  sourceType,
+  id = "",
+  topicCategory = "",
+  provider,
+  generator,
+  payload
+}) {
+  if (!generator && !provider) {
+    return shadowResult({
+      status: "skip",
+      route,
+      sourceType,
+      id,
+      topicCategory,
+      reason: "no_provider"
+    });
+  }
+  try {
+    const candidate = await resolveShadowGenerator(generator || provider, payload, route);
+    if (!hasSafeShadowCandidate(candidate)) {
+      return shadowResult({
+        status: "failed",
+        route,
+        sourceType,
+        id,
+        topicCategory,
+        reason: "provider_empty"
+      });
+    }
+    return shadowResult({
+      status: "success",
+      route,
+      sourceType,
+      id,
+      topicCategory,
+      reason: "provider_success"
+    });
+  } catch {
+    return shadowResult({
+      status: "failed",
+      route,
+      sourceType,
+      id,
+      topicCategory,
+      reason: "provider_error"
+    });
+  }
+}
+
+function safePlanDailyPost(service, input) {
+  try {
+    const plan = service.planDailyPost(input);
+    return plan && typeof plan === "object" ? plan : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeFeaturedTopic(service) {
+  try {
+    if (typeof service?.featuredTopic !== "function") return null;
+    return service.featuredTopic();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveShadowGenerator(generator, payload, route) {
+  if (!generator) return null;
+  if (typeof generator === "function") return generator(payload);
+  const methodNames = route === "news_topic_generate_shadow"
+    ? ["generateNewsTopicShadow", "generateNewsTopicCandidate", "generateShadowCandidate", "generateCandidate", "generate"]
+    : ["generateDailyPostShadow", "generateDailyPostCandidate", "generateShadowCandidate", "generateCandidate", "generate"];
+  for (const methodName of methodNames) {
+    if (typeof generator[methodName] === "function") {
+      return generator[methodName](payload);
+    }
+  }
+  return null;
+}
+
+function hasSafeShadowCandidate(value) {
+  const text = shadowCandidateText(value);
+  return Boolean(cleanText(text, 800));
+}
+
+function shadowCandidateText(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  return value.candidate_text
+    ?? value.candidateText
+    ?? value.text
+    ?? value.reply
+    ?? value.message
+    ?? value.content
+    ?? "";
+}
+
+function shadowResult({ status, route, sourceType, id = "", topicCategory = "", reason = "" }) {
+  const result = {
+    status: shadowStatus(status),
+    source_type: normalizeDailySourceType(sourceType),
+    route: cleanShadowIdentifier(route, 48) || "shadow",
+    reason: shadowReason(reason)
+  };
+  const shortId = cleanShadowId(id);
+  if (shortId) result.id = shortId;
+  const safeTopicCategory = cleanShadowIdentifier(topicCategory, 48);
+  if (safeTopicCategory) result.topic_category = safeTopicCategory;
+  return result;
+}
+
+function shadowStatus(value) {
+  if (value === "success" || value === "failed") return value;
+  return "skip";
+}
+
+function shadowReason(value) {
+  const reason = cleanIdentifier(value);
+  const allowed = new Set([
+    "disabled",
+    "no_service",
+    "no_plan",
+    "no_post_input",
+    "no_topic",
+    "unsafe_topic",
+    "no_provider",
+    "provider_empty",
+    "provider_error",
+    "provider_success"
+  ]);
+  return allowed.has(reason) ? reason : "unknown";
+}
+
+function cleanShadowId(value) {
+  return cleanShadowIdentifier(value, 96);
+}
+
+function cleanShadowIdentifier(value, maxLength = 48) {
+  const text = cleanText(value, maxLength);
+  if (!text) return "";
+  return cleanIdentifier(text).slice(0, maxLength);
 }
 
 function normalizeActiveWindow(value) {

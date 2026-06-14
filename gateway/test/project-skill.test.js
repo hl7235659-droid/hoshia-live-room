@@ -8,8 +8,8 @@ test("project Hoshia module integration skill exists and has valid frontmatter",
   assert.equal(existsSync(skillPath), true);
   const content = readFileSync(skillPath, "utf8");
 
-  assert.match(content, /^---\nname: hoshia-module-integration\n/m);
-  assert.match(content, /\ndescription: .+module_context.+module_events.+module_memory_events.+\n---\n/s);
+  assert.match(content, /^---\r?\nname: hoshia-module-integration\r?\n/m);
+  assert.match(content, /\r?\ndescription: .+module_context.+module_events.+module_memory_events.+\r?\n---\r?\n/s);
   assert.match(content, /Provider contract/);
   assert.match(content, /Module events/);
   assert.match(content, /Memory rules/);

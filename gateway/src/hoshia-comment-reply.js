@@ -191,6 +191,8 @@ export function stablePercentBucket(value) {
   return (hash >>> 0) % 100;
 }
 
+export const deterministicCommentReplyGreyBucket = stablePercentBucket;
+
 export function createHoshiaCommentReplyGeneratedEvent({ post, comment, reply, roomId = "" } = {}) {
   return sanitizeModuleEvent({
     room_id: roomId,

@@ -54,7 +54,9 @@ import {
   commentReplyRolloutForInteraction,
   createHoshiaCommentReplyService
 } from "./hoshia-comment-reply.js";
-import { createHoshiaDailyPostService } from "./hoshia-daily-post.js";
+import {
+  createHoshiaDailyPostService
+} from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
 import { createHoshiaInterestKnowledgeService } from "./interest-knowledge.js";
 import { createHoshiaDailyCanonService } from "./hoshia-daily-canon.js";
@@ -208,6 +210,8 @@ const hoshiaCommentReplyService = createHoshiaCommentReplyService({
   moduleContextProvider: ({ session }) => buildModuleContext({ providers: moduleProviders, session }),
   moduleEventsProvider: () => moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 }),
   config,
+  rolloutMode: config.hoshiaCommentReplyRolloutMode,
+  greyPercent: config.hoshiaCommentReplyGreyPercent,
   dailyReplyLimit: config.hoshiaCommentReplyDailyLimit,
   minDelayMinutes: config.hoshiaCommentReplyMinDelayMinutes,
   maxDelayMinutes: config.hoshiaCommentReplyMaxDelayMinutes,
@@ -1147,7 +1151,7 @@ function formatPostCommentReplyPrompt({ post, comment, memoryPacket = [], visual
 
 function scheduleCommentReplyTick(delayMs = 60000) {
   if (hoshiaCommentReplyTimer) clearTimeout(hoshiaCommentReplyTimer);
-  if (!config.hoshiaAsyncCommentReplyEnabled) return;
+  if (!config.hoshiaAsyncCommentReplyEnabled || config.hoshiaCommentReplyRolloutMode === "off") return;
   hoshiaCommentReplyTimer = setTimeout(() => {
     hoshiaCommentReplyTimer = null;
     void runCommentReplyTick().catch((error) => {

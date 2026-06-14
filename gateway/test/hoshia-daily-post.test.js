@@ -10,7 +10,9 @@ import {
   createHoshiaDailyPostCreatedEvent,
   createHoshiaDailyPostService,
   dayKeyFor,
-  normalizeDailyPostLimit
+  normalizeDailyPostLimit,
+  runDailyPostShadow,
+  runNewsTopicGenerateShadow
 } from "../src/hoshia-daily-post.js";
 
 test("daily post service plans an internal state post from visual state", () => {
@@ -62,6 +64,92 @@ test("daily tick is disabled by default unless forced by the caller", () => {
   } finally {
     cleanup();
   }
+});
+
+test("daily post shadow returns success without creating a real post", async () => {
+  let createCalled = false;
+  let providerPayload = null;
+  const service = createHoshiaDailyPostService({
+    db: {
+      createHoshiaPost() {
+        createCalled = true;
+        throw new Error("createHoshiaPost should not be called");
+      },
+      listHoshiaPosts() {
+        throw new Error("listHoshiaPosts should not be called");
+      }
+    },
+    visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  });
+
+  const result = await runDailyPostShadow({
+    enabled: true,
+    service,
+    provider: {
+      async generateDailyPostShadow(payload) {
+        providerPayload = payload;
+        return { text: "safe candidate" };
+      }
+    },
+    now: new Date("2026-06-10T12:00:00.000Z")
+  });
+
+  assert.equal(createCalled, false);
+  assert.equal(providerPayload.postInput.source_type, "daily_state");
+  assert.equal(result.status, "success");
+  assert.equal(result.source_type, "daily_state");
+  assert.equal(result.route, "daily_post_shadow");
+  assert.equal(result.reason, "provider_success");
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes(providerPayload.postInput.content), false);
+  assert.equal(serialized.includes("safe candidate"), false);
+});
+
+test("daily post shadow skips disabled/no service/no post input and fails empty or throwing provider", async () => {
+  const service = createHoshiaDailyPostService({
+    visualStateService: visualState({ activity: "idle", mood: "calm" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  });
+  const noPostInputService = {
+    planDailyPost() {
+      return { ok: false, postInput: null, source_type: "daily_state" };
+    }
+  };
+
+  assert.deepEqual(await runDailyPostShadow({ service }), {
+    status: "skip",
+    source_type: "daily_state",
+    route: "daily_post_shadow",
+    reason: "disabled"
+  });
+  assert.deepEqual(await runDailyPostShadow({ enabled: true }), {
+    status: "skip",
+    source_type: "daily_state",
+    route: "daily_post_shadow",
+    reason: "no_service"
+  });
+  assert.deepEqual(await runDailyPostShadow({ enabled: true, service: noPostInputService }), {
+    status: "skip",
+    source_type: "daily_state",
+    route: "daily_post_shadow",
+    reason: "no_post_input"
+  });
+
+  const empty = await runDailyPostShadow({ enabled: true, service, provider: () => "" });
+  assert.equal(empty.status, "failed");
+  assert.equal(empty.reason, "provider_empty");
+
+  const thrown = await runDailyPostShadow({
+    enabled: true,
+    service,
+    provider: () => {
+      throw new Error("token=secret http://127.0.0.1/internal");
+    }
+  });
+  assert.equal(thrown.status, "failed");
+  assert.equal(thrown.reason, "provider_error");
+  assert.equal(JSON.stringify(thrown).includes("secret"), false);
 });
 
 test("daily tick creates at least one daily_state and caps each day at five posts", () => {
@@ -134,6 +222,129 @@ test("news_topic counts toward daily max and is limited to one per day", () => {
   } finally {
     cleanup();
   }
+});
+
+test("news topic generate shadow skips when no topic is available", async () => {
+  const dailyPostService = createHoshiaDailyPostService({
+    visualStateService: visualState({ activity: "happy", mood: "playful" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  });
+  const newsService = {
+    featuredTopic() {
+      return null;
+    }
+  };
+
+  const result = await runNewsTopicGenerateShadow({
+    enabled: true,
+    service: newsService,
+    dailyPostService,
+    now: new Date("2026-06-10T12:00:00.000Z")
+  });
+
+  assert.deepEqual(result, {
+    status: "skip",
+    source_type: "news_topic",
+    route: "news_topic_generate_shadow",
+    reason: "no_topic"
+  });
+});
+
+test("news topic generate shadow uses safe featured topic without refresh fetch or listTopics", async () => {
+  const calls = [];
+  const dailyPostService = createHoshiaDailyPostService({
+    db: {
+      createHoshiaPost() {
+        throw new Error("createHoshiaPost should not be called");
+      },
+      listHoshiaPosts() {
+        throw new Error("listHoshiaPosts should not be called");
+      }
+    },
+    visualStateService: visualState({ activity: "happy", mood: "playful" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  });
+  const newsService = {
+    featuredTopic() {
+      calls.push("featuredTopic");
+      return { ...lightNewsTopic("杞绘澗鐑偣璇濋"), category: "culture" };
+    },
+    refresh() {
+      calls.push("refresh");
+      throw new Error("refresh should not be called");
+    },
+    fetch() {
+      calls.push("fetch");
+      throw new Error("fetch should not be called");
+    },
+    listTopics() {
+      calls.push("listTopics");
+      throw new Error("listTopics should not be called");
+    }
+  };
+
+  const result = await runNewsTopicGenerateShadow({
+    enabled: true,
+    service: newsService,
+    dailyPostService,
+    now: new Date("2026-06-10T12:00:00.000Z"),
+    provider: {
+      async generateNewsTopicShadow(payload) {
+        assert.equal(payload.source_type, "news_topic");
+        assert.equal(payload.topic.post_seed, "杞绘澗鐑偣璇濋");
+        return "safe generated topic candidate";
+      }
+    }
+  });
+
+  assert.deepEqual(calls, ["featuredTopic"]);
+  assert.equal(result.status, "success");
+  assert.equal(result.source_type, "news_topic");
+  assert.equal(result.route, "news_topic_generate_shadow");
+  assert.equal(result.topic_category, "culture");
+  assert.equal(result.reason, "provider_success");
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes("safe generated topic candidate"), false);
+  assert.equal(serialized.includes("杞绘澗鐑偣璇濋"), false);
+});
+
+test("news topic generate shadow skips unsafe topic and redacts result fields", async () => {
+  const dailyPostService = createHoshiaDailyPostService({
+    visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+    clock: () => new Date("2026-06-10T12:00:00.000Z")
+  });
+  let providerCalled = false;
+
+  const result = await runNewsTopicGenerateShadow({
+    enabled: true,
+    service: {
+      featuredTopic() {
+        return null;
+      }
+    },
+    dailyPostService,
+    now: new Date("2026-06-10T12:00:00.000Z"),
+    topic: {
+      post_seed: "unsafe topic should not appear",
+      reaction_style: "reply",
+      category: "token=secret http://127.0.0.1/private",
+      risk_level: "high"
+    },
+    provider: () => {
+      providerCalled = true;
+      return "candidate should not be generated";
+    }
+  });
+
+  assert.equal(providerCalled, false);
+  assert.equal(result.status, "skip");
+  assert.equal(result.reason, "unsafe_topic");
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes("unsafe topic should not appear"), false);
+  assert.equal(serialized.includes("candidate should not be generated"), false);
+  assert.equal(serialized.includes("token"), false);
+  assert.equal(serialized.includes("127.0.0.1"), false);
+  assert.equal(serialized.includes("private"), false);
 });
 
 test("news_topic respects total daily max, min interval, and invalid topic skips", () => {

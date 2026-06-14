@@ -27,10 +27,13 @@ const baseConfig = {
   musicProviderTimeoutMs: 500
 };
 
-test("music command parser accepts slash, direct, and Hoshia mention forms", () => {
+test("music command parser accepts slash, direct, colon, and mention forms", () => {
   assert.equal(parseMusicRequestText("/song sparkle"), "sparkle");
   assert.equal(parseMusicRequestText("点歌 青花瓷"), "青花瓷");
+  assert.equal(parseMusicRequestText("点歌：青花瓷"), "青花瓷");
   assert.equal(parseMusicRequestText("@Hoshia 点歌 晴天"), "晴天");
+  assert.equal(parseMusicRequestText("@星娅 点歌 晴天"), "晴天");
+  assert.equal(parseMusicRequestText("@主播 点歌 晴天"), "晴天");
   assert.equal(parseMusicRequestText("hello 点歌 晴天"), "");
 });
 
