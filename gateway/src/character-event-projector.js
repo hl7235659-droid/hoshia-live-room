@@ -6,6 +6,8 @@ const VISUAL_STATE_CHANGED = "hoshia_visual_state.changed";
 const TIMELINE_POST_CREATED = "hoshia_timeline.post_created";
 const COMMENT_REPLY_PENDING = "hoshia_timeline.comment_reply_pending";
 const COMMENT_REPLIED = "hoshia_timeline.comment_replied";
+const HOSHIACLAW_PROACTIVE_SHADOW_PREFIX = "hoshiaclaw.proactive_shadow.";
+const HOSHIACLAW_PROACTIVE_LIVE_PREFIX = "hoshiaclaw.proactive_live.";
 const MAX_APPLIED_EVENT_IDS = 20;
 
 export function projectCharacterEvent(snapshot = {}, event = {}) {
@@ -17,6 +19,9 @@ export function projectCharacterEvent(snapshot = {}, event = {}) {
   if (eventType === VISUAL_STATE_CHANGED) return projectVisualStateChangedEvent(snapshot, event);
   if (eventType === TIMELINE_POST_CREATED) return projectTimelinePostCreatedEvent(snapshot, event);
   if (eventType === COMMENT_REPLY_PENDING || eventType === COMMENT_REPLIED) return projectTimelineCommentReplyEvent(snapshot, event);
+  if (eventType.startsWith(HOSHIACLAW_PROACTIVE_SHADOW_PREFIX) || eventType.startsWith(HOSHIACLAW_PROACTIVE_LIVE_PREFIX)) {
+    return projectHoshiaClawProactiveActivityEvent(snapshot, event);
+  }
   return clonePlainObject(snapshot);
 }
 
@@ -197,6 +202,35 @@ export function projectTimelineCommentReplyEvent(snapshot = {}, event = {}) {
   return next;
 }
 
+export function projectHoshiaClawProactiveActivityEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  const eventType = safeText(event.event_type || event.eventType, 80);
+  if (!eventType.startsWith(HOSHIACLAW_PROACTIVE_SHADOW_PREFIX) && !eventType.startsWith(HOSHIACLAW_PROACTIVE_LIVE_PREFIX)) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const status = safeText(data.status || statusFromEventType(eventType), 40);
+  const route = safeText(data.route || (eventType.startsWith(HOSHIACLAW_PROACTIVE_LIVE_PREFIX) ? "proactive_idle_live" : "proactive_idle_shadow"), 80);
+  const sourceType = safeText(data.source_type || event.source_kind || event.sourceKind || "hoshiaclaw", 60);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  recent.last_proactive_activity = {
+    ...(status ? { status } : {}),
+    ...(route ? { route } : {}),
+    ...(sourceType ? { source_type: sourceType } : {}),
+    ...(occurredAt ? { updated_at: occurredAt } : {})
+  };
+  derived.last_proactive_event_id = eventIdentifier(event);
+
+  return next;
+}
+
 function applyEventMetadata(snapshot, event) {
   const publicBlock = ensureObject(snapshot, "public");
   const explain = ensureObject(publicBlock, "explain");
@@ -257,6 +291,14 @@ function buildPresentationSuggestion(expression = {}) {
     activity,
     source: "character_snapshot"
   };
+}
+
+function statusFromEventType(eventType = "") {
+  const text = String(eventType || "");
+  if (text.endsWith(".success")) return "success";
+  if (text.endsWith(".skip")) return "skip";
+  if (text.endsWith(".failed")) return "failed";
+  return "";
 }
 
 function safeTimestamp(value) {

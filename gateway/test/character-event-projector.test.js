@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   projectAiReplySentEvent,
   projectCharacterEvent,
+  projectHoshiaClawProactiveActivityEvent,
   projectMusicControlEvent,
   projectMusicSongRequestedEvent,
   projectTimelineCommentReplyEvent,
@@ -237,6 +238,45 @@ test("timeline comment projector records pending and replied status safely", () 
   });
   assert.equal(replied.public.recent.last_comment_reply.raw_response, undefined);
   assert.equal(replied.internal.derived.last_comment_event_id, "evt-comment-replied");
+});
+
+test("proactive activity projector records live and shadow status without raw candidate text", () => {
+  const shadow = projectHoshiaClawProactiveActivityEvent({}, {
+    event_type: "hoshiaclaw.proactive_shadow.skip",
+    event_id: "evt-proactive-shadow",
+    source_kind: "hoshiaclaw",
+    occurred_at: "2026-06-12T04:00:00.000Z",
+    data_json: JSON.stringify({
+      status: "skip",
+      route: "proactive_idle_shadow",
+      source_type: "gateway",
+      candidate_text: "raw candidate should not persist",
+      raw_prompt: "hidden"
+    })
+  });
+  const live = projectCharacterEvent(shadow, {
+    event_type: "hoshiaclaw.proactive_live.success",
+    event_id: "evt-proactive-live",
+    source_kind: "hoshiaclaw",
+    occurred_at: "2026-06-12T04:05:00.000Z",
+    data_json: JSON.stringify({
+      status: "success",
+      route: "proactive_idle_live",
+      source_type: "openai_compatible",
+      raw_response: "full reply should not persist"
+    })
+  });
+
+  assert.deepEqual(live.internal.derived.last_applied_event_ids, ["evt-proactive-shadow", "evt-proactive-live"]);
+  assert.deepEqual(live.public.recent.last_proactive_activity, {
+    status: "success",
+    route: "proactive_idle_live",
+    source_type: "openai_compatible",
+    updated_at: "2026-06-12T04:05:00.000Z"
+  });
+  assert.equal(live.public.recent.last_proactive_activity.candidate_text, undefined);
+  assert.equal(live.public.recent.last_proactive_activity.raw_response, undefined);
+  assert.equal(live.internal.derived.last_proactive_event_id, "evt-proactive-live");
 });
 
 test("generic projector applies mixed event types in order", () => {
