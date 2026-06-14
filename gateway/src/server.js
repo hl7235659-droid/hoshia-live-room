@@ -104,6 +104,11 @@ import {
   presentationFromVisualState
 } from "./hoshia-presentation.js";
 import {
+  buildRuntimeObservabilitySnapshot,
+  createRuntimeObservabilityCounters,
+  recordAiProviderObservation as recordAiProviderObservationCounter
+} from "./hoshia-runtime-observability.js";
+import {
   buildCharacterSnapshot,
   normalizeCharacterEvent,
   summarizeCharacterSnapshotForPrompt
@@ -263,15 +268,7 @@ const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
 let hoshiaVisualTickTimer = null;
 let hoshiaCommentReplyTimer = null;
 let currentHoshiaPresentation = null;
-const observabilityCounters = {
-  presentationEmitted: 0,
-  presentationSanitized: 0,
-  shadow: {
-    success: 0,
-    skip: 0,
-    failed: 0
-  }
-};
+const observabilityCounters = createRuntimeObservabilityCounters();
 
 app.use(express.json({ limit: "32kb" }));
 registerAccountRoutes(app, {
@@ -1627,6 +1624,9 @@ async function handleAiReplyBatch(batch) {
     buildCharacterSnapshot: buildCurrentCharacterSnapshot,
     getLatestCharacterSnapshot: ({ roomId, characterId }) => buildEventLogCharacterSnapshot({ roomId, characterId })
   });
+  if (config.characterStateAuthority === "event_log" && characterSnapshotSource !== "persisted") {
+    observabilityCounters.eventLogFallback += 1;
+  }
   if (characterSnapshotSource !== "persisted") {
     db.upsertCharacterSnapshot({
       roomId: config.roomId,
@@ -1684,6 +1684,7 @@ async function handleAiReplyBatch(batch) {
   const reply = await generateAiReply(roomAiSession(batch), prompt, config, globalThis.fetch, replyMetadata);
   await streamEmitter.flush();
   if (reply.skipped) {
+    recordAiProviderObservation(reply);
     clearQuickReplyLead(batch);
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
     broadcastAiReplyDone({ traceId: latencyTraceId, route: replyRoute, skipped: true });
@@ -1694,6 +1695,7 @@ async function handleAiReplyBatch(batch) {
   if (moduleMemoryEvents.length && reply.source !== "astrbot") {
     moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
   }
+  recordAiProviderObservation(reply);
   hoshiaInterestSystem.recordInteractionSignals({
     batch,
     moduleMemoryEvents: reply.source === "astrbot" ? moduleMemoryEvents : []
@@ -2071,7 +2073,7 @@ async function buildProactiveReplyContext({ session, idleMs } = {}) {
     .listRecentContextMessages(config.roomId, config.proactiveReply.contextMessages)
     .map(contextPayloadMessage);
   const characterSnapshot = config.characterStateAuthority === "event_log"
-    ? buildEventLogCharacterSnapshot({ roomId: config.roomId, characterId: "hoshia" }) || buildCurrentCharacterSnapshot(session)
+    ? buildEventLogCharacterSnapshot({ roomId: config.roomId, characterId: "hoshia" }) || recordEventLogSnapshotFallback(buildCurrentCharacterSnapshot(session))
     : buildCurrentCharacterSnapshot(session);
   const prompt = formatProactiveIdlePrompt({
     session,
@@ -3097,6 +3099,15 @@ function recordShadowMetricEvent({ eventType = "", status = "", reason = "", sou
   });
 }
 
+function recordAiProviderObservation(reply = {}) {
+  recordAiProviderObservationCounter(observabilityCounters, reply);
+}
+
+function recordEventLogSnapshotFallback(snapshot) {
+  observabilityCounters.eventLogFallback += 1;
+  return snapshot;
+}
+
 function statusFromShadowEvent(eventType = "") {
   if (String(eventType).endsWith(".success")) return "success";
   if (String(eventType).endsWith(".skip")) return "skip";
@@ -3177,15 +3188,11 @@ function safeRuntimeModes() {
 function buildRuntimeObservability() {
   const snapshot = db.getLatestCharacterSnapshot?.({ roomId: config.roomId, characterId: "hoshia" });
   const ageMs = snapshot?.generated_at ? Math.max(0, Date.now() - Date.parse(snapshot.generated_at)) : null;
-  return {
-    presentation_emitted: observabilityCounters.presentationEmitted,
-    presentation_sanitized: observabilityCounters.presentationSanitized,
-    module_memory_pending: typeof moduleEventStore.pendingMemorySize === "function" ? moduleEventStore.pendingMemorySize() : 0,
-    shadow_success: observabilityCounters.shadow.success,
-    shadow_skip: observabilityCounters.shadow.skip,
-    shadow_failed: observabilityCounters.shadow.failed,
-    character_snapshot_age_ms: Number.isFinite(ageMs) ? ageMs : null
-  };
+  return buildRuntimeObservabilitySnapshot({
+    counters: observabilityCounters,
+    moduleMemoryPending: typeof moduleEventStore.pendingMemorySize === "function" ? moduleEventStore.pendingMemorySize() : 0,
+    characterSnapshotAgeMs: Number.isFinite(ageMs) ? ageMs : null
+  });
 }
 function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {
   if (typeof body.text === "string") {

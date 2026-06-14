@@ -97,6 +97,10 @@ export function getAnimatedStageLabel(state: CharacterState) {
   return animatedLabels[state];
 }
 
+export function presentationFallbackState(presentation: HoshiaPresentation | null): CharacterState | null {
+  return presentation?.fallback_state || null;
+}
+
 export function CharacterStage({
   state,
   messages,
@@ -108,11 +112,12 @@ export function CharacterStage({
   visualState: HoshiaVisualState | null;
   presentation: HoshiaPresentation | null;
 }) {
-  const stagePresentation = getResolvedPresentation(state, presentation);
+  const resolvedState = presentationFallbackState(presentation) || state;
+  const stagePresentation = getResolvedPresentation(resolvedState, presentation);
   const pngUrl = presentation?.fallback_png || presentation?.current_png || visualState?.current_png || "";
 
   return (
-    <section className={`character-stage state-${state.toLowerCase()}`} aria-label="星见终端角色台">
+    <section className={`character-stage state-${resolvedState.toLowerCase()}`} aria-label="星见终端角色台">
       <div className="stage-sky" aria-hidden="true">
         <span className="cloud cloud-a" />
         <span className="cloud cloud-b" />
@@ -123,7 +128,7 @@ export function CharacterStage({
       </div>
       <StageDanmaku messages={messages.slice(-5)} />
       <Live2DAdapter
-        state={state}
+        state={resolvedState}
         action={presentation?.action || ""}
         expression={stagePresentation.expression}
         motion={stagePresentation.motion}
