@@ -3213,7 +3213,8 @@ function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}
 
 function appendHoshiaNewsEvent({ eventType, session = null, summaryHint = "", data = {} } = {}) {
   if (!eventType || !summaryHint) return null;
-  return moduleEventStore.append({
+  const occurredAt = new Date().toISOString();
+  const moduleEvent = moduleEventStore.append({
     room_id: config.roomId,
     module_id: "hoshia_news",
     event_type: eventType,
@@ -3223,9 +3224,28 @@ function appendHoshiaNewsEvent({ eventType, session = null, summaryHint = "", da
     memory_eligible: false,
     memory_kind: "hoshia_news_event",
     retention_days: 7,
-    occurred_at: new Date().toISOString(),
+    occurred_at: occurredAt,
     data
   });
+  appendCharacterEvent({
+    event_type: eventType,
+    actor_type: session?.user_id ? "user" : "system",
+    user_id: session?.user_id || "",
+    nickname: session?.nickname || "",
+    source_kind: "hoshia_news",
+    source_id: moduleEvent?.id || `${eventType}:${occurredAt}`,
+    occurred_at: occurredAt,
+    public_hint: summaryHint,
+    private_hint: summaryHint,
+    reason: data?.reason || eventType,
+    data: {
+      status: data?.status || "observed",
+      source_type: data?.source_type || "hoshia_news",
+      topic: data?.topic || data?.category || "",
+      category: data?.category || ""
+    }
+  });
+  return moduleEvent;
 }
 
 function selectCachedNewsTopicForPost() {

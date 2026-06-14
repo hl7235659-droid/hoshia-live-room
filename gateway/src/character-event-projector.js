@@ -8,6 +8,9 @@ const COMMENT_REPLY_PENDING = "hoshia_timeline.comment_reply_pending";
 const COMMENT_REPLIED = "hoshia_timeline.comment_replied";
 const HOSHIACLAW_PROACTIVE_SHADOW_PREFIX = "hoshiaclaw.proactive_shadow.";
 const HOSHIACLAW_PROACTIVE_LIVE_PREFIX = "hoshiaclaw.proactive_live.";
+const HOSHIACLAW_DAILY_POST_SHADOW_PREFIX = "hoshiaclaw.daily_post_shadow.";
+const HOSHIACLAW_NEWS_TOPIC_SHADOW_PREFIX = "hoshiaclaw.news_topic_generate_shadow.";
+const HOSHIA_NEWS_PREFIX = "hoshia_news.";
 const MAX_APPLIED_EVENT_IDS = 20;
 
 export function projectCharacterEvent(snapshot = {}, event = {}) {
@@ -22,6 +25,10 @@ export function projectCharacterEvent(snapshot = {}, event = {}) {
   if (eventType.startsWith(HOSHIACLAW_PROACTIVE_SHADOW_PREFIX) || eventType.startsWith(HOSHIACLAW_PROACTIVE_LIVE_PREFIX)) {
     return projectHoshiaClawProactiveActivityEvent(snapshot, event);
   }
+  if (eventType.startsWith(HOSHIACLAW_DAILY_POST_SHADOW_PREFIX) || eventType.startsWith(HOSHIACLAW_NEWS_TOPIC_SHADOW_PREFIX)) {
+    return projectHoshiaClawShadowActivityEvent(snapshot, event);
+  }
+  if (eventType.startsWith(HOSHIA_NEWS_PREFIX)) return projectHoshiaNewsEvent(snapshot, event);
   return clonePlainObject(snapshot);
 }
 
@@ -227,6 +234,68 @@ export function projectHoshiaClawProactiveActivityEvent(snapshot = {}, event = {
     ...(occurredAt ? { updated_at: occurredAt } : {})
   };
   derived.last_proactive_event_id = eventIdentifier(event);
+
+  return next;
+}
+
+export function projectHoshiaClawShadowActivityEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  const eventType = safeText(event.event_type || event.eventType, 80);
+  if (!eventType.startsWith(HOSHIACLAW_DAILY_POST_SHADOW_PREFIX) && !eventType.startsWith(HOSHIACLAW_NEWS_TOPIC_SHADOW_PREFIX)) {
+    return next;
+  }
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const status = safeText(data.status || statusFromEventType(eventType), 40);
+  const route = safeText(data.route || (eventType.startsWith(HOSHIACLAW_NEWS_TOPIC_SHADOW_PREFIX) ? "news_topic_generate_shadow" : "daily_post_shadow"), 80);
+  const sourceType = safeText(data.source_type || event.source_kind || event.sourceKind || "hoshiaclaw", 60);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  recent.last_shadow_activity = {
+    ...(status ? { status } : {}),
+    ...(route ? { route } : {}),
+    ...(sourceType ? { source_type: sourceType } : {}),
+    ...(occurredAt ? { updated_at: occurredAt } : {})
+  };
+  if (route === "daily_post_shadow") derived.last_daily_shadow_event_id = eventIdentifier(event);
+  if (route === "news_topic_generate_shadow") derived.last_news_shadow_event_id = eventIdentifier(event);
+
+  return next;
+}
+
+export function projectHoshiaNewsEvent(snapshot = {}, event = {}) {
+  const next = clonePlainObject(snapshot);
+  const eventType = safeText(event.event_type || event.eventType, 80);
+  if (!eventType.startsWith(HOSHIA_NEWS_PREFIX)) return next;
+
+  applyEventMetadata(next, event);
+  const publicBlock = ensureObject(next, "public");
+  const today = ensureObject(publicBlock, "today");
+  const recent = ensureObject(publicBlock, "recent");
+  const internal = ensureObject(next, "internal");
+  const derived = ensureObject(internal, "derived");
+  const data = eventData(event);
+  const status = safeText(data.status, 40);
+  const sourceType = safeText(data.source_type || event.source_kind || event.sourceKind || "hoshia_news", 60);
+  const topic = safeText(data.topic || data.category || event.reason, 120);
+  const occurredAt = safeTimestamp(event.occurred_at || event.occurredAt || event.created_at || event.createdAt);
+
+  if (eventType === "hoshia_news.topic_post_created") {
+    today.last_activity = "news_topic";
+  }
+  recent.last_news_activity = {
+    event_type: eventType,
+    ...(status ? { status } : {}),
+    ...(sourceType ? { source_type: sourceType } : {}),
+    ...(topic ? { topic } : {}),
+    ...(occurredAt ? { updated_at: occurredAt } : {})
+  };
+  derived.last_news_event_id = eventIdentifier(event);
 
   return next;
 }

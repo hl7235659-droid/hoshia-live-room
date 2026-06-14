@@ -279,6 +279,75 @@ test("proactive activity projector records live and shadow status without raw ca
   assert.equal(live.internal.derived.last_proactive_event_id, "evt-proactive-live");
 });
 
+test("news event projector records safe topic activity without raw payloads", () => {
+  const next = projectCharacterEvent({}, {
+    event_type: "hoshia_news.topic_post_created",
+    event_id: "evt-news-topic",
+    source_kind: "hoshia_news",
+    occurred_at: "2026-06-12T05:00:00.000Z",
+    reason: "news_topic_post",
+    data_json: JSON.stringify({
+      status: "observed",
+      source_type: "news_topic",
+      topic: "safe public topic",
+      raw_response: "full generated post should not persist",
+      url: "https://example.test/news"
+    })
+  });
+
+  assert.deepEqual(next.internal.derived.last_applied_event_ids, ["evt-news-topic"]);
+  assert.equal(next.public.today.last_activity, "news_topic");
+  assert.deepEqual(next.public.recent.last_news_activity, {
+    event_type: "hoshia_news.topic_post_created",
+    status: "observed",
+    source_type: "news_topic",
+    topic: "safe public topic",
+    updated_at: "2026-06-12T05:00:00.000Z"
+  });
+  assert.equal(next.public.recent.last_news_activity.raw_response, undefined);
+  assert.equal(next.public.recent.last_news_activity.url, undefined);
+  assert.equal(next.internal.derived.last_news_event_id, "evt-news-topic");
+});
+
+test("daily and news shadow projector records safe observation metadata", () => {
+  const daily = projectCharacterEvent({}, {
+    event_type: "hoshiaclaw.daily_post_shadow.skip",
+    event_id: "evt-daily-shadow",
+    source_kind: "hoshiaclaw",
+    occurred_at: "2026-06-12T05:10:00.000Z",
+    data_json: JSON.stringify({
+      status: "skip",
+      route: "daily_post_shadow",
+      source_type: "gateway",
+      candidate_text: "hidden draft"
+    })
+  });
+  const news = projectCharacterEvent(daily, {
+    event_type: "hoshiaclaw.news_topic_generate_shadow.failed",
+    event_id: "evt-news-shadow",
+    source_kind: "hoshiaclaw",
+    occurred_at: "2026-06-12T05:20:00.000Z",
+    data_json: JSON.stringify({
+      status: "failed",
+      route: "news_topic_generate_shadow",
+      source_type: "gateway",
+      raw_prompt: "hidden prompt"
+    })
+  });
+
+  assert.deepEqual(news.internal.derived.last_applied_event_ids, ["evt-daily-shadow", "evt-news-shadow"]);
+  assert.deepEqual(news.public.recent.last_shadow_activity, {
+    status: "failed",
+    route: "news_topic_generate_shadow",
+    source_type: "gateway",
+    updated_at: "2026-06-12T05:20:00.000Z"
+  });
+  assert.equal(news.public.recent.last_shadow_activity.candidate_text, undefined);
+  assert.equal(news.public.recent.last_shadow_activity.raw_prompt, undefined);
+  assert.equal(news.internal.derived.last_daily_shadow_event_id, "evt-daily-shadow");
+  assert.equal(news.internal.derived.last_news_shadow_event_id, "evt-news-shadow");
+});
+
 test("generic projector applies mixed event types in order", () => {
   const events = [
     {

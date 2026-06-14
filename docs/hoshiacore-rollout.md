@@ -18,6 +18,8 @@ This checklist keeps HoshiaCore rollout separate from new feature rollout.
 - Keep the current stable `CHARACTER_STATE_AUTHORITY` value unless staging event-log authority has been verified in the same build.
 - Keep comment, daily post, news topic, and proactive live takeover disabled.
 - Watch provider success, skip, failed, fallback count, presentation count, and snapshot age.
+- Treat phase 1 as stable only when `hoshia_core_provider_failed` and `astrbot_fallback_count` are not increasing, ordinary WebSocket replies still emit `ai_reply_done` and `hoshia_presentation`, and recent logs do not contain panic/fatal markers or raw prompt/response leaks.
+- Snapshot reducer expansions during phase 1 may add safe recent activity fields, but must not enable comment, daily post, news topic, or proactive live takeover.
 
 ## Production phase 2
 
