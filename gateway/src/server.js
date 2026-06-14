@@ -3047,12 +3047,15 @@ function recordShadowMetricEvent({ eventType = "", status = "", reason = "", sou
   const safeRoute = safeMetricIdentifier(route || routeFromShadowEvent(eventType), 80);
   const safeSource = safeMetricIdentifier(source || "hoshiaclaw", 80) || "hoshiaclaw";
   const safeReason = safeMetricReason(reason || safeStatus || "shadow_metric");
+  const metricEventId = `shadow_${safeRoute || "shadow"}_${nanoid(10)}`;
   observabilityCounters.shadow[safeStatus] = Number(observabilityCounters.shadow[safeStatus] || 0) + 1;
   return appendCharacterEvent({
+    id: metricEventId,
+    idempotency_key: `${config.roomId}:${eventType}:${metricEventId}`,
     event_type: eventType,
     actor_type: "system",
     source_kind: "hoshiaclaw",
-    source_id: safeRoute || "shadow",
+    source_id: metricEventId,
     public_hint: `HoshiaClaw ${safeRoute || "shadow"} ${safeStatus}`,
     private_hint: `HoshiaClaw ${safeRoute || "shadow"} ${safeStatus}`,
     reason: safeReason,

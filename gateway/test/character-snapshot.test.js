@@ -83,6 +83,42 @@ test("character event normalization keeps safe ai reply route only", () => {
   assert.equal(data.base_url, undefined);
 });
 
+test("shadow metric events can be unique per observation without raw text", () => {
+  const first = normalizeCharacterEvent({
+    id: "shadow_daily_post_shadow_a1",
+    idempotency_key: "room:hoshiaclaw.daily_post_shadow.skip:shadow_daily_post_shadow_a1",
+    event_type: "hoshiaclaw.daily_post_shadow.skip",
+    room_id: "room",
+    source_id: "shadow_daily_post_shadow_a1",
+    public_hint: "HoshiaClaw daily_post_shadow skip",
+    reason: "daily_post_disabled",
+    data: {
+      status: "skip",
+      route: "daily_post_shadow",
+      source_type: "gateway",
+      candidate_text: "must not persist"
+    }
+  });
+  const second = normalizeCharacterEvent({
+    id: "shadow_daily_post_shadow_b2",
+    idempotency_key: "room:hoshiaclaw.daily_post_shadow.skip:shadow_daily_post_shadow_b2",
+    event_type: "hoshiaclaw.daily_post_shadow.skip",
+    room_id: "room",
+    source_id: "shadow_daily_post_shadow_b2",
+    public_hint: "HoshiaClaw daily_post_shadow skip",
+    reason: "daily_post_disabled",
+    data: {
+      status: "skip",
+      route: "daily_post_shadow",
+      source_type: "gateway"
+    }
+  });
+
+  assert.notEqual(first.idempotency_key, second.idempotency_key);
+  assert.equal(JSON.parse(first.data_json).route, "daily_post_shadow");
+  assert.equal(JSON.parse(first.data_json).candidate_text, undefined);
+});
+
 test("snapshot prompt summary only exposes public safe blocks", () => {
   const snapshot = buildCharacterSnapshot({
     visualState: {
