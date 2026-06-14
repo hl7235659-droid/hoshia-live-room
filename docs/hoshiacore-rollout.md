@@ -27,6 +27,15 @@ This checklist keeps HoshiaCore rollout separate from new feature rollout.
 - Verify `/api/hoshia/state`, `/api/hoshia/snapshot`, ordinary WebSocket replies, and snapshot event id progress.
 - Keep comment, daily post, news topic, and proactive live takeover disabled.
 
+## Character snapshot and memory phases
+
+- Phase 3 snapshot expansion only projects sanitized `character_events` into `character_snapshots`; it must not write legacy `hoshia_state`.
+- Safe snapshot activity may include music, timeline, news, daily/shadow, proactive, pixel game, interest, and module memory summaries.
+- Snapshot fields must remain short public/private summaries and must not contain raw chat, prompt, response, candidate text, URLs, tokens, credentials, server paths, or internal addresses.
+- Phase 4 memory intake uses sanitized `module_memory_events` as the local entry point and records only purified preferences, habits, commitments, or recent-state summaries.
+- A single weak action should be skipped or kept short term; stable repeated signals or explicit remember/like/preference wording may become a longer-lived memory.
+- Memory failures must not block live replies, broadcast fake replies, write room messages, or enable comment, daily post, news topic, or proactive live takeover.
+
 ## Rollback
 
 - Reply failures: set `AI_MODE=astrbot` and restart gateway/web.

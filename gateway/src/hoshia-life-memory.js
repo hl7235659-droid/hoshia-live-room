@@ -85,6 +85,26 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
       });
     },
 
+    recordModuleMemoryEvent(event = {}) {
+      const candidate = normalizeModuleMemoryCandidate(event, clock);
+      if (!candidate) return null;
+      const memory = normalizeMemory(candidate, clock);
+      if (!memory) return null;
+      if (typeof db.upsertHoshiaLifeMemory === "function") {
+        return db.upsertHoshiaLifeMemory(memory);
+      }
+      return db.addHoshiaLifeMemory(memory);
+    },
+
+    recordModuleMemoryEvents(events = []) {
+      const memories = [];
+      for (const event of Array.isArray(events) ? events : []) {
+        const memory = this.recordModuleMemoryEvent(event);
+        if (memory) memories.push(memory);
+      }
+      return memories;
+    },
+
     searchMemories(input = {}) {
       return db.searchHoshiaLifeMemories({
         characterId: input.character_id || input.characterId || characterId,
@@ -124,6 +144,89 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
       ];
     }
   };
+}
+
+function normalizeModuleMemoryCandidate(event = {}, clock = () => new Date()) {
+  if (!event || typeof event !== "object" || event.memory_eligible !== true) return null;
+  const memoryKind = cleanIdentifier(event.memory_kind, 80);
+  const moduleId = cleanIdentifier(event.module_id, 48);
+  const eventType = cleanIdentifier(event.event_type, 80);
+  const data = event.data && typeof event.data === "object" && !Array.isArray(event.data) ? event.data : {};
+  if (sensitivePattern.test([event.summary_hint, event.event_type, event.memory_kind].filter(Boolean).join(" "))) return null;
+  if (sensitivePattern.test(safeModuleMemoryDataText(data))) return null;
+  const userId = cleanText(event.user_id, 80);
+  const nickname = cleanText(event.nickname, 32) || "A viewer";
+  const occurredAt = cleanDate(event.occurred_at) || clock().toISOString();
+  const sourceId = cleanIdentifier(event.id || `${eventType}:${occurredAt}:${userId}`, 80);
+  const base = {
+    id: `module_memory_${hashText(`${moduleId}:${memoryKind}:${sourceId}`)}`,
+    character_id: characterId,
+    user_id: userId,
+    source: "module_memory",
+    source_id: sourceId,
+    created_at: occurredAt,
+    expires_at: daysFromNow(new Date(occurredAt), clampNumber(event.retention_days, 1, 365, 30))
+  };
+
+  if (memoryKind === "music_preference_candidate") {
+    const title = cleanText(data.title, 120);
+    const artist = cleanText(data.artist, 120);
+    const source = cleanIdentifier(data.source || data.source_type, 40);
+    if (!title && !artist) return null;
+    return {
+      ...base,
+      type: explicitMemorySignal(event) ? "preference" : "event",
+      content: cleanText(`${nickname} showed a recent music taste signal${artist ? ` around ${artist}` : ""}${title ? ` via one requested song` : ""}; keep it as style or artist affinity.`, 560),
+      importance: explicitMemorySignal(event) ? 0.62 : 0.38,
+      emotion: "",
+      tags: cleanTags(["module_memory", "music", artist, source])
+    };
+  }
+
+  if (memoryKind === "pixel_game_preference_candidate") {
+    const classId = cleanIdentifier(data.class_id || data.class_name, 40);
+    const stageId = cleanIdentifier(data.stage_id, 40);
+    const scoreTier = cleanIdentifier(data.score_tier || data.rank_tier, 16).toUpperCase();
+    if (!classId && !stageId && !scoreTier) return null;
+    return {
+      ...base,
+      type: scoreTier === "S" || explicitMemorySignal(event) ? "preference" : "event",
+      content: cleanText(`${nickname} showed a recent pixel game playstyle signal${classId ? ` with class ${classId}` : ""}${stageId ? ` on ${stageId}` : ""}${scoreTier ? `, reaching ${scoreTier} tier` : ""}; keep it as playstyle context.`, 560),
+      importance: scoreTier === "S" ? 0.6 : 0.46,
+      emotion: "",
+      tags: cleanTags(["module_memory", "pixel_game", classId, stageId, scoreTier])
+    };
+  }
+
+  if (memoryKind === "interest_preference_candidate") {
+    const topic = cleanText(data.topic || data.category || data.matched_alias || event.summary_hint, 120);
+    const domain = cleanIdentifier(data.domain_id || data.category || data.source_kind, 40);
+    if (!topic || !explicitMemorySignal(event)) return null;
+    return {
+      ...base,
+      type: "preference",
+      content: cleanText(`${nickname} explicitly signaled interest in ${topic}; Hoshia may treat it as a shared preference without quoting the original message.`, 560),
+      importance: 0.58,
+      emotion: "",
+      tags: cleanTags(["module_memory", "interest", domain, topic])
+    };
+  }
+
+  if (/timeline|comment|daily_post/.test(`${moduleId}:${eventType}:${memoryKind}`)) {
+    if (!explicitMemorySignal(event)) return null;
+    const activity = cleanIdentifier(data.activity, 40);
+    const mood = cleanIdentifier(data.mood, 40);
+    return {
+      ...base,
+      type: commitmentLike(event.summary_hint) ? "commitment" : "event",
+      content: cleanText(`${nickname} left a timeline-related memory signal${activity ? ` around ${activity}` : ""}${mood ? ` with ${mood} mood` : ""}; keep only the purified preference or commitment, not the original comment.`, 560),
+      importance: 0.5,
+      emotion: mood,
+      tags: cleanTags(["module_memory", "timeline", activity, mood])
+    };
+  }
+
+  return null;
 }
 
 export function publicPost(row) {
@@ -344,6 +447,26 @@ function topicTags(text) {
   return tags;
 }
 
+function explicitMemorySignal(event = {}) {
+  const text = [
+    event.summary_hint,
+    event.event_type,
+    event.data?.topic,
+    event.data?.category,
+    event.data?.matched_alias
+  ].filter(Boolean).join(" ");
+  return /(remember|preference|favorite|favourite|prefer|likes?|explicit|鍠滄|璁颁綇|鍋忓ソ|甯稿惉|甯哥湅|鏈€杩戝湪)/i.test(text);
+}
+
+function safeModuleMemoryDataText(data = {}) {
+  const keys = [
+    "title", "artist", "source", "topic", "category", "matched_alias", "domain_id",
+    "class_id", "class_name", "stage_id", "state_activity", "state_mood", "difficulty_tier",
+    "result", "score_tier", "rank_tier", "activity", "mood"
+  ];
+  return keys.map((key) => String(data?.[key] || "")).filter(Boolean).join(" ");
+}
+
 function cleanTags(tags) {
   return (Array.isArray(tags) ? tags : [])
     .map((item) => cleanIdentifier(item, 40))
@@ -370,6 +493,15 @@ function cleanIdentifier(value, maxLength = 48) {
     .toLowerCase()
     .replace(/[^a-z0-9_.:-]/g, "_")
     .slice(0, maxLength);
+}
+
+function hashText(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36).slice(0, 16) || "0";
 }
 
 function cleanText(value, maxLength) {

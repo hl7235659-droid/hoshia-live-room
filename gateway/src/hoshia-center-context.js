@@ -14,10 +14,32 @@ export function prepareHoshiaCenterContext({
   buildModuleContext,
   buildActiveContext,
   buildCharacterSnapshot,
-  getLatestCharacterSnapshot = null
+  getLatestCharacterSnapshot = null,
+  appendCharacterEvent = null
 } = {}) {
   for (const event of hoshiaInterestKnowledgeService.observeBatch(batch, { roomId })) {
     moduleEventStore.append(event);
+    appendCharacterEvent?.({
+      event_type: event.event_type,
+      actor_type: event.user_id ? "user" : "system",
+      user_id: event.user_id || "",
+      nickname: event.nickname || "",
+      source_kind: event.module_id || "hoshia_interest",
+      source_id: event.id || event.summary_hint || "",
+      occurred_at: event.occurred_at,
+      public_hint: event.summary_hint,
+      private_hint: event.summary_hint,
+      reason: event.memory_kind || event.event_type,
+      data: {
+        status: event.memory_eligible ? "memory_candidate" : "observed",
+        source_type: event.module_id || "hoshia_interest",
+        topic: event.data?.topic || event.data?.matched_alias || event.data?.category || "",
+        category: event.data?.category || event.data?.domain_id || "",
+        matched_alias: event.data?.matched_alias || "",
+        domain_id: event.data?.domain_id || "",
+        memory_kind: event.memory_kind || ""
+      }
+    });
   }
 
   const fullModuleContext = buildModuleContext({ providers: moduleProviders, session: batch[0]?.session });

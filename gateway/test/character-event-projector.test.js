@@ -348,6 +348,82 @@ test("daily and news shadow projector records safe observation metadata", () => 
   assert.equal(news.internal.derived.last_news_shadow_event_id, "evt-news-shadow");
 });
 
+test("pixel game projector records safe play activity and stage suggestion", () => {
+  const next = projectCharacterEvent({}, {
+    event_type: "hoshia_pixel_game.run_finished",
+    event_id: "evt-game",
+    source_kind: "hoshia_pixel_game",
+    occurred_at: "2026-06-12T06:00:00.000Z",
+    data_json: JSON.stringify({
+      class_id: "star_idol",
+      stage_id: "night_rooftop",
+      state_activity: "gaming",
+      state_mood: "focused",
+      score_tier: "S",
+      result: "cleared",
+      raw_response: "hidden report",
+      url: "https://example.test/run"
+    })
+  });
+
+  assert.equal(next.public.today.last_activity, "pixel_game");
+  assert.deepEqual(next.public.recent.last_pixel_game_activity, {
+    event_type: "hoshia_pixel_game.run_finished",
+    status: "finished",
+    class_id: "star_idol",
+    stage_id: "night_rooftop",
+    score_tier: "S",
+    result: "cleared",
+    updated_at: "2026-06-12T06:00:00.000Z"
+  });
+  assert.equal(next.public.expression.mood, "focused");
+  assert.equal(next.public.expression.activity, "gaming");
+  assert.equal(next.public.stage.presentation_suggestion.source, "character_snapshot");
+  assert.equal(next.public.recent.last_pixel_game_activity.raw_response, undefined);
+  assert.equal(next.public.recent.last_pixel_game_activity.url, undefined);
+});
+
+test("interest and module memory projectors keep relationship cues safe", () => {
+  const interest = projectCharacterEvent({}, {
+    event_type: "interest.topic_mentioned",
+    event_id: "evt-interest",
+    source_kind: "hoshia_interest_knowledge",
+    occurred_at: "2026-06-12T06:10:00.000Z",
+    data_json: JSON.stringify({
+      topic: "classic rock",
+      category: "music_movie",
+      matched_alias: "rock",
+      raw_prompt: "hidden chat"
+    })
+  });
+  const memory = projectCharacterEvent(interest, {
+    event_type: "module.memory.recorded",
+    event_id: "evt-memory",
+    source_kind: "module_memory",
+    occurred_at: "2026-06-12T06:12:00.000Z",
+    data_json: JSON.stringify({
+      memory_kind: "music",
+      memory_type: "preference",
+      source_module: "module_memory",
+      candidate_text: "hidden candidate"
+    })
+  });
+
+  assert.equal(memory.public.recent.last_interest_activity.topic, "classic rock");
+  assert.equal(memory.public.recent.last_interest_activity.raw_prompt, undefined);
+  assert.deepEqual(memory.public.recent.last_memory_activity, {
+    memory_kind: "music",
+    memory_type: "preference",
+    source_module: "module_memory",
+    updated_at: "2026-06-12T06:12:00.000Z"
+  });
+  assert.equal(memory.public.recent.last_memory_activity.candidate_text, undefined);
+  assert.equal(memory.private.relationship.last_memory_kind, "music");
+  assert.equal(memory.private.relationship.last_memory_type, "preference");
+  assert.equal(memory.internal.derived.last_interest_event_id, "evt-interest");
+  assert.equal(memory.internal.derived.last_memory_event_id, "evt-memory");
+});
+
 test("generic projector applies mixed event types in order", () => {
   const events = [
     {

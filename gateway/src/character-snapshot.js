@@ -183,7 +183,12 @@ export function normalizeCharacterEvent(event = {}) {
 
 function sanitizeEventData(data = {}) {
   if (!data || typeof data !== "object") return {};
-  const allowed = new Set(["title", "artist", "activity", "mood", "source", "source_type", "route", "topic", "category", "post_id", "comment_id", "status", "action"]);
+  const allowed = new Set([
+    "title", "artist", "activity", "mood", "source", "source_type", "source_kind", "route", "topic", "category",
+    "post_id", "comment_id", "status", "action", "class_id", "class_name", "stage_id", "state_activity",
+    "state_mood", "difficulty_tier", "result", "score_tier", "rank_tier", "unlock_reason", "matched_alias",
+    "domain_id", "memory_kind", "memory_type", "source_module"
+  ]);
   const output = {};
   for (const [key, value] of Object.entries(data)) {
     if (!allowed.has(key)) continue;

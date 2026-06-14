@@ -298,7 +298,8 @@ registerPixelGameRoutes(app, {
   moduleEventStore,
   requireSession,
   generateGameReport,
-  normalizeStoredAiProfile
+  normalizeStoredAiProfile,
+  appendCharacterEvent
 });
 
 app.get("/healthz", (_req, res) => {
@@ -1622,7 +1623,8 @@ async function handleAiReplyBatch(batch) {
     buildModuleContext,
     buildActiveContext,
     buildCharacterSnapshot: buildCurrentCharacterSnapshot,
-    getLatestCharacterSnapshot: ({ roomId, characterId }) => buildEventLogCharacterSnapshot({ roomId, characterId })
+    getLatestCharacterSnapshot: ({ roomId, characterId }) => buildEventLogCharacterSnapshot({ roomId, characterId }),
+    appendCharacterEvent
   });
   if (config.characterStateAuthority === "event_log" && characterSnapshotSource !== "persisted") {
     observabilityCounters.eventLogFallback += 1;
@@ -1692,13 +1694,11 @@ async function handleAiReplyBatch(batch) {
     scheduleProactiveReplyCheck();
     return;
   }
-  if (moduleMemoryEvents.length && reply.source !== "astrbot") {
-    moduleEventStore.restoreMemoryEvents(moduleMemoryEvents);
-  }
   recordAiProviderObservation(reply);
+  recordModuleMemoryEventsSafely(moduleMemoryEvents);
   hoshiaInterestSystem.recordInteractionSignals({
     batch,
-    moduleMemoryEvents: reply.source === "astrbot" ? moduleMemoryEvents : []
+    moduleMemoryEvents
   });
 
   clearQuickReplyLead(batch);
@@ -3054,6 +3054,42 @@ function appendTimelineCommentReplyCharacterEvent({ post, comment, reply, status
       status
     }
   });
+}
+
+function recordModuleMemoryEventsSafely(moduleMemoryEvents = []) {
+  if (!Array.isArray(moduleMemoryEvents) || !moduleMemoryEvents.length) return [];
+  try {
+    const memories = typeof hoshiaLifeMemoryService.recordModuleMemoryEvents === "function"
+      ? hoshiaLifeMemoryService.recordModuleMemoryEvents(moduleMemoryEvents)
+      : moduleMemoryEvents.map((event) => hoshiaLifeMemoryService.recordModuleMemoryEvent?.(event)).filter(Boolean);
+    for (const memory of memories) {
+      appendCharacterEvent({
+        event_type: "module.memory.recorded",
+        actor_type: memory.user_id ? "user" : "system",
+        user_id: memory.user_id || "",
+        nickname: "",
+        source_kind: "module_memory",
+        source_id: memory.id || "",
+        occurred_at: memory.created_at || new Date().toISOString(),
+        public_hint: "A safe module memory was recorded",
+        private_hint: "A safe module memory was recorded",
+        reason: memory.source || "module_memory",
+        data: {
+          status: "recorded",
+          memory_kind: memory.tags?.find?.((tag) => tag && tag !== "module_memory") || memory.source || "",
+          memory_type: memory.type || "",
+          source_module: memory.source || "module_memory"
+        }
+      });
+    }
+    return memories;
+  } catch (error) {
+    console.warn("module_memory_record_failed", {
+      type: error?.name || "Error",
+      message: safeMetricReason(error?.message || "module_memory_record_failed")
+    });
+    return [];
+  }
 }
 
 function recordProactiveShadowMetric(metric = {}) {

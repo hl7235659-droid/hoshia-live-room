@@ -174,6 +174,7 @@ test("room context summary refresh compresses overflow messages", async () => {
 
 test("prepareHoshiaCenterContext aggregates route-scoped context", () => {
   const appended = [];
+  const characterEvents = [];
   const result = prepareHoshiaCenterContext({
     batch: [{ session: { user_id: "u1" }, text: "hello" }],
     roomId: "room",
@@ -187,7 +188,21 @@ test("prepareHoshiaCenterContext aggregates route-scoped context", () => {
     },
     hoshiaInterestKnowledgeService: {
       observeBatch() {
-        return [{ module_id: "interest", summary_hint: "observed" }];
+        return [{
+          module_id: "hoshia_interest_knowledge",
+          event_type: "interest.topic_mentioned",
+          user_id: "u1",
+          nickname: "viewer",
+          summary_hint: "viewer mentioned anime",
+          memory_eligible: true,
+          memory_kind: "interest_preference_candidate",
+          occurred_at: "2026-06-12T00:00:00.000Z",
+          data: {
+            topic: "anime",
+            category: "anime_game",
+            raw_prompt: "hidden"
+          }
+        }];
       }
     },
     hoshiaDailyCanonService: {
@@ -218,10 +233,24 @@ test("prepareHoshiaCenterContext aggregates route-scoped context", () => {
     },
     buildCharacterSnapshot() {
       return { snapshot: true };
+    },
+    appendCharacterEvent(event) {
+      characterEvents.push(event);
     }
   });
 
   assert.equal(appended.length, 1);
+  assert.equal(characterEvents.length, 1);
+  assert.equal(characterEvents[0].event_type, "interest.topic_mentioned");
+  assert.deepEqual(characterEvents[0].data, {
+    status: "memory_candidate",
+    source_type: "hoshia_interest_knowledge",
+    topic: "anime",
+    category: "anime_game",
+    matched_alias: "",
+    domain_id: "",
+    memory_kind: "interest_preference_candidate"
+  });
   assert.deepEqual(result.moduleContext, [{ module_id: "hoshia_visual_state", enabled: true, current_state: ["idle"], capabilities: [], limits: [] }]);
   assert.deepEqual(result.moduleEvents, [{ summary_hint: "recent" }, { summary_hint: "extra" }]);
   assert.deepEqual(result.activeContext, { diary: "study", module_count: 1, event_count: 2 });

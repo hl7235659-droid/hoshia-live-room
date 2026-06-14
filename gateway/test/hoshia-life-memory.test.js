@@ -260,6 +260,101 @@ test("memory packet filters sensitive rows even if they already exist in storage
   }
 });
 
+test("module memory processor records purified music and pixel game memories", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const music = service.recordModuleMemoryEvent({
+      id: "evt-music",
+      module_id: "music",
+      event_type: "music.song_requested",
+      user_id: "user-1",
+      nickname: "Alice",
+      summary_hint: "Alice explicitly likes classic rock",
+      memory_eligible: true,
+      memory_kind: "music_preference_candidate",
+      retention_days: 30,
+      occurred_at: "2026-06-10T11:50:00.000Z",
+      data: {
+        title: "Purple Rain",
+        artist: "Prince",
+        source: "musicfree",
+        url: "https://example.test/track",
+        raw_response: "hidden"
+      }
+    });
+    const game = service.recordModuleMemoryEvent({
+      id: "evt-game",
+      module_id: "hoshia_pixel_game",
+      event_type: "hoshia_pixel_game.run_finished",
+      user_id: "user-1",
+      nickname: "Alice",
+      summary_hint: "Alice finished a strong pixel game run",
+      memory_eligible: true,
+      memory_kind: "pixel_game_preference_candidate",
+      occurred_at: "2026-06-10T11:55:00.000Z",
+      data: {
+        class_id: "star_idol",
+        stage_id: "night_rooftop",
+        score_tier: "S",
+        raw_prompt: "hidden"
+      }
+    });
+
+    assert.equal(music.type, "preference");
+    assert.equal(game.type, "preference");
+    const memories = db.searchHoshiaLifeMemories({ userId: "user-1", query: "", limit: 10 });
+    assert.equal(memories.some((memory) => memory.content.includes("style or artist affinity")), true);
+    assert.equal(memories.some((memory) => memory.content.includes("playstyle context")), true);
+    assert.equal(memories.some((memory) => /raw_response|raw_prompt|https?:\/\//.test(memory.content)), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("module memory processor skips weak or sensitive candidates", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const weakInterest = service.recordModuleMemoryEvent({
+      id: "evt-interest",
+      module_id: "hoshia_interest_knowledge",
+      event_type: "interest.topic_mentioned",
+      user_id: "user-1",
+      nickname: "Alice",
+      summary_hint: "Alice mentioned a topic once",
+      memory_eligible: true,
+      memory_kind: "interest_preference_candidate",
+      data: { topic: "anime" }
+    });
+    const sensitiveMusic = service.recordModuleMemoryEvent({
+      id: "evt-sensitive",
+      module_id: "music",
+      event_type: "music.song_requested",
+      user_id: "user-1",
+      nickname: "Alice",
+      summary_hint: "Alice likes token=secret",
+      memory_eligible: true,
+      memory_kind: "music_preference_candidate",
+      data: { title: "token=secret", artist: "Hidden" }
+    });
+
+    assert.equal(weakInterest, null);
+    assert.equal(sensitiveMusic, null);
+    assert.equal(db.searchHoshiaLifeMemories({ userId: "user-1", query: "", limit: 10 }).length, 0);
+  } finally {
+    cleanup();
+  }
+});
+
 function openTempDb() {
   const dir = mkdtempSync(path.join(tmpdir(), "live-room-life-memory-"));
   const db = openLiveRoomDatabase(path.join(dir, "live-room.sqlite"));
