@@ -592,7 +592,7 @@ app.post("/api/hoshia/comments/reply-tick", requireSession, async (req, res) => 
 });
 
 app.post("/api/hoshia/posts/daily/tick", requireSession, async (req, res) => {
-  const result = runDailyPostTick({
+  const result = await runDailyPostTick({
     force: req.body?.force === true,
     ignoreLimit: req.body?.ignoreLimit === true,
     session: req.session,
@@ -770,23 +770,30 @@ function runScheduledHoshiaVisualTick() {
     });
     broadcastHoshiaState(result.state);
   }
-  runDailyPostTick({
+  void runDailyPostTick({
     force: false,
     session: null,
     source: "scheduled_visual_tick"
+  }).catch((error) => {
+    console.warn("hoshia_daily_post_tick_failed", {
+      type: safeMetricIdentifier(error?.name || "Error", 48) || "Error",
+      message: safeMetricReason(error?.message) || "daily_post_tick_failed"
+    });
   });
   scheduleNextHoshiaVisualTick();
 }
 
-function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
+async function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
   hoshiaDailyCanonService.ensureTodayPlan();
   const diaryEvent = hoshiaDailyCanonService.getActiveEvent({ now: new Date(), create: true });
   const selectedNewsTopic = newsTopic || selectCachedNewsTopicForPost();
   const newsState = selectedNewsTopic
     ? stateForNewsTopicPost(hoshiaVisualStateService.publicState(), selectedNewsTopic)
     : null;
-  void runDailyPostShadowCheck({ force, session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source });
-  void runNewsTopicGenerateShadowCheck({ session, topic: selectedNewsTopic, state: newsState, source });
+  const shadowChecks = [
+    runDailyPostShadowCheck({ force, session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source }),
+    runNewsTopicGenerateShadowCheck({ session, topic: selectedNewsTopic, state: newsState, source })
+  ];
   let result = hoshiaDailyPostService.tick({
     force,
     ignoreLimit,
@@ -854,6 +861,7 @@ function runDailyPostTick({ force = false, ignoreLimit = false, session = null, 
       timestamp: new Date().toISOString()
     });
   }
+  await Promise.allSettled(shadowChecks);
   return result;
 }
 

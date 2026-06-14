@@ -259,6 +259,18 @@ async function processDue({
     if (isComment(dueComment) && !selectedIds.has(dueComment.id)) {
       if (!shadowOnly) {
         markSkipped(db, dueComment, nowIso);
+      } else {
+        const post = dueComment.post || postFromDueRow(dueComment) || (typeof db.getHoshiaPost === "function"
+          ? db.getHoshiaPost(dueComment.post_id)
+          : null);
+        const result = commentReplyShadowResult("hoshiaclaw.comment_reply_shadow.skip", {
+          reason: "low_priority_comment",
+          source: "gateway"
+        });
+        recordCommentReplyShadowMetric(recordMetric, result, {
+          comment: dueComment,
+          post
+        });
       }
       results.push(skipped(dueComment, "low_priority"));
       continue;

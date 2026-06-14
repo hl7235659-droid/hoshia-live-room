@@ -476,7 +476,15 @@ test("comment reply service shadow low priority skip is not a provider failure",
   assert.equal(db.replies.length, 0);
   assert.equal(db.failedMarks.length, 0);
   assert.equal(db.skippedMarks.length, 0);
-  assert.deepEqual(metrics, []);
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.comment_reply_shadow.skip",
+    status: "skip",
+    reason: "low_priority_comment",
+    source: "gateway",
+    replyMode: "post_comment_reply_shadow",
+    commentId: "comment_low",
+    postId: "post_1"
+  }]);
 });
 
 test("comment reply service uses caller-provided shadow generator only for shadow mode", async () => {
@@ -661,7 +669,16 @@ test("comment reply service shadow low-priority skip does not call provider or m
   assert.equal(result.skipped, 1);
   assert.equal(result.results[2].reason, "low_priority");
   assert.equal(providerCalls, 2);
-  assert.equal(metrics.length, 2);
+  assert.equal(metrics.length, 3);
+  assert.deepEqual(metrics[2], {
+    eventType: "hoshiaclaw.comment_reply_shadow.skip",
+    status: "skip",
+    reason: "low_priority_comment",
+    source: "gateway",
+    replyMode: "post_comment_reply_shadow",
+    commentId: "comment_3",
+    postId: "post_1"
+  });
   assert.equal(db.replies.length, 0);
   assert.equal(db.skippedMarks.length, 0);
 });
