@@ -298,7 +298,11 @@ test("comment reply service passes LLM dependencies and reply mode", async () =>
       assert.deepEqual(input.moduleContext, { module_id: "music", enabled: true });
       assert.deepEqual(input.moduleEvents, [{ event_type: "music.song_requested" }]);
       assert.deepEqual(input.config, { tone: "soft" });
-      return "LLM reply";
+      return {
+        content: "LLM reply",
+        source: "openai_compatible",
+        route: "post_comment_reply"
+      };
     },
     visualStateProvider: () => ({ pose: "waving" }),
     moduleContextProvider: () => ({ module_id: "music", enabled: true }),
@@ -310,7 +314,7 @@ test("comment reply service passes LLM dependencies and reply mode", async () =>
   const result = await service.processDueReplies();
 
   assert.equal(result.replied, 1);
-  assert.equal(result.results[0].reply_source, "llm");
+  assert.equal(result.results[0].reply_source, "openai_compatible");
   assert.equal(db.replies[0].content, "LLM reply");
 });
 

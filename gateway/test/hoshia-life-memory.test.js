@@ -46,7 +46,8 @@ test("life memory service records posts comments and builds a memory packet", ()
       }]
     });
     assert.equal(packet.some((line) => line.includes("post_comment")), false);
-    assert.equal(packet.some((line) => line.includes("菜就多练")), true);
+    assert.equal(packet.some((line) => line.includes("purified timeline signal")), true);
+    assert.equal(packet.some((line) => line.includes("菜就多练")), false);
     assert.equal(packet.some((line) => line.includes("Hoshia 生活记忆")), true);
 
     const listed = db.listHoshiaPosts({ viewerUserId: "user-1" }).map(publicPost);
@@ -131,7 +132,8 @@ test("memory packet links a dynamic comment to a live-room question", () => {
       limit: 4
     });
 
-    assert.equal(packet.some((line) => line.includes("菜就多练，今天练了吗") || line.includes("下一局结果")), true);
+    assert.equal(packet.some((line) => line.includes("purified timeline signal") || line.includes("purified timeline reply memory")), true);
+    assert.equal(packet.some((line) => line.includes("菜就多练，今天练了吗") || line.includes("下一局结果")), false);
     assert.equal(packet.some((line) => line.includes("secret-value") || line.includes("api_key=")), false);
   } finally {
     cleanup();
@@ -350,6 +352,52 @@ test("module memory processor skips weak or sensitive candidates", () => {
     assert.equal(weakInterest, null);
     assert.equal(sensitiveMusic, null);
     assert.equal(db.searchHoshiaLifeMemories({ userId: "user-1", query: "", limit: 10 }).length, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test("legacy chat and comment memory entries store purified summaries instead of raw text", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaLifeMemoryService({
+      db,
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    const post = db.createHoshiaPost(normalizePostInput({
+      id: "post-memory-core",
+      content: "A short gaming update.",
+      mood: "calm",
+      activity: "gaming",
+      source_type: "manual"
+    }, new Date("2026-06-10T11:55:00.000Z")));
+    const rawComment = "Please remember that I like late-night ranked games and ask me next time.";
+    const comment = db.addHoshiaPostInteraction({
+      ...normalizeCommentInput({
+        id: "comment-memory-core",
+        content: rawComment
+      }, {
+        user_id: "user-1",
+        nickname: "Alice"
+      }, new Date("2026-06-10T11:58:00.000Z")),
+      post_id: post.id
+    });
+
+    const commentMemory = service.recordInteraction({ post, interaction: comment });
+    const chatMemory = service.recordChatInteraction({
+      session: { user_id: "user-1", nickname: "Alice" },
+      text: "Remember I prefer quiet anime and late-night gaming talks.",
+      messageId: "msg-memory-core"
+    });
+
+    assert.ok(commentMemory);
+    assert.ok(chatMemory);
+    const memories = db.searchHoshiaLifeMemories({ userId: "user-1", query: "", limit: 10 });
+    const joined = memories.map((memory) => memory.content).join("\n");
+    assert.match(joined, /purified/);
+    assert.doesNotMatch(joined, /Please remember that I like late-night ranked games and ask me next time/i);
+    assert.doesNotMatch(joined, /Remember I prefer quiet anime and late-night gaming talks/i);
+    assert.doesNotMatch(joined, /raw_prompt|raw_response|candidate_text/i);
   } finally {
     cleanup();
   }

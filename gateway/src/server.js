@@ -1212,14 +1212,24 @@ async function generatePostCommentReply({
   moduleContext = [],
   moduleEvents = []
 } = {}) {
-  if (config.aiMode !== "astrbot") return "";
+  if (!["astrbot", "hoshiaclaw"].includes(config.aiMode)) return "";
   const prompt = formatPostCommentReplyPrompt({ post, comment, memoryPacket, visualState });
+  const replyOptions = config.aiMode === "hoshiaclaw"
+    ? {
+      ...config,
+      aiMode: "hoshiaclaw",
+      hoshiaClawFallbackToMock: false,
+      hoshiaclawFallbackToMock: false,
+      hoshiaClawStreamingEnabled: false,
+      hoshiaclawStreamingEnabled: false
+    }
+    : config;
   const reply = await generateAiReply({
     user_id: comment?.user_id || "post-comment-viewer",
     username: comment?.nickname || "viewer",
     nickname: comment?.nickname || "viewer",
     room_id: config.roomId
-  }, prompt, config, globalThis.fetch, {
+  }, prompt, replyOptions, globalThis.fetch, {
     forceReply: true,
     replyMode: "post_comment_reply",
     replyTargets: [comment?.nickname].filter(Boolean),
@@ -1233,9 +1243,10 @@ async function generatePostCommentReply({
     }]
   });
   if (reply?.skipped || !reply?.text) return "";
+  if (config.aiMode === "hoshiaclaw" && reply.source !== "openai_compatible") return "";
   return {
     content: String(reply.text).slice(0, 500),
-    source: reply.source || "astrbot"
+    source: reply.source || config.aiMode
   };
 }
 

@@ -1,4 +1,4 @@
-import { nanoid } from "nanoid";
+﻿import { nanoid } from "nanoid";
 
 const characterId = "hoshia";
 const sensitivePattern = /(?:\.env|token=|api[_-]?key=|authorization:|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY|cloudflared|trycloudflare|[A-Za-z]:[\\/]|\/home\/ubuntu|\b\d{1,3}(?:\.\d{1,3}){3}\b|https?:\/\/(?:localhost|127\.0\.0\.1|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.))/i;
@@ -41,29 +41,42 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
       }
 
       if (interaction.type === "comment") {
+        const signal = purifiedInteractionSignal({
+          text: interaction.content,
+          fallbackActivity: post.activity,
+          fallbackMood: post.mood
+        });
+        if (!signal) return null;
         return this.addMemory({
           user_id: interaction.user_id,
           type: "event",
           source: "post_comment",
           source_id: post.id,
-          content: `${interaction.nickname || "一位网友"}在 Hoshia 的${lifeActivityLabel(post.activity)}校园动态下留言：${interaction.content}`,
+          content: `${interaction.nickname || "A viewer"} left a purified timeline signal for Hoshia's ${lifeActivityLabel(post.activity)} update: ${signal.summary}`,
           importance: importanceForText(interaction.content, questionLike(interaction.content) ? 0.72 : 0.58),
-          emotion: emotionForText(interaction.content),
-          tags: ["comment", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean),
+          emotion: signal.emotion || emotionForText(interaction.content),
+          tags: cleanTags(["comment", post.activity, post.mood, ...signal.tags, questionLike(interaction.content) ? "question" : ""]),
           expires_at: daysFromNow(clock(), 45)
         });
       }
 
       if (interaction.type === "reply") {
+        const signal = purifiedInteractionSignal({
+          text: interaction.content,
+          fallbackActivity: post.activity,
+          fallbackMood: post.mood,
+          fromHoshia: true
+        });
+        if (!signal) return null;
         return this.addMemory({
           user_id: interaction.user_id,
           type: commitmentLike(interaction.content) ? "commitment" : "event",
           source: "post_reply",
           source_id: post.id,
-          content: `Hoshia 在校园动态评论串里回复了一句：${interaction.content}`,
+          content: `Hoshia left a purified timeline reply memory: ${signal.summary}`,
           importance: importanceForText(interaction.content, 0.66),
-          emotion: emotionForText(interaction.content),
-          tags: ["reply", post.activity, post.mood, questionLike(interaction.content) ? "question" : ""].filter(Boolean)
+          emotion: signal.emotion || emotionForText(interaction.content),
+          tags: cleanTags(["reply", post.activity, post.mood, ...signal.tags, questionLike(interaction.content) ? "question" : ""])
         });
       }
       return null;
@@ -72,19 +85,20 @@ export function createHoshiaLifeMemoryService({ db, clock = () => new Date() }) 
     recordChatInteraction({ session, text, messageId }) {
       const importance = importanceForText(text, 0.34);
       if (importance < 0.55) return null;
+      const signal = purifiedInteractionSignal({ text });
+      if (!signal) return null;
       return this.addMemory({
         user_id: session?.user_id || "",
         type: commitmentLike(text) ? "commitment" : "event",
         source: "chat",
         source_id: messageId || "",
-        content: `${session?.nickname || "一位网友"}在宿舍小房间聊到：${text}`,
+        content: `${session?.nickname || "A viewer"} left a purified live-room signal: ${signal.summary}`,
         importance,
-        emotion: emotionForText(text),
-        tags: ["chat", ...topicTags(text)],
+        emotion: signal.emotion || emotionForText(text),
+        tags: cleanTags(["chat", ...signal.tags, ...topicTags(text)]),
         expires_at: importance >= 0.75 ? null : daysFromNow(clock(), 30)
       });
     },
-
     recordModuleMemoryEvent(event = {}) {
       const candidate = normalizeModuleMemoryCandidate(event, clock);
       if (!candidate) return null;
@@ -447,6 +461,39 @@ function topicTags(text) {
   return tags;
 }
 
+function purifiedInteractionSignal({ text = "", fallbackActivity = "", fallbackMood = "", fromHoshia = false } = {}) {
+  const value = String(text || "");
+  const tags = [];
+  const summaryParts = [];
+  const topics = topicTags(value);
+  if (topics.length) tags.push(...topics);
+  if (questionLike(value)) {
+    tags.push("question");
+    summaryParts.push(fromHoshia ? "answered a viewer question" : "asked for follow-up or attention");
+  }
+  if (commitmentLike(value)) {
+    tags.push("commitment");
+    summaryParts.push(fromHoshia ? "made a small continuity commitment" : "gave an explicit remember-or-next-time signal");
+  }
+  const emotion = emotionForText(value);
+  if (emotion) {
+    tags.push(emotion);
+    summaryParts.push(`carried a ${emotion} emotional tone`);
+  }
+  if (/(鍠滄|喜欢|like|likes|prefer|preference|favorite|favourite|讨厌|不喜欢)/i.test(value)) {
+    tags.push("preference");
+    summaryParts.push("expressed a preference signal");
+  }
+  if (!summaryParts.length && (fallbackActivity || fallbackMood)) {
+    summaryParts.push(`related to ${cleanIdentifier(fallbackActivity, 32) || "daily"} activity${fallbackMood ? ` with ${cleanIdentifier(fallbackMood, 32)} mood` : ""}`);
+  }
+  if (!summaryParts.length) return null;
+  return {
+    summary: cleanText([...new Set(summaryParts)].join("; "), 360),
+    emotion,
+    tags: cleanTags([...new Set(tags)])
+  };
+}
 function explicitMemorySignal(event = {}) {
   const text = [
     event.summary_hint,

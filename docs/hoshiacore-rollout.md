@@ -88,6 +88,16 @@ Phase 6 starts only after main replies, event-log state, local memory intake, an
 - Confirm AstrBot bridge tests and rollback docs remain in the repository.
 - Do not remove AstrBot env keys, plugin files, fallback code paths, or server rollback instructions during this preparation step.
 
+## Character Core final convergence
+
+The final target is not replacing AstrBot with another model API. HoshiaClaw is the Character Core: the unified center for persona, state, memory, reply decisions, and stage presentation. Gateway remains a context wrapper, safety normalizer, event store, and rollback coordinator.
+
+- Unified persona: HoshiaClaw is the reply authority. Gateway may pass the Hoshia persona constitution and scene context, but new features must not create separate persona branches that override the Character Core boundary.
+- Unified state: `character_events` remains the replayable fact source, and `character_snapshots` remains the derived read model. Do not write new live state directly into legacy `hoshia_state`.
+- Unified memory: memory intake must store purified preferences, commitments, habits, or recent-state summaries only. Do not store raw chat, raw comments, prompts, responses, generated candidates, provider payloads, URLs, tokens, paths, or internal addresses.
+- Unified reply decisions: ordinary WebSocket replies, proactive live, comment live, daily post live, and news topic live must use HoshiaClaw when `AI_MODE=hoshiaclaw`. AstrBot remains only an emergency rollback provider through `AI_MODE=astrbot`.
+- Unified presentation: HoshiaClaw presentation envelopes must pass through the gateway whitelist normalizer before frontend broadcast. Routes that do not need stage motion may omit presentation, but they must not emit unnormalized presentation data.
+
 ## Rollback
 
 - Reply failures after Phase 6 preparation: set `AI_MODE=astrbot` only as an emergency rollback provider, then restart gateway/web.

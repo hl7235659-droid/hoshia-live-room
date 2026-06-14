@@ -544,7 +544,7 @@ function normalizeGeneratedReply(generated, content, source) {
     return {
       ...generated,
       content,
-      source
+      source: cleanShadowMetricText(generated.source, 80) || source
     };
   }
   return {
