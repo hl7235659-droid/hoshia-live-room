@@ -1271,7 +1271,7 @@ async function handleNaturalMusicIntentFromDanmaku(session, text) {
     await handleActionableMusicIntent(session, localIntent, musicState, text);
     return true;
   }
-  if (config.aiMode !== "astrbot") return false;
+  if (!["astrbot", "hoshiaclaw"].includes(config.aiMode)) return false;
   const moduleEvents = moduleEventStore.listRecent({ roomId: config.roomId, limit: 24 });
   const intent = await recognizeMusicIntent(session, text, config, globalThis.fetch, {
     musicState,

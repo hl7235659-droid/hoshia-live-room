@@ -421,7 +421,7 @@ export async function recognizeMusicIntent(session, text, options, fetchImpl = g
   } catch (error) {
     console.warn("music_intent_recognition_failed", {
       type: error.name || "Error",
-      message: error.message
+      message: "bridge_request_failed"
     });
     return noneMusicIntent("music_intent_failed");
   } finally {

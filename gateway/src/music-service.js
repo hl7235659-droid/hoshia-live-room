@@ -8,16 +8,17 @@ export function parseMusicRequestText(text) {
   if (!value) return "";
 
   const slash = value.match(/^\/song\s+(.{1,160})$/i);
-  if (slash) return slash[1].trim();
+  if (slash) return cleanMusicRequestQuery(slash[1]);
 
-  const direct = value.match(/^点歌\s*[：: ]?\s*(.{1,160})$/i);
-  if (direct) return direct[1].trim();
+  const direct = value.match(/^点歌\s*[:： ]?\s*(.{1,160})$/i);
+  if (direct) return cleanMusicRequestQuery(direct[1]);
 
   const mentionCleaned = value
     .replace(/@(?:Hoshia|hoshia|星娅)\s*/gi, "")
     .trim();
-  const mentioned = mentionCleaned.match(/^点歌\s*[：: ]?\s*(.{1,160})$/i);
-  return mentioned ? mentioned[1].trim() : "";
+  const mentioned = mentionCleaned.match(/^点歌\s*[:： ]?\s*(.{1,160})$/i);
+  if (mentioned) return cleanMusicRequestQuery(mentioned[1]);
+  return "";
 }
 
 export function parseLocalMusicControlText(text) {
@@ -576,6 +577,14 @@ function localMusicIntent(intent, confidence, replyHint) {
     reply_hint: replyHint,
     source: "local_music_control"
   };
+}
+
+function cleanMusicRequestQuery(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^(?:一首|首|歌|歌曲|音乐)\s*/i, "")
+    .trim()
+    .slice(0, 160);
 }
 
 function parseXiaomusicSearchChain(value) {

@@ -669,6 +669,59 @@ test("music intent recognition uses dedicated bridge endpoint and strips stream 
   });
 });
 
+test("hoshiaclaw music intent recognition uses the sidecar endpoint and safe payload", async () => {
+  const config = {
+    ...baseConfig,
+    aiMode: "hoshiaclaw",
+    hoshiaClawBridgeUrl: "http://hoshiaclaw:8080/live-room/generate",
+    hoshiaClawBridgeToken: "claw-token",
+    hoshiaClawTimeoutMs: 100
+  };
+  const intent = await recognizeMusicIntent(
+    { ...session, username: "tester" },
+    "帮我点一首晴天",
+    config,
+    async (url, options) => {
+      assert.equal(url, "http://hoshiaclaw:8080/live-room/music/intent");
+      assert.equal(options.headers.Authorization, "Bearer claw-token");
+      const body = JSON.parse(options.body);
+      assert.equal(body.text, "帮我点一首晴天");
+      assert.equal(body.music_state.current.title, "Old Song");
+      assert.equal(body.music_state.current.stream_url, undefined);
+      assert.equal(body.music_state.queue[0].stream_url, undefined);
+      return responseJson(200, {
+        ok: true,
+        intent: {
+          intent: "request",
+          confidence: 0.94,
+          query: "晴天",
+          target: { kind: "" },
+          reply_hint: "好，帮你点晴天。"
+        }
+      });
+    },
+    {
+      musicState: {
+        enabled: true,
+        status: "playing",
+        current: { title: "Old Song", artist: "Singer", source: "qqmusic", requested_by: "Alice", stream_url: "/api/music/stream/secret" },
+        queue: [{ title: "Queued Song", artist: "Band", source: "qqmusic", requested_by: "Bob", stream_url: "/api/music/stream/secret2" }]
+      }
+    }
+  );
+
+  assert.deepEqual(intent, {
+    intent: "request",
+    confidence: 0.94,
+    query: "晴天",
+    queries: [],
+    count: 1,
+    target: { kind: "" },
+    reply_hint: "好，帮你点晴天。",
+    source: "hoshiaclaw_music_intent"
+  });
+});
+
 test("music intent recognition normalizes bulk requests", async () => {
   const intent = await recognizeMusicIntent(
     { ...session, username: "tester" },
