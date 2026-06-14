@@ -70,9 +70,27 @@ After deployment and after each rollout switch, scan recent gateway logs and rol
 - Safe summary style: use route names, statuses, counts, and sanitized reasons only.
 - If sensitive data appears in logs, stop rollout, rotate/replace affected secrets if needed, and summarize only the remediation status without pasting the sensitive value.
 
+## Production phase 6 AstrBot downgrade preparation
+
+Phase 6 starts only after main replies, event-log state, local memory intake, and Phase 5 live routes are stable on HoshiaClaw. This phase prepares AstrBot to become a backup rollback path; it does not delete AstrBot code, bridge config, tests, or deployment files.
+
+- Default role: HoshiaClaw owns ordinary WebSocket replies, presentation/state projection, local sanitized memory intake, proactive live, comment live, daily post live, and news topic live.
+- AstrBot role: keep AstrBot available as an emergency rollback provider only. Do not use AstrBot as the only trigger for module memory processing, and do not rely on AstrBot success for `module_memory_events` to become purified local memories.
+- Stability gate: enter deeper AstrBot downgrade only when `/live/healthz` shows `hoshia_core_provider_failed` and `astrbot_fallback_count` are not increasing, route-level `*_failed` counters are not increasing, `module_memory_pending` is not piling up, and `character_snapshot_age_ms` is understandable for the room state.
+- Rollback gate: if HoshiaClaw bridge errors, provider failures, unsafe logs, or live route failures recur, stop Phase 6 changes and use the rollback switches below instead of deleting data or editing server-only config.
+- Documentation rule: rollout notes may mention route names, statuses, counts, and sanitized reasons only. Never paste `.env`, tokens, provider URLs, raw prompts, raw responses, generated candidate text, server paths, tunnel details, or internal addresses.
+
+### Phase 6 validation checklist
+
+- Confirm `AI_MODE=hoshiaclaw` and `CHARACTER_STATE_AUTHORITY=event_log` for the target environment.
+- Confirm `/live/healthz` exposes `hoshia_core_provider_success|skip|failed`, `astrbot_fallback_count`, `module_memory_pending`, `character_snapshot_age_ms`, and route-level live/shadow counters.
+- Confirm module memory uses the local sanitized memory service after successful main replies, and pending memory events are restored when a reply is skipped or fails.
+- Confirm AstrBot bridge tests and rollback docs remain in the repository.
+- Do not remove AstrBot env keys, plugin files, fallback code paths, or server rollback instructions during this preparation step.
+
 ## Rollback
 
-- Reply failures: set `AI_MODE=astrbot` and restart gateway/web.
+- Reply failures after Phase 6 preparation: set `AI_MODE=astrbot` only as an emergency rollback provider, then restart gateway/web.
 - HoshiaCore provider failures: set `HOSHIACLAW_PROVIDER=fake` or disable the active live/shadow switch.
 - Event-log authority failures: set `CHARACTER_STATE_AUTHORITY=legacy` and restart gateway.
 - Presentation failures: rely on the frontend fallback from `character_state` / `hoshia_state`; do not modify database state.
