@@ -90,6 +90,32 @@ test("comment reply rollout schedules shadow pending comments at 100 percent", (
   });
 });
 
+test("comment reply rollout off mode does not schedule pending comments", () => {
+  assert.deepEqual(commentReplyRolloutForInteraction({
+    id: "comment_off",
+    post_id: "post_1",
+    user_id: "user_1",
+    created_at: "2026-06-10T12:00:00.000Z"
+  }, {
+    asyncEnabled: true,
+    mode: "off",
+    greyPercent: 100
+  }), {
+    mode: "off",
+    shouldSchedule: false,
+    reason: "rollout_off"
+  });
+  assert.deepEqual(commentReplyRolloutForInteraction({ id: "comment_disabled" }, {
+    asyncEnabled: false,
+    mode: "live",
+    greyPercent: 100
+  }), {
+    mode: "off",
+    shouldSchedule: false,
+    reason: "async_comment_reply_disabled"
+  });
+});
+
 test("comment reply rollout uses deterministic grey percent buckets", () => {
   const input = {
     post_id: "post_1",
@@ -221,7 +247,7 @@ test("comment reply service supports legacy processDueComments result shape", as
   assert.equal(result.items[0].status, "replied");
 });
 
-test("comment reply service falls back to template for sensitive generated content", async () => {
+test("comment reply service fails safely for sensitive generated content without fake reply side effects", async () => {
   const post = { id: "post_1", mood: "calm", activity: "idle" };
   const comment = {
     id: "comment_1",
@@ -241,12 +267,14 @@ test("comment reply service falls back to template for sensitive generated conte
   const result = await service.processDueReplies();
 
   assert.equal(result.scanned, 1);
-  assert.equal(result.replied, 1);
-  assert.equal(result.failed, 0);
-  assert.equal(result.results[0].reply_source, "template");
-  assert.equal(db.replies.length, 1);
-  assert.doesNotMatch(db.replies[0].content, /token=secret/);
-  assert.equal(db.failedMarks.length, 0);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(result.results[0].status, "failed");
+  assert.equal(result.results[0].reason, "reply_invalid");
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.repliedMarks.length, 0);
+  assert.equal(db.failedMarks.length, 1);
+  assert.equal(db.failedMarks[0].reason, "reply_invalid");
 });
 
 test("comment reply service passes LLM dependencies and reply mode", async () => {
@@ -683,7 +711,7 @@ test("comment reply service shadow low-priority skip does not call provider or m
   assert.equal(db.skippedMarks.length, 0);
 });
 
-test("comment reply service falls back to template when LLM throws", async () => {
+test("comment reply service marks generator throws as failed without fake reply or memory pollution", async () => {
   const post = { id: "post_1", mood: "calm", activity: "idle" };
   const db = createFakeDb({
     post,
@@ -699,6 +727,14 @@ test("comment reply service falls back to template when LLM throws", async () =>
   });
   const service = createHoshiaCommentReplyService({
     db,
+    lifeMemoryService: {
+      buildMemoryPacket() {
+        return ["memory packet"];
+      },
+      recordInteraction() {
+        throw new Error("recordInteraction must not be called for failed replies");
+      }
+    },
     aiReplyGenerator: () => {
       throw new Error("llm_unavailable");
     },
@@ -707,12 +743,14 @@ test("comment reply service falls back to template when LLM throws", async () =>
 
   const result = await service.processDueReplies();
 
-  assert.equal(result.replied, 1);
-  assert.equal(result.failed, 0);
-  assert.equal(result.results[0].reply_source, "template");
-  assert.equal(db.replies.length, 1);
-  assert.ok(db.replies[0].content);
-  assert.equal(db.failedMarks.length, 0);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(result.results[0].status, "failed");
+  assert.equal(result.results[0].reason, "llm_unavailable");
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.repliedMarks.length, 0);
+  assert.equal(db.failedMarks.length, 1);
+  assert.equal(db.failedMarks[0].reason, "llm_unavailable");
 });
 
 test("comment reply service keeps live replies flowing when context providers fail", async () => {
@@ -780,6 +818,50 @@ test("comment reply service limits each tick to two replies", async () => {
   assert.equal(result.results[2].reason, "low_priority");
   assert.equal(db.skippedMarks.length, 1);
   assert.equal(db.skippedMarks[0].commentId, "comment_3");
+});
+
+test("comment reply service enforces daily live reply limit without writing replies", async () => {
+  const post = { id: "post_1", mood: "calm", activity: "idle" };
+  const db = createFakeDb({
+    post,
+    existingPosts: [{
+      id: "post_1",
+      interactions: [{
+        id: "reply_existing",
+        type: "reply",
+        created_at: "2026-06-10T08:00:00.000Z"
+      }]
+    }],
+    dueComments: [{
+      id: "comment_1",
+      post_id: "post_1",
+      type: "comment",
+      content: "can you reply after limit?"
+    }]
+  });
+  let generatorCalls = 0;
+  const service = createHoshiaCommentReplyService({
+    db,
+    dailyReplyLimit: 1,
+    aiReplyGenerator: () => {
+      generatorCalls += 1;
+      return "should not be generated";
+    },
+    clock: () => new Date("2026-06-10T12:05:00.000Z")
+  });
+
+  const result = await service.processDueReplies({ limit: 10 });
+
+  assert.equal(result.scanned, 1);
+  assert.equal(result.replied, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.results[0].reason, "daily_reply_limit_reached");
+  assert.equal(generatorCalls, 0);
+  assert.equal(db.replies.length, 0);
+  assert.equal(db.repliedMarks.length, 0);
+  assert.equal(db.failedMarks.length, 0);
+  assert.equal(db.skippedMarks.length, 0);
 });
 
 test("comment reply service force option processes not-yet-due comments", async () => {
@@ -897,10 +979,11 @@ test("comment reply module event sanitizes unsafe data fields", () => {
   assert.equal(event.data.internal_path, undefined);
 });
 
-function createFakeDb({ post = null, dueComments = [] } = {}) {
+function createFakeDb({ post = null, dueComments = [], existingPosts = [] } = {}) {
   return {
     post,
     dueComments,
+    existingPosts,
     replies: [],
     repliedMarks: [],
     failedMarks: [],
@@ -916,6 +999,9 @@ function createFakeDb({ post = null, dueComments = [] } = {}) {
     },
     getHoshiaPost(postId) {
       return this.post?.id === postId ? this.post : null;
+    },
+    listHoshiaPosts() {
+      return this.existingPosts;
     },
     addHoshiaPostInteraction(input) {
       const reply = {

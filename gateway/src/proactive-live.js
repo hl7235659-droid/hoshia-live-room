@@ -1,6 +1,6 @@
 const PROACTIVE_LIVE_PREFIX = "hoshiaclaw.proactive_live";
 const PROACTIVE_LIVE_REPLY_MODE = "proactive_idle_live";
-const SENSITIVE_TEXT_PATTERN = /token|key|secret|bearer|base[_ -]?url|https?:\/\/|\.env|[A-Za-z]:\\|\/(?:home|root|var|etc|Users)\/|localhost|127\.0\.0\.1|0\.0\.0\.0|internal|raw[_ -]?(prompt|response|chat)/i;
+const SENSITIVE_TEXT_PATTERN = /token|key|secret|bearer|base[_ -]?url|https?:\/\/|\.env|[A-Za-z]:\\|\/(?:home|root|var|etc|Users)\/|localhost|127\.0\.0\.1|0\.0\.0\.0|internal|raw[_ -]?(prompt|response|chat)|candidate[_-]?text|\bpath\b/i;
 
 export function buildProactiveLivePrompt({
   idleMs = 0,
@@ -148,20 +148,73 @@ export function classifyProactiveLiveReply(reply = {}) {
       latencyMs
     });
   }
+  const text = sanitizeSuccessText(reply.text);
+  if (!text) {
+    return proactiveLiveResult("failed", {
+      reason: "unsafe_reply_text",
+      source,
+      latencyMs
+    });
+  }
   return {
     ...proactiveLiveResult("success", {
       reason: cleanMetricReason(reply?.route) || PROACTIVE_LIVE_REPLY_MODE,
       source,
       latencyMs
     }),
-    text: String(reply.text).slice(0, 220),
+    text,
     state: cleanMetricText(reply?.state, 32),
-    presentation: reply?.presentation && typeof reply.presentation === "object" ? reply.presentation : null,
+    presentation: sanitizePresentation(reply?.presentation),
     route: cleanMetricReason(reply?.route) || PROACTIVE_LIVE_REPLY_MODE,
-    latency_breakdown: reply?.latency_breakdown && typeof reply.latency_breakdown === "object"
-      ? reply.latency_breakdown
-      : undefined
+    latency_breakdown: sanitizeLatencyBreakdown(reply?.latency_breakdown)
   };
+}
+
+export function buildProactiveLiveInterruptionSkipMetric({
+  startedAfterUserMessageAt = 0,
+  lastUserMessageAt = 0
+} = {}) {
+  if (Number(lastUserMessageAt || 0) === Number(startedAfterUserMessageAt || 0)) return null;
+  return proactiveLiveResult("skip", {
+    reason: "user_activity_changed",
+    source: "gateway"
+  });
+}
+
+function sanitizeSuccessText(value) {
+  const text = cleanMetricText(value, 220);
+  if (!text || SENSITIVE_TEXT_PATTERN.test(text)) return "";
+  return text;
+}
+
+function sanitizePresentation(value) {
+  if (!value || typeof value !== "object" || containsSensitiveMetricPayload(value)) return null;
+  const output = {};
+  for (const key of ["action", "mood", "activity", "expression", "motion"]) {
+    const safeKey = cleanMetricText(key, 32);
+    const text = cleanMetricText(value[key], 80);
+    if (safeKey && text && !SENSITIVE_TEXT_PATTERN.test(`${safeKey} ${text}`)) output[safeKey] = text;
+  }
+  return Object.keys(output).length ? output : null;
+}
+
+function sanitizeLatencyBreakdown(value) {
+  if (!value || typeof value !== "object" || containsSensitiveMetricPayload(value)) return undefined;
+  const output = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const safeKey = cleanMetricReason(key);
+    const number = safeNumber(raw);
+    if (safeKey && number !== undefined) output[safeKey] = number;
+  }
+  return Object.keys(output).length ? output : undefined;
+}
+
+function containsSensitiveMetricPayload(value) {
+  try {
+    return SENSITIVE_TEXT_PATTERN.test(JSON.stringify(value));
+  } catch {
+    return true;
+  }
 }
 
 function proactiveLiveResult(status, { reason = "", source = "", latencyMs = undefined } = {}) {

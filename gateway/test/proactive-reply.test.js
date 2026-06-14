@@ -8,7 +8,8 @@ import {
   normalizeProactiveReplyConfig,
   rememberProactiveReply,
   shouldRunHoshiaClawProactiveLive,
-  shouldRunProactiveReply
+  shouldRunProactiveReply,
+  stablePercentBucket
 } from "../src/proactive-reply.js";
 
 test("HoshiaClaw proactive shadow is disabled by default", async () => {
@@ -158,4 +159,36 @@ test("user activity resets unanswered count while proactive replies increment it
   markUserActivityForProactive(state, 4_000);
   assert.equal(state.unansweredCount, 0);
   assert.equal(state.lastUserMessageAtMs, 4_000);
+});
+
+
+test("proactive live low percent rollout hits and misses stable buckets", () => {
+  assert.equal(stablePercentBucket("key-3"), 0);
+  assert.equal(stablePercentBucket("key-10"), 98);
+
+  const baseConfig = {
+    aiMode: "hoshiaclaw",
+    roomId: "room",
+    hoshiaClawProactiveLiveEnabled: true,
+    hoshiaClawProactiveLivePercent: 1
+  };
+  const hit = shouldRunHoshiaClawProactiveLive({
+    config: baseConfig,
+    bucketKey: "key-3"
+  });
+  assert.deepEqual(hit, {
+    ok: true,
+    reason: "proactive_live_enabled",
+    bucket: 0
+  });
+
+  const miss = shouldRunHoshiaClawProactiveLive({
+    config: baseConfig,
+    bucketKey: "key-10"
+  });
+  assert.deepEqual(miss, {
+    ok: false,
+    reason: "proactive_live_bucket_miss",
+    bucket: 98
+  });
 });

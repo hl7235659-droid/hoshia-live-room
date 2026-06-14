@@ -7,11 +7,14 @@ import { openLiveRoomDatabase } from "../src/database.js";
 import {
   buildDailyPostContent,
   buildNewsTopicPostContent,
+  createHoshiaDailyPostCharacterEvent,
   createHoshiaDailyPostCreatedEvent,
   createHoshiaDailyPostService,
   dayKeyFor,
   normalizeDailyPostLimit,
+  runDailyPostLive,
   runDailyPostShadow,
+  runNewsTopicLive,
   runNewsTopicGenerateShadow
 } from "../src/hoshia-daily-post.js";
 
@@ -150,6 +153,82 @@ test("daily post shadow skips disabled/no service/no post input and fails empty 
   assert.equal(thrown.status, "failed");
   assert.equal(thrown.reason, "provider_error");
   assert.equal(JSON.stringify(thrown).includes("secret"), false);
+});
+
+test("daily post live creates one real post and safe event only on provider success", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const metrics = [];
+    const service = createHoshiaDailyPostService({
+      db,
+      visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const result = await runDailyPostLive({
+      enabled: true,
+      service,
+      now: new Date("2026-06-10T12:00:00.000Z"),
+      provider: {
+        async generateDailyPostCandidate(payload) {
+          assert.equal(payload.postInput.source_type, "daily_state");
+          return { text: "今天先把桌面和思路都整理一下，晚点再慢慢和大家聊。" };
+        }
+      },
+      roomId: "test-room",
+      recordMetric(metric) {
+        metrics.push(metric);
+      }
+    });
+
+    assert.equal(result.status, "success");
+    assert.equal(result.created, true);
+    assert.equal(result.reason, "created");
+    assert.equal(result.post.content, "今天先把桌面和思路都整理一下，晚点再慢慢和大家聊。");
+    assert.equal(result.moduleEvent.module_id, "hoshia_daily_post");
+    assert.equal(result.moduleEvent.event_type, "hoshia_daily_post.created");
+    assert.equal(result.moduleEvent.data.source, "daily_state");
+    assert.equal(result.characterEvent.event_type, "hoshia_timeline.post_created");
+    assert.equal(result.characterEvent.data.status, "created");
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 1);
+    assert.deepEqual(metrics, [{
+      route: "daily_post_live",
+      status: "success",
+      reason: "created",
+      source_type: "daily_state"
+    }]);
+  } finally {
+    cleanup();
+  }
+});
+
+test("daily post live skip/fail paths do not store posts or raw candidates", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaDailyPostService({
+      db,
+      visualStateService: visualState({ activity: "happy", mood: "playful" }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const skipped = await runDailyPostLive({ enabled: false, service });
+    const failed = await runDailyPostLive({
+      enabled: true,
+      service,
+      provider: () => "token=secret http://127.0.0.1/.env"
+    });
+
+    assert.equal(skipped.status, "skip");
+    assert.equal(skipped.reason, "disabled");
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.reason, "sensitive_candidate");
+    assert.equal(failed.created, false);
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 0);
+    assert.equal(JSON.stringify({ skipped, failed }).includes("secret"), false);
+    assert.equal(JSON.stringify({ skipped, failed }).includes("127.0.0.1"), false);
+  } finally {
+    cleanup();
+  }
 });
 
 test("daily tick creates at least one daily_state and caps each day at five posts", () => {
@@ -345,6 +424,87 @@ test("news topic generate shadow skips unsafe topic and redacts result fields", 
   assert.equal(serialized.includes("token"), false);
   assert.equal(serialized.includes("127.0.0.1"), false);
   assert.equal(serialized.includes("private"), false);
+});
+
+test("news topic live creates a news_topic post without storing shadow/planned candidate text", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const dailyPostService = createHoshiaDailyPostService({
+      db,
+      visualStateService: visualState({ activity: "otaku", mood: "excited" }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+    const result = await runNewsTopicLive({
+      enabled: true,
+      dailyPostService,
+      now: new Date("2026-06-10T12:00:00.000Z"),
+      topic: { ...lightNewsTopic("这个话题像把梗图递到嘴边"), category: "culture" },
+      provider: {
+        async generateNewsTopicCandidate(payload) {
+          assert.equal(payload.source_type, "news_topic");
+          assert.equal(payload.topic.post_seed, "这个话题像把梗图递到嘴边");
+          return "看到这个轻松话题，第一反应是想把弹幕接龙开起来。";
+        }
+      },
+      roomId: "test-room"
+    });
+
+    assert.equal(result.status, "success");
+    assert.equal(result.created, true);
+    assert.equal(result.source_type, "news_topic");
+    assert.equal(result.topic_category, "culture");
+    assert.equal(result.post.source_type, "news_topic");
+    assert.equal(result.post.content, "看到这个轻松话题，第一反应是想把弹幕接龙开起来。");
+    assert.equal(result.moduleEvent.data.reason, "internal_news_topic_post");
+    assert.equal(result.characterEvent.data.source_type, "news_topic");
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 1);
+    assert.equal(JSON.stringify(result).includes("这个话题像把梗图递到嘴边"), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("news topic live skips unsafe topic and fails sensitive candidate without posts", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const dailyPostService = createHoshiaDailyPostService({
+      db,
+      visualStateService: visualState({ activity: "thinking", mood: "focused" }),
+      clock: () => new Date("2026-06-10T12:00:00.000Z")
+    });
+
+    const unsafeTopic = await runNewsTopicLive({
+      enabled: true,
+      dailyPostService,
+      topic: {
+        post_seed: "unsafe topic should not appear",
+        reaction_style: "reply",
+        risk_level: "high"
+      },
+      provider: () => "should not run"
+    });
+    const sensitiveCandidate = await runNewsTopicLive({
+      enabled: true,
+      dailyPostService,
+      now: new Date("2026-06-10T12:00:00.000Z"),
+      topic: lightNewsTopic("轻松话题"),
+      provider: {
+        generateNewsTopicCandidate: () => "please read C:\\secret\\file token=abc"
+      }
+    });
+
+    assert.equal(unsafeTopic.status, "skip");
+    assert.equal(unsafeTopic.reason, "unsafe_topic");
+    assert.equal(sensitiveCandidate.status, "failed");
+    assert.equal(sensitiveCandidate.reason, "sensitive_candidate");
+    assert.equal(db.listHoshiaPosts({ characterId: "hoshia" }).length, 0);
+    const serialized = JSON.stringify({ unsafeTopic, sensitiveCandidate });
+    assert.equal(serialized.includes("unsafe topic should not appear"), false);
+    assert.equal(serialized.includes("token=abc"), false);
+    assert.equal(serialized.includes("C:\\secret"), false);
+  } finally {
+    cleanup();
+  }
 });
 
 test("news_topic respects total daily max, min interval, and invalid topic skips", () => {
@@ -593,6 +753,32 @@ test("daily post event exposes only safe short module data", () => {
     source: "daily_state",
     reason: "internal_state_daily_post"
   });
+});
+
+test("daily post character event exposes safe timeline-created data", () => {
+  const event = createHoshiaDailyPostCharacterEvent(
+    {
+      id: "post-1",
+      created_at: "2026-06-10T12:00:00.000Z",
+      activity: "thinking",
+      mood: "focused",
+      source_type: "news_topic",
+      content: "must not be copied into event"
+    },
+    { user_id: "user-1", nickname: "viewer" }
+  );
+
+  assert.equal(event.event_type, "hoshia_timeline.post_created");
+  assert.equal(event.source_kind, "hoshia_timeline");
+  assert.equal(event.reason, "news_topic");
+  assert.deepEqual(event.data, {
+    activity: "thinking",
+    mood: "focused",
+    source_type: "news_topic",
+    post_id: "post-1",
+    status: "created"
+  });
+  assert.equal(JSON.stringify(event).includes("must not be copied"), false);
 });
 
 test("daily content reflects energy and social need without external topics", () => {

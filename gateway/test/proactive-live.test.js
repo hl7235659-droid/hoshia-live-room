@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildProactiveLiveMetadata,
   buildProactiveLivePrompt,
+  buildProactiveLiveInterruptionSkipMetric,
   classifyProactiveLiveReply,
   runHoshiaClawProactiveLive
 } from "../src/proactive-live.js";
@@ -217,4 +218,83 @@ test("proactive live classifier only accepts openai compatible text", () => {
   });
   assert.equal(gatewayError.status, "failed");
   assert.equal(gatewayError.reason, "gateway_error");
+});
+
+
+test("proactive live provider failure records safe failed metric only", async () => {
+  const metrics = [];
+  const warnings = [];
+  const result = await runHoshiaClawProactiveLive({
+    enabled: true,
+    session: { user_id: "u1", nickname: "viewer", room_id: "room" },
+    prompt: "prompt",
+    async generateAiReply() {
+      throw new Error("raw_prompt token at C:\\secret\\file.txt");
+    },
+    recordMetric(metric) {
+      metrics.push(metric);
+    },
+    logger: {
+      warn(event, payload) {
+        warnings.push({ event, payload });
+      }
+    }
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "proactive_live_failed");
+  assert.deepEqual(metrics, [{
+    eventType: "hoshiaclaw.proactive_live.failed",
+    status: "failed",
+    reason: "proactive_live_failed",
+    source: "gateway"
+  }]);
+  assert.equal(JSON.stringify({ result, metrics, warnings }).includes("raw_prompt"), false);
+  assert.equal(JSON.stringify({ result, metrics, warnings }).includes("token"), false);
+  assert.equal(JSON.stringify({ result, metrics, warnings }).includes("C:\\secret"), false);
+});
+
+test("proactive live interruption skip metric is safe and contains no candidate text", () => {
+  const noSkip = buildProactiveLiveInterruptionSkipMetric({
+    startedAfterUserMessageAt: 1000,
+    lastUserMessageAt: 1000
+  });
+  assert.equal(noSkip, null);
+
+  const skip = buildProactiveLiveInterruptionSkipMetric({
+    startedAfterUserMessageAt: 1000,
+    lastUserMessageAt: 2000
+  });
+  assert.deepEqual(skip, {
+    called: true,
+    eventType: "hoshiaclaw.proactive_live.skip",
+    status: "skip",
+    reason: "user_activity_changed",
+    source: "gateway"
+  });
+  assert.equal(JSON.stringify(skip).includes("candidate_text"), false);
+});
+
+test("proactive live success sanitizes result-only payloads and rejects unsafe candidate text", () => {
+  const success = classifyProactiveLiveReply({
+    text: "safe public live line",
+    source: "openai_compatible",
+    route: "proactive_idle_live",
+    latency_ms: 42,
+    presentation: { action: "wave", reason: "raw_response should be dropped" },
+    latency_breakdown: { provider_ms: 40, raw_prompt: "token" }
+  });
+  assert.equal(success.status, "success");
+  assert.equal(success.text, "safe public live line");
+  assert.equal(success.presentation, null);
+  assert.equal(success.latency_breakdown, undefined);
+
+  const unsafe = classifyProactiveLiveReply({
+    text: "candidate_text token http://internal",
+    source: "openai_compatible",
+    route: "proactive_idle_live"
+  });
+  assert.equal(unsafe.status, "failed");
+  assert.equal(unsafe.reason, "unsafe_reply_text");
+  assert.equal("text" in unsafe, false);
 });

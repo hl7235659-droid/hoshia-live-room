@@ -36,11 +36,49 @@ This checklist keeps HoshiaCore rollout separate from new feature rollout.
 - A single weak action should be skipped or kept short term; stable repeated signals or explicit remember/like/preference wording may become a longer-lived memory.
 - Memory failures must not block live replies, broadcast fake replies, write room messages, or enable comment, daily post, news topic, or proactive live takeover.
 
+## Production phase 5 observability and deployment gates
+
+Phase 5 is an observability/docs/deployment-gate phase. It does not open new live takeovers by default.
+
+1. Deploy the build with all live takeover switches still closed:
+   - `HOSHIA_COMMENT_REPLY_ROLLOUT_MODE=off`
+   - `HOSHIACLAW_PROACTIVE_LIVE_ENABLED=false`
+   - `HOSHIACLAW_PROACTIVE_LIVE_PERCENT=0`
+   - `HOSHIACLAW_DAILY_POST_LIVE_ENABLED=false`
+   - `HOSHIACLAW_NEWS_TOPIC_LIVE_ENABLED=false`
+   - Keep daily post and news topic on the existing stable path until their own later rollout window.
+2. Confirm `/healthz` exposes both the existing aggregate shadow counters and route-level counters:
+   - `proactive_live_success|skip|failed`
+   - `comment_reply_live_success|skip|failed`
+   - `daily_post_live_success|skip|failed`
+   - `news_topic_live_success|skip|failed`
+   - `proactive_shadow_*`, `comment_reply_shadow_*`, `daily_post_shadow_*`, `news_topic_shadow_*`
+3. Preserve shadow checks while watching `shadow_success`, `shadow_skip`, and `shadow_failed`; route-level shadow counters are additive and must not replace the existing aggregate shadow metrics.
+4. Before opening any single live takeover, verify the target route's success/skip/failed counters remain understandable in `/healthz` and do not include prompt text, candidate text, URLs, tokens, server paths, or internal addresses.
+5. Open only one live route at a time, with the smallest switch possible:
+   - Proactive live: set `HOSHIACLAW_PROACTIVE_LIVE_ENABLED=true` and start with a very low `HOSHIACLAW_PROACTIVE_LIVE_PERCENT`.
+   - Comment replies: move `HOSHIA_COMMENT_REPLY_ROLLOUT_MODE` from `off` to `shadow` first, then to `live` only after shadow metrics are stable.
+   - Daily post live: keep `HOSHIACLAW_DAILY_POST_LIVE_ENABLED=false` until daily shadow is stable, then enable it in a separate rollout window.
+   - News topic live: keep `HOSHIACLAW_NEWS_TOPIC_LIVE_ENABLED=false` until news shadow is stable, then enable it last in a separate rollout window.
+6. Keep a short observation window after each switch. Do not open another route while the current route's `*_failed` counter is increasing or logs show unsafe content.
+
+### Phase 5 sensitive log scan
+
+After deployment and after each rollout switch, scan recent gateway logs and rollout notes for sensitive markers before sharing results:
+
+- Forbidden markers: `.env`, `token`, `secret`, `bearer`, provider URLs, tunnel URLs, raw prompts, raw responses, candidate text, local/server absolute paths, SSH details, internal addresses.
+- Safe summary style: use route names, statuses, counts, and sanitized reasons only.
+- If sensitive data appears in logs, stop rollout, rotate/replace affected secrets if needed, and summarize only the remediation status without pasting the sensitive value.
+
 ## Rollback
 
 - Reply failures: set `AI_MODE=astrbot` and restart gateway/web.
 - HoshiaCore provider failures: set `HOSHIACLAW_PROVIDER=fake` or disable the active live/shadow switch.
 - Event-log authority failures: set `CHARACTER_STATE_AUTHORITY=legacy` and restart gateway.
 - Presentation failures: rely on the frontend fallback from `character_state` / `hoshia_state`; do not modify database state.
+- Proactive live failures: set `HOSHIACLAW_PROACTIVE_LIVE_ENABLED=false` and `HOSHIACLAW_PROACTIVE_LIVE_PERCENT=0`, then restart gateway.
+- Comment live failures: set `HOSHIA_COMMENT_REPLY_ROLLOUT_MODE=off` or back to `shadow`, then restart gateway.
+- Daily/news route failures: set `HOSHIACLAW_DAILY_POST_LIVE_ENABLED=false` or `HOSHIACLAW_NEWS_TOPIC_LIVE_ENABLED=false`; if needed also disable the relevant shadow flag or scheduler while keeping main replies unaffected.
+- Observability/log safety failures: close the active route switch first, preserve aggregate shadow metrics for comparison, and run the sensitive log scan before continuing.
 
 Do not store or paste `.env`, tokens, provider URLs, raw prompts, raw responses, or internal paths in rollout notes.

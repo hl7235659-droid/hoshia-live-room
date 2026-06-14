@@ -55,7 +55,9 @@ import {
   createHoshiaCommentReplyService
 } from "./hoshia-comment-reply.js";
 import {
-  createHoshiaDailyPostService
+  createHoshiaDailyPostService,
+  runDailyPostLive,
+  runNewsTopicLive
 } from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
 import { createHoshiaInterestKnowledgeService } from "./interest-knowledge.js";
@@ -76,6 +78,8 @@ import {
   runHoshiaClawProactiveLive
 } from "./proactive-live.js";
 import {
+  buildDailyPostShadowPrompt,
+  buildNewsTopicGenerateShadowPrompt,
   runDailyPostShadow,
   dailyPostShadowPreflightSkipReason,
   runNewsTopicGenerateShadow
@@ -106,7 +110,9 @@ import {
 import {
   buildRuntimeObservabilitySnapshot,
   createRuntimeObservabilityCounters,
-  recordAiProviderObservation as recordAiProviderObservationCounter
+  recordAiProviderObservation as recordAiProviderObservationCounter,
+  recordRouteObservation,
+  routeStatusFromCounts
 } from "./hoshia-runtime-observability.js";
 import {
   buildCharacterSnapshot,
@@ -793,15 +799,32 @@ async function runDailyPostTick({ force = false, ignoreLimit = false, session = 
     runDailyPostShadowCheck({ force, session, diaryEvent, newsTopic: selectedNewsTopic, state: newsState, source }),
     runNewsTopicGenerateShadowCheck({ session, topic: selectedNewsTopic, state: newsState, source })
   ];
-  let result = hoshiaDailyPostService.tick({
+  let result = await runDailyPostLiveTakeover({
     force,
     ignoreLimit,
+    session,
+    source,
     newsTopic: selectedNewsTopic,
     state: newsState,
     diaryEvent
   });
-  if (selectedNewsTopic && ["news_topic_invalid", "news_topic_daily_max_reached"].includes(result.reason)) {
-    result = hoshiaDailyPostService.tick({ force, ignoreLimit, diaryEvent });
+  if (!result) {
+    result = hoshiaDailyPostService.tick({
+      force,
+      ignoreLimit,
+      newsTopic: selectedNewsTopic,
+      state: newsState,
+      diaryEvent
+    });
+    if (selectedNewsTopic && ["news_topic_invalid", "news_topic_daily_max_reached"].includes(result.reason)) {
+      recordRouteObservation(observabilityCounters, "news_topic_live", statusFromDailyPostTick(result));
+      result = hoshiaDailyPostService.tick({ force, ignoreLimit, diaryEvent });
+    }
+    recordRouteObservation(
+      observabilityCounters,
+      result?.post?.source_type === "news_topic" || (selectedNewsTopic && !result?.post) ? "news_topic_live" : "daily_post_live",
+      statusFromDailyPostTick(result)
+    );
   }
   if (result.post && result.created) {
     hoshiaLifeMemoryService.recordPost(result.post);
@@ -862,6 +885,119 @@ async function runDailyPostTick({ force = false, ignoreLimit = false, session = 
   }
   await Promise.allSettled(shadowChecks);
   return result;
+}
+
+async function runDailyPostLiveTakeover({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null, state = null, diaryEvent = null } = {}) {
+  const newsLiveEnabled = Boolean(newsTopic && config.hoshiaClawNewsTopicLiveEnabled);
+  const dailyLiveEnabled = Boolean(!newsTopic && config.hoshiaClawDailyPostLiveEnabled);
+  if (!newsLiveEnabled && !dailyLiveEnabled) return null;
+  const now = new Date();
+  const plan = hoshiaDailyPostService.planTickPost({
+    force,
+    ignoreLimit,
+    now,
+    newsTopic,
+    state,
+    diaryEvent
+  });
+  if (!plan?.postInput) {
+    const route = newsLiveEnabled ? "news_topic_live" : "daily_post_live";
+    recordRouteObservation(observabilityCounters, route, "skip");
+    return {
+      ok: plan?.ok !== false,
+      created: false,
+      skipped: true,
+      reason: plan?.reason || "daily_post_live_no_candidate",
+      post: null,
+      daily_count: plan?.daily_count || 0,
+      daily_min: plan?.daily_min || 0,
+      daily_max: plan?.daily_max || 0,
+      day_key: plan?.day_key || ""
+    };
+  }
+  const liveProvider = {
+    generateDailyPostCandidate(payload) {
+      return generateDailyPostLiveCandidate({ payload, session, source, route: "daily_post_live" });
+    },
+    generateNewsTopicCandidate(payload) {
+      return generateDailyPostLiveCandidate({ payload, session, source, route: "news_topic_live" });
+    }
+  };
+  const result = newsLiveEnabled
+    ? await runNewsTopicLive({
+      enabled: true,
+      dailyPostService: hoshiaDailyPostService,
+      topic: newsTopic,
+      provider: liveProvider,
+      now,
+      state,
+      dailyPostPlan: plan,
+      roomId: config.roomId,
+      recordMetric: recordDailyPostLiveMetric
+    })
+    : await runDailyPostLive({
+      enabled: true,
+      service: hoshiaDailyPostService,
+      provider: liveProvider,
+      now,
+      state,
+      postInput: plan.postInput,
+      dailyPostPlan: plan,
+      roomId: config.roomId,
+      recordMetric: recordDailyPostLiveMetric
+    });
+  return {
+    ...plan,
+    ...result,
+    ok: result.status === "success",
+    skipped: result.status !== "success",
+    reason: result.reason || (result.status === "success" ? "created" : "live_skipped"),
+    daily_count: result.status === "success" ? Number(plan.daily_count || 0) + 1 : Number(plan.daily_count || 0),
+    daily_min: plan.daily_min,
+    daily_max: plan.daily_max,
+    day_key: plan.day_key
+  };
+}
+
+async function generateDailyPostLiveCandidate({ payload, session = null, source = "scheduled", route = "daily_post_live" } = {}) {
+  const postInput = payload?.postInput || {};
+  const topic = payload?.topic || null;
+  const state = payload?.state || hoshiaVisualStateService.publicState();
+  const prompt = route === "news_topic_live"
+    ? buildNewsTopicGenerateShadowPrompt({ topic, state, reason: source })
+    : buildDailyPostShadowPrompt({ postInput, state, reason: source });
+  if (!prompt) return { skipped: true, source: "gateway", error: "missing_prompt" };
+  const reply = await generateAiReply(shadowSession(session), prompt, {
+    ...config,
+    aiMode: "hoshiaclaw",
+    hoshiaClawFallbackToMock: false,
+    hoshiaclawFallbackToMock: false,
+    hoshiaClawStreamingEnabled: false,
+    hoshiaclawStreamingEnabled: false
+  }, globalThis.fetch, {
+    roomSession: true,
+    forceReply: true,
+    replyMode: route,
+    moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+    messages: [{
+      user_id: session?.user_id || "room",
+      nickname: session?.nickname || "Live room",
+      text: route === "news_topic_live" ? "news topic live candidate" : "daily post live candidate",
+      mentioned: true,
+      memory_enabled: false,
+      timestamp: new Date().toISOString()
+    }]
+  });
+  if (reply?.skipped) return { skipped: true, source: reply.source || "hoshiaclaw", error: reply.error || "skipped" };
+  if (!reply?.text || reply.source !== "openai_compatible") {
+    return { failed: true, source: reply?.source || "hoshiaclaw", error: "empty_or_error_reply" };
+  }
+  return {
+    text: reply.text,
+    source: reply.source,
+    latency_ms: reply.latency_ms
+  };
 }
 
 async function runDailyPostShadowCheck({ force = false, session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
@@ -995,6 +1131,13 @@ async function runCommentReplyTick({ limit = config.hoshiaCommentReplyTickLimit,
     shadowOnly,
     recordMetric: recordCommentReplyShadowMetric
   });
+  if (!shadowOnly) {
+    recordRouteObservation(observabilityCounters, "comment_reply_live", routeStatusFromCounts({
+      success: result?.replied_count,
+      skip: result?.skipped_count,
+      failed: result?.failed_count
+    }));
+  }
   if (result.processed_count > 0) {
     appendTimelineCommentReplyCharacterEvent({ status: "replied" });
     const visualUpdate = hoshiaVisualStateService.applyUserInteraction({
@@ -3107,6 +3250,12 @@ function recordCommentReplyShadowMetric(metric = {}) {
   return recordShadowMetricEvent({ ...metric, route: "post_comment_reply_shadow" });
 }
 
+function recordDailyPostLiveMetric(metric = {}) {
+  const route = metric?.route === "news_topic_live" ? "news_topic_live" : "daily_post_live";
+  recordRouteObservation(observabilityCounters, route, metric?.status);
+  return null;
+}
+
 function recordShadowMetricEvent({ eventType = "", status = "", reason = "", source = "", route = "", commentId = "", postId = "" } = {}) {
   if (!String(eventType || "").startsWith("hoshiaclaw.")) return null;
   const safeStatus = ["success", "skip", "failed"].includes(String(status || "")) ? String(status) : statusFromShadowEvent(eventType);
@@ -3115,6 +3264,7 @@ function recordShadowMetricEvent({ eventType = "", status = "", reason = "", sou
   const safeReason = safeMetricReason(reason || safeStatus || "shadow_metric");
   const metricEventId = `shadow_${safeRoute || "shadow"}_${nanoid(10)}`;
   observabilityCounters.shadow[safeStatus] = Number(observabilityCounters.shadow[safeStatus] || 0) + 1;
+  recordRouteObservation(observabilityCounters, safeRoute, safeStatus);
   return appendCharacterEvent({
     id: metricEventId,
     idempotency_key: `${config.roomId}:${eventType}:${metricEventId}`,
@@ -3217,7 +3367,9 @@ function safeRuntimeModes() {
     proactive_live_enabled: Boolean(config.hoshiaClawProactiveLiveEnabled),
     proactive_live_percent: Math.max(0, Math.min(100, Number(config.hoshiaClawProactiveLivePercent || 0))),
     daily_post_shadow_enabled: Boolean(config.hoshiaClawDailyPostShadowEnabled),
-    news_topic_shadow_enabled: Boolean(config.hoshiaClawNewsTopicGenerateShadowEnabled)
+    news_topic_shadow_enabled: Boolean(config.hoshiaClawNewsTopicGenerateShadowEnabled),
+    daily_post_live_enabled: Boolean(config.hoshiaClawDailyPostLiveEnabled),
+    news_topic_live_enabled: Boolean(config.hoshiaClawNewsTopicLiveEnabled)
   };
 }
 
@@ -3229,6 +3381,13 @@ function buildRuntimeObservability() {
     moduleMemoryPending: typeof moduleEventStore.pendingMemorySize === "function" ? moduleEventStore.pendingMemorySize() : 0,
     characterSnapshotAgeMs: Number.isFinite(ageMs) ? ageMs : null
   });
+}
+
+function statusFromDailyPostTick(result = {}) {
+  if (result?.post && result?.created) return "success";
+  if (String(result?.status || "") === "failed") return "failed";
+  if (String(result?.reason || "").includes("failed")) return "failed";
+  return "skip";
 }
 function updateHoshiaVisualState({ body = {}, session = null, reason = "" } = {}) {
   if (typeof body.text === "string") {

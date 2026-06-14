@@ -30,6 +30,7 @@ export function createHoshiaDailyPostService({
   const safeTimeZone = cleanText(timeZone, 64) || defaultTimeZone;
 
   return {
+    db,
     planDailyPost({ now = clock(), state = null, sequence = 1, sourceType = dailySourceType, topic = null, diaryEvent = null, recentPosts = [] } = {}) {
       const currentNow = asDate(now);
       const currentState = normalizeVisualState(state || readVisualState(visualStateService));
@@ -86,6 +87,133 @@ export function createHoshiaDailyPostService({
         limit: safeDailyMax,
         timeZone: safeTimeZone
       });
+    },
+
+    planTickPost({ force = false, ignoreLimit = false, now = clock(), newsTopic = null, state = null, diaryEvent = null } = {}) {
+      const currentNow = asDate(now);
+      const dayKey = dayKeyFor(currentNow, safeTimeZone);
+      if (!force && !enabled) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_post_disabled",
+          postInput: null,
+          post: null,
+          daily_count: 0,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+
+      if (!force && !isWithinActiveWindow(currentNow, safeActiveWindow, safeTimeZone)) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_post_outside_active_window",
+          postInput: null,
+          post: null,
+          daily_count: 0,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+
+      assertPostStore(db);
+      const existing = listDailyPostsForDate({
+        db,
+        now: currentNow,
+        limit: 100,
+        timeZone: safeTimeZone
+      });
+      if (!ignoreLimit && existing.length >= safeDailyMax) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_max_reached",
+          postInput: null,
+          post: existing[0] || null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+
+      if (!force && hasRecentDailyPost(existing, currentNow, safeMinIntervalMs)) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "daily_post_min_interval",
+          postInput: null,
+          post: existing[0] || null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+
+      const currentState = normalizeVisualState(state || readVisualState(visualStateService));
+      const requestedNewsTopic = hasNewsTopicInput(newsTopic);
+      const safeNewsTopic = normalizeNewsTopic(newsTopic, currentNow);
+      const newsTopicCount = countDailyPostsBySource(existing, newsTopicSourceType);
+      if (requestedNewsTopic && !safeNewsTopic) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "news_topic_invalid",
+          postInput: null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          post: null,
+          day_key: dayKey
+        };
+      }
+      if (requestedNewsTopic && newsTopicCount >= 1) {
+        return {
+          ok: true,
+          created: false,
+          skipped: true,
+          reason: "news_topic_daily_max_reached",
+          postInput: null,
+          post: existing.find((post) => post.source_type === newsTopicSourceType) || null,
+          daily_count: existing.length,
+          daily_min: safeDailyMin,
+          daily_max: safeDailyMax,
+          day_key: dayKey
+        };
+      }
+      const sourceType = safeNewsTopic && newsTopicCount < 1
+        ? newsTopicSourceType
+        : (existing.length < safeDailyMin ? dailySourceType : pulseSourceType);
+      const plan = this.planDailyPost({
+        now: currentNow,
+        state: currentState,
+        sequence: existing.length + 1,
+        sourceType,
+        topic: safeNewsTopic,
+        diaryEvent,
+        recentPosts: existing
+      });
+      return {
+        ...plan,
+        post: null,
+        created: false,
+        skipped: !plan.postInput,
+        reason: plan.postInput ? "daily_post_planned" : "daily_post_invalid",
+        daily_count: existing.length,
+        daily_min: safeDailyMin,
+        daily_max: safeDailyMax,
+        day_key: plan.day_key || dayKey
+      };
     },
 
     tick({ force = false, ignoreLimit = false, now = clock(), newsTopic = null, state = null, diaryEvent = null } = {}) {
@@ -338,6 +466,76 @@ export async function runNewsTopicGenerateShadow({
   });
 }
 
+export async function runDailyPostLive({
+  service,
+  provider = null,
+  generator = null,
+  enabled = false,
+  now = new Date(),
+  state = null,
+  sequence = 1,
+  sourceType = dailySourceType,
+  postInput = null,
+  dailyPostPlan = null,
+  roomId = "",
+  recordMetric = null
+} = {}) {
+  return runPlannedPostLive({
+    route: "daily_post_live",
+    service,
+    provider,
+    generator,
+    enabled,
+    now,
+    state,
+    sequence,
+    sourceType,
+    postInput,
+    dailyPostPlan,
+    roomId,
+    recordMetric
+  });
+}
+
+export async function runNewsTopicLive({
+  service,
+  dailyPostService = null,
+  topic = null,
+  provider = null,
+  generator = null,
+  enabled = false,
+  now = new Date(),
+  state = null,
+  dailyPostPlan = null,
+  roomId = "",
+  recordMetric = null
+} = {}) {
+  const route = "news_topic_live";
+  const sourceType = newsTopicSourceType;
+  if (!enabled) return recordLiveResult(recordMetric, liveResult({ status: "skip", route, sourceType, reason: "disabled" }));
+
+  const selectedTopic = topic || safeFeaturedTopic(service);
+  if (!selectedTopic) return recordLiveResult(recordMetric, liveResult({ status: "skip", route, sourceType, reason: "no_topic" }));
+
+  const planner = dailyPostService || (typeof service?.planDailyPost === "function" ? service : null);
+  return runPlannedPostLive({
+    route,
+    service: planner,
+    provider,
+    generator,
+    enabled,
+    now,
+    state,
+    sequence: 1,
+    sourceType,
+    topic: selectedTopic,
+    dailyPostPlan,
+    roomId,
+    topicCategory: selectedTopic.category,
+    recordMetric
+  });
+}
+
 export function createHoshiaDailyPostCreatedEvent(post, state, {
   roomId = "",
   occurredAt = new Date().toISOString(),
@@ -362,6 +560,34 @@ export function createHoshiaDailyPostCreatedEvent(post, state, {
       reason: reasonForSourceType(safeSourceType)
     }
   });
+}
+
+export function createHoshiaDailyPostCharacterEvent(post, session = null, {
+  occurredAt = post?.created_at || new Date().toISOString(),
+  sourceType = post?.source_type || dailySourceType
+} = {}) {
+  if (!post) return null;
+  const safeSourceType = normalizeDailySourceType(sourceType);
+  const currentState = normalizeVisualState(post);
+  return {
+    event_type: "hoshia_timeline.post_created",
+    actor_type: session?.user_id ? "user" : "system",
+    user_id: cleanText(session?.user_id, 80),
+    nickname: cleanText(session?.nickname, 80),
+    source_kind: "hoshia_timeline",
+    source_id: cleanText(post.id, 96),
+    occurred_at: cleanText(occurredAt, 40) || new Date().toISOString(),
+    public_hint: "Hoshia created a timeline post",
+    private_hint: "Hoshia created a timeline post",
+    reason: safeSourceType,
+    data: {
+      activity: currentState.activity,
+      mood: currentState.mood,
+      source_type: safeSourceType,
+      post_id: cleanText(post.id, 96),
+      status: "created"
+    }
+  };
 }
 
 export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone, context = {}) {
@@ -788,6 +1014,143 @@ async function runPostShadowCandidate({
   }
 }
 
+async function runPlannedPostLive({
+  route,
+  service,
+  provider,
+  generator,
+  enabled,
+  now,
+  state,
+  sequence,
+  sourceType,
+  postInput = null,
+  dailyPostPlan = null,
+  topic = null,
+  roomId = "",
+  topicCategory = "",
+  recordMetric = null
+}) {
+  if (!enabled) return recordLiveResult(recordMetric, liveResult({ status: "skip", route, sourceType, reason: "disabled" }));
+  if (!service || typeof service.planDailyPost !== "function") {
+    return recordLiveResult(recordMetric, liveResult({ status: "skip", route, sourceType, topicCategory, reason: "no_service" }));
+  }
+  if (!generator && !provider) {
+    return recordLiveResult(recordMetric, liveResult({ status: "skip", route, sourceType, topicCategory, reason: "no_provider" }));
+  }
+
+  const plan = dailyPostPlan || (postInput
+    ? {
+      ok: true,
+      postInput,
+      state,
+      source_type: postInput.source_type || sourceType,
+      topic
+    }
+    : safePlanDailyPost(service, { now, state, sequence, sourceType, topic }));
+  if (!plan || !plan.postInput) {
+    return recordLiveResult(recordMetric, liveResult({
+      status: "skip",
+      route,
+      sourceType: plan?.source_type || sourceType,
+      topicCategory,
+      reason: sourceType === newsTopicSourceType ? "unsafe_topic" : "no_post_input"
+    }));
+  }
+
+  try {
+    const candidate = await resolveShadowGenerator(generator || provider, {
+      route,
+      postInput: plan.postInput,
+      topic: plan.topic,
+      state: plan.state,
+      source_type: plan.source_type || sourceType
+    }, route);
+    if (candidate?.skipped) {
+      return recordLiveResult(recordMetric, liveResult({
+        status: "skip",
+        route,
+        sourceType: plan.source_type || sourceType,
+        topicCategory,
+        reason: "provider_empty"
+      }));
+    }
+    if (candidate?.failed || candidate?.ok === false) {
+      return recordLiveResult(recordMetric, liveResult({
+        status: "failed",
+        route,
+        sourceType: plan.source_type || sourceType,
+        topicCategory,
+        reason: "provider_error"
+      }));
+    }
+    const content = liveCandidateText(candidate);
+    if (!content) {
+      return recordLiveResult(recordMetric, liveResult({
+        status: "failed",
+        route,
+        sourceType: plan.source_type || sourceType,
+        topicCategory,
+        reason: "sensitive_candidate"
+      }));
+    }
+    const db = serviceDb(service);
+    assertPostStore(db);
+    const postInput = normalizePostInput({
+      ...plan.postInput,
+      content,
+      image_url: "",
+      source_type: plan.source_type || plan.postInput.source_type || sourceType,
+      created_at: asDate(now).toISOString()
+    }, asDate(now));
+    if (!postInput) {
+      return recordLiveResult(recordMetric, liveResult({
+        status: "failed",
+        route,
+        sourceType: plan.source_type || sourceType,
+        topicCategory,
+        reason: "sensitive_candidate"
+      }));
+    }
+    const post = db.createHoshiaPost(postInput);
+    return recordLiveResult(recordMetric, {
+      ...liveResult({
+        status: "success",
+        route,
+        sourceType: post.source_type || plan.source_type || sourceType,
+        id: post.id,
+        topicCategory,
+        reason: "created"
+      }),
+      created: true,
+      post,
+      postInput,
+      state: plan.state,
+      moduleEvent: createHoshiaDailyPostCreatedEvent(post, plan.state, {
+        roomId,
+        occurredAt: post?.created_at || asDate(now).toISOString(),
+        sourceType: post.source_type || plan.source_type || sourceType
+      }),
+      characterEvent: createHoshiaDailyPostCharacterEvent(post, null, {
+        occurredAt: post?.created_at || asDate(now).toISOString(),
+        sourceType: post.source_type || plan.source_type || sourceType
+      })
+    });
+  } catch {
+    return recordLiveResult(recordMetric, liveResult({
+      status: "failed",
+      route,
+      sourceType: plan.source_type || sourceType,
+      topicCategory,
+      reason: "provider_error"
+    }));
+  }
+}
+
+function serviceDb(service) {
+  return service?.db || service?.database || service?._db || null;
+}
+
 function safePlanDailyPost(service, input) {
   try {
     const plan = service.planDailyPost(input);
@@ -809,7 +1172,7 @@ function safeFeaturedTopic(service) {
 async function resolveShadowGenerator(generator, payload, route) {
   if (!generator) return null;
   if (typeof generator === "function") return generator(payload);
-  const methodNames = route === "news_topic_generate_shadow"
+  const methodNames = String(route || "").startsWith("news_topic")
     ? ["generateNewsTopicShadow", "generateNewsTopicCandidate", "generateShadowCandidate", "generateCandidate", "generate"]
     : ["generateDailyPostShadow", "generateDailyPostCandidate", "generateShadowCandidate", "generateCandidate", "generate"];
   for (const methodName of methodNames) {
@@ -823,6 +1186,23 @@ async function resolveShadowGenerator(generator, payload, route) {
 function hasSafeShadowCandidate(value) {
   const text = shadowCandidateText(value);
   return Boolean(cleanText(text, 800));
+}
+
+function liveCandidateText(value) {
+  const text = cleanText(liveCandidateRawText(value), 700);
+  if (!text) return "";
+  if (/^(?:skip|unsafe|blocked|no\s+post)\b/i.test(text)) return "";
+  return text;
+}
+
+function liveCandidateRawText(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  return value.text
+    ?? value.reply
+    ?? value.message
+    ?? value.content
+    ?? "";
 }
 
 function shadowCandidateText(value) {
@@ -851,6 +1231,25 @@ function shadowResult({ status, route, sourceType, id = "", topicCategory = "", 
   return result;
 }
 
+function liveResult({ status, route, sourceType, id = "", topicCategory = "", reason = "" }) {
+  const result = shadowResult({ status, route, sourceType, id, topicCategory, reason });
+  result.created = false;
+  return result;
+}
+
+function recordLiveResult(recordMetric, result) {
+  if (typeof recordMetric === "function" && result?.route) {
+    recordMetric({
+      route: result.route,
+      status: result.status,
+      reason: result.reason,
+      source_type: result.source_type,
+      ...(result.topic_category ? { topic_category: result.topic_category } : {})
+    });
+  }
+  return result;
+}
+
 function shadowStatus(value) {
   if (value === "success" || value === "failed") return value;
   return "skip";
@@ -868,7 +1267,9 @@ function shadowReason(value) {
     "no_provider",
     "provider_empty",
     "provider_error",
-    "provider_success"
+    "provider_success",
+    "sensitive_candidate",
+    "created"
   ]);
   return allowed.has(reason) ? reason : "unknown";
 }

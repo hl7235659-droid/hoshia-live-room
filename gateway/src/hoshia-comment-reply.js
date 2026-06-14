@@ -481,15 +481,12 @@ async function generateWithFallback({
   };
 
   if (generator) {
-    try {
-      const generated = await generator(input);
-      const content = normalizeGeneratedContent(generated);
-      if (content) {
-        return normalizeGeneratedReply(generated, content, "llm");
-      }
-    } catch {
-      // Template fallback keeps async replies from failing when the LLM is unavailable.
+    const generated = await generator(input);
+    const content = normalizeGeneratedContent(generated);
+    if (content) {
+      return normalizeGeneratedReply(generated, content, "llm");
     }
+    return normalizeGeneratedReply(generated, "", "llm");
   }
 
   const fallback = await defaultCommentReplyGenerator(input);
