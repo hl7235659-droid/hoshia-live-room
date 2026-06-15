@@ -390,6 +390,9 @@ export function buildHoshiaLifeModuleContext(lifeSystem, session) {
     state.emotional_arc ? `情绪节奏：${formatArcLine(state.emotional_arc)}。` : "",
     state.active_event ? `此刻正在经历的片段：${formatEventLine(state.active_event)}。` : ""
   ].filter(Boolean);
+  if (state.next_event) currentState.push(`Next event: ${formatEventLine(state.next_event)}.`);
+  if (state.meal_summary) currentState.push(`Meals today: ${state.meal_summary}.`);
+  if (state.location_summary) currentState.push(`Location path today: ${state.location_summary}.`);
   const recentEvents = Array.isArray(state.recent_events) ? state.recent_events.slice(0, 3) : [];
   for (const [index, event] of recentEvents.entries()) {
     currentState.push(`刚留下的生活片段 ${index + 1}：${formatEventLine(event)}。`);
@@ -754,11 +757,15 @@ function formatArcLine(arc = {}) {
 }
 
 function formatEventLine(event = {}) {
-  return [
+  const parts = [
     event.time_range ? cleanText(event.time_range, 16) : "",
     event.title ? cleanText(event.title, 40) : "",
-    event.summary ? cleanText(event.summary, 90) : ""
-  ].filter(Boolean).join(" - ");
+    event.summary ? cleanText(event.summary, 90) : "",
+    event.location ? `location ${cleanText(event.location, 50)}` : "",
+    Array.isArray(event.food_items) && event.food_items.length ? `food ${event.food_items.map((item) => cleanText(item, 24)).filter(Boolean).join(", ")}` : "",
+    event.sensory_detail ? `detail ${cleanText(event.sensory_detail, 80)}` : ""
+  ];
+  return parts.filter(Boolean).join(" - ");
 }
 
 function assetLabelForPath(path) {

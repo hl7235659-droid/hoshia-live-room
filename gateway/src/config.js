@@ -42,6 +42,8 @@ export const config = {
   hoshiaClawNewsTopicGenerateShadowEnabled: parseBool(process.env.HOSHIACLAW_NEWS_TOPIC_GENERATE_SHADOW_ENABLED, false),
   hoshiaClawDailyPostLiveEnabled: parseBool(process.env.HOSHIACLAW_DAILY_POST_LIVE_ENABLED, false),
   hoshiaClawNewsTopicLiveEnabled: parseBool(process.env.HOSHIACLAW_NEWS_TOPIC_LIVE_ENABLED, false),
+  hoshiaClawDailyCanonLiveEnabled: parseBool(process.env.HOSHIACLAW_DAILY_CANON_LIVE_ENABLED, true),
+  hoshiaClawDailyActualDiaryLiveEnabled: parseBool(process.env.HOSHIACLAW_DAILY_ACTUAL_DIARY_LIVE_ENABLED, true),
   characterStateAuthority: enumValue(process.env.CHARACTER_STATE_AUTHORITY || "legacy", ["legacy", "event_log"], "legacy"),
   singleUserDirectReplyEnabled: parseBool(process.env.SINGLE_USER_DIRECT_REPLY_ENABLED, true),
   singleUserReplyDelayMs: Number(process.env.SINGLE_USER_REPLY_DELAY_MS || 600),

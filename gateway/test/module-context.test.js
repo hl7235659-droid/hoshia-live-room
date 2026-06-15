@@ -340,8 +340,20 @@ test("hoshia life module context exposes only safe daily canon summaries", () =>
         active_event: {
           time_range: "20:40-21:20",
           title: "Looped one song",
-          summary: "She replayed one song because it matched the room mood."
+          summary: "She replayed one song because it matched the room mood.",
+          location: "Dorm desk",
+          food_items: ["oolong tea"],
+          sensory_detail: "The desk lamp reflected on the ticket stub."
         },
+        next_event: {
+          time_range: "21:20-22:00",
+          title: "Walk back from cafe",
+          summary: "She carried an iced americano back to the dorm.",
+          location: "Campus north gate",
+          food_items: ["iced americano"]
+        },
+        meal_summary: "07:50 Breakfast: soy milk, rice ball; 18:20 Dinner: tomato beef noodles",
+        location_summary: "Dorm -> Library -> Cafe -> Live House",
         recent_events: [
           {
             time_range: "17:40-18:30",
@@ -369,6 +381,10 @@ test("hoshia life module context exposes only safe daily canon summaries", () =>
   assert.equal(context.limits.some((line) => line.includes("原始记忆 JSON")), true);
   assert.equal(context.limits.some((line) => line.includes("真实世界已验证事实")), true);
   assert.equal(context.current_state.some((line) => line.includes("Concrete diary talk hook")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Next event")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Meals today")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Location path today")), true);
+  assert.equal(context.current_state.some((line) => line.includes("food oolong tea")), true);
   assertNoMojibake(context);
   assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
 

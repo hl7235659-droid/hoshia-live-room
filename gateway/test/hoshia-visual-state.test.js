@@ -196,6 +196,55 @@ test("scheduled tick applies active daily canon event before fallback rhythm", (
   }
 });
 
+test("scheduled tick maps concrete diary events to current mood and activity", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const service = createHoshiaVisualStateService({
+      db,
+      clock: () => new Date("2026-06-10T10:00:00.000Z")
+    });
+
+    const sleep = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-10T16:30:00.000Z"),
+      canonEvent: {
+        title: "Dorm sleep",
+        type: "sleep",
+        state_delta: { energy: -10, social_need: 3, mood: "sleepy", activity: "sleepy" }
+      }
+    });
+    assert.equal(sleep.state.activity, "sleepy");
+    assert.equal(sleep.state.mood, "sleepy");
+
+    const library = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-11T02:30:00.000Z"),
+      canonEvent: {
+        title: "Library study",
+        type: "study",
+        state_delta: { energy: -5, social_need: -4, mood: "focused", activity: "thinking" }
+      }
+    });
+    assert.equal(library.state.activity, "thinking");
+    assert.equal(library.state.mood, "focused");
+
+    const livehouse = service.tick({
+      reason: "scheduled visual refresh",
+      now: new Date("2026-06-11T11:30:00.000Z"),
+      canonEvent: {
+        title: "Live House standing ticket",
+        type: "music_live",
+        state_delta: { energy: -10, social_need: -12, mood: "excited", activity: "happy" }
+      }
+    });
+    assert.equal(livehouse.state.activity, "happy");
+    assert.equal(livehouse.state.mood, "excited");
+    assert.match(livehouse.state.state_reason, /daily canon: Live House standing ticket/);
+  } finally {
+    cleanup();
+  }
+});
+
 test("scheduled tick decays stale transient activities toward idle", () => {
   const { db, cleanup } = openTempDb();
   try {

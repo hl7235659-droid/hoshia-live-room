@@ -9,6 +9,7 @@ import {
   buildTodayLifePlan,
   createHoshiaDailyCanonService,
   dayKeyFor,
+  parseDailyCanonPlanReply,
   planMemoryId,
   selectActiveEvent
 } from "../src/hoshia-daily-canon.js";
@@ -49,8 +50,13 @@ test("today life plan contains complete bounded events", () => {
   assert.ok(plan.theme);
   assert.ok(plan.diary_text);
   assert.ok(plan.emotional_arc.morning);
-  assert.ok(plan.events.length >= 5);
-  assert.ok(plan.events.length <= 8);
+  assert.ok(plan.events.length >= 16);
+  assert.ok(plan.events.length <= 28);
+  assertFullDayCoverage(plan.events);
+  assert.equal(plan.events.some((event) => event.type === "sleep"), true);
+  const meals = plan.events.filter((event) => event.type === "meal");
+  assert.ok(meals.length >= 3);
+  assert.equal(meals.every((event) => event.food_items.length > 0), true);
   for (const event of plan.events) {
     assert.ok(event.id);
     assert.match(event.time_range, /^\d{2}:\d{2}-\d{2}:\d{2}$/);
@@ -58,7 +64,12 @@ test("today life plan contains complete bounded events", () => {
     assert.ok(event.title);
     assert.ok(event.summary);
     assert.ok(event.detail_seed);
-    assert.ok(event.detail_seed.length <= 180);
+    assert.ok(event.detail_seed.length <= 220);
+    assert.equal(typeof event.location, "string");
+    assert.ok(Array.isArray(event.food_items));
+    assert.ok(Array.isArray(event.companions));
+    assert.equal(typeof event.sensory_detail, "string");
+    assert.ok(Array.isArray(event.life_tags));
     assert.equal(typeof event.state_delta.energy, "number");
     assert.equal(typeof event.state_delta.social_need, "number");
     assert.ok(event.state_delta.mood);
@@ -79,8 +90,99 @@ test("active event selection follows local time range", () => {
     "Asia/Shanghai"
   );
 
-  assert.equal(active.time_range, "21:10-22:00");
-  assert.equal(active.type, "interest_intake");
+  assert.equal(active.time_range, "21:20-22:00");
+  assert.equal(active.type, "commute");
+});
+
+test("active event selection covers sleep meals and richer student life", () => {
+  const plan = buildTodayLifePlan({
+    now: new Date("2026-06-12T13:30:00.000Z"),
+    timeZone: "Asia/Shanghai"
+  });
+
+  const sleep = selectActiveEvent(plan, new Date("2026-06-11T18:00:00.000Z"), "Asia/Shanghai");
+  const lunch = selectActiveEvent(plan, new Date("2026-06-12T04:00:00.000Z"), "Asia/Shanghai");
+  const evening = selectActiveEvent(plan, new Date("2026-06-12T11:30:00.000Z"), "Asia/Shanghai");
+
+  assert.equal(sleep.type, "sleep");
+  assert.equal(lunch.type, "meal");
+  assert.ok(lunch.food_items.length > 0);
+  assert.ok(["music_live", "script_game", "club", "commute"].includes(evening.type));
+});
+
+test("daily canon live accepts valid HoshiaCore plan and stores it", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-12T02:30:00.000Z");
+    const fallback = buildTodayLifePlan({ now, timeZone: "Asia/Shanghai" });
+    const livePlan = {
+      ...fallback,
+      theme: "HoshiaCore generated full day",
+      events: fallback.events.map((event) => ({ ...event }))
+    };
+    const service = createHoshiaDailyCanonService({
+      db,
+      clock: () => now,
+      timeZone: "Asia/Shanghai",
+      async planGenerator() {
+        return livePlan;
+      }
+    });
+
+    const plan = await service.ensureTodayPlanLive();
+
+    assert.equal(plan.theme, "HoshiaCore generated full day");
+    assert.equal(db.getHoshiaLifeMemory(planMemoryId(dayKeyFor(now, "Asia/Shanghai"))).source, "daily_canon_plan");
+  } finally {
+    cleanup();
+  }
+});
+
+test("daily canon live falls back when HoshiaCore plan is unsafe or incomplete", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-12T02:30:00.000Z");
+    const service = createHoshiaDailyCanonService({
+      db,
+      clock: () => now,
+      timeZone: "Asia/Shanghai",
+      async planGenerator() {
+        return {
+          date: "2026-06-12",
+          day_key: "20260612",
+          theme: "unsafe token=abc",
+          diary_text: "broken",
+          emotional_arc: {},
+          events: []
+        };
+      }
+    });
+
+    const plan = await service.ensureTodayPlanLive();
+
+    assert.notEqual(plan.theme, "");
+    assert.notEqual(plan.theme, "unsafe token=abc");
+    assertFullDayCoverage(plan.events);
+    assert.ok(plan.events.filter((event) => event.type === "meal").length >= 3);
+  } finally {
+    cleanup();
+  }
+});
+
+test("strict daily canon JSON parser rejects gaps and keeps fallback", () => {
+  const now = new Date("2026-06-12T02:30:00.000Z");
+  const fallback = buildTodayLifePlan({ now, timeZone: "Asia/Shanghai" });
+  const parsed = parseDailyCanonPlanReply({
+    text: JSON.stringify({
+      ...fallback,
+      theme: "bad gap",
+      events: fallback.events.slice(1)
+    }),
+    source: "openai_compatible"
+  }, fallback, fallback.day_key);
+
+  assert.equal(parsed.theme, fallback.theme);
+  assertFullDayCoverage(parsed.events);
 });
 
 test("user interaction appends a safe user_related event to today's plan", () => {
@@ -175,4 +277,22 @@ function openTempDb() {
       rmSync(dir, { recursive: true, force: true });
     }
   };
+}
+
+function assertFullDayCoverage(events) {
+  const ranges = events
+    .filter((event) => event.type !== "user_related")
+    .map((event) => event.time_range)
+    .map((value) => {
+      const match = value.match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+      assert.ok(match, `invalid range ${value}`);
+      return [Number(match[1]) * 60 + Number(match[2]), Number(match[3]) * 60 + Number(match[4])];
+    });
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    assert.equal(start, cursor);
+    assert.ok(end > start);
+    cursor = end;
+  }
+  assert.equal(cursor, 1440);
 }

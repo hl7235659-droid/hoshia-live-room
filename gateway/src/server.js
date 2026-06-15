@@ -61,7 +61,13 @@ import {
 } from "./hoshia-daily-post.js";
 import { createHoshiaInterestSystem } from "./hoshia-interest-system.js";
 import { createHoshiaInterestKnowledgeService } from "./interest-knowledge.js";
-import { createHoshiaDailyCanonService } from "./hoshia-daily-canon.js";
+import {
+  buildActualDiaryLivePrompt,
+  buildDailyCanonPlanLivePrompt,
+  createHoshiaDailyCanonService,
+  parseActualDiaryReply,
+  parseDailyCanonPlanReply
+} from "./hoshia-daily-canon.js";
 import { buildHoshiaOpsSummary } from "./hoshia-ops-summary.js";
 import {
   createProactiveReplyState,
@@ -204,7 +210,9 @@ const hoshiaInterestSystem = createHoshiaInterestSystem({
 const hoshiaInterestKnowledgeService = createHoshiaInterestKnowledgeService();
 const hoshiaDailyCanonService = createHoshiaDailyCanonService({
   db,
-  timeZone: config.realityContextTimezone || "Asia/Shanghai"
+  timeZone: config.realityContextTimezone || "Asia/Shanghai",
+  planGenerator: config.hoshiaClawDailyCanonLiveEnabled ? generateDailyCanonPlanLive : null,
+  actualDiaryGenerator: config.hoshiaClawDailyActualDiaryLiveEnabled ? generateActualDiaryLive : null
 });
 const hoshiaPixelGameService = createHoshiaPixelGameService({
   db,
@@ -757,40 +765,48 @@ attachLiveRoomWebSocket(server, {
   uniqueOnlineCount
 });
 
-function runScheduledHoshiaVisualTick() {
+async function runScheduledHoshiaVisualTick() {
   hoshiaVisualTickTimer = null;
-  hoshiaDailyCanonService.ensureTodayPlan();
-  hoshiaDailyCanonService.ensureActualDiary();
-  const result = tickHoshiaVisualState({
-    reason: "scheduled visual state refresh"
-  });
-  if (result.changed) {
-    moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, null, {
-      roomId: config.roomId,
-      reason: result.reason,
-      source: "scheduled_tick"
-    }));
-    appendVisualStateChangedCharacterEvent(result.state, null, {
-      reason: result.reason,
-      source: "scheduled_tick"
+  try {
+    await hoshiaDailyCanonService.ensureTodayPlanLive();
+    await hoshiaDailyCanonService.ensureActualDiaryLive();
+    const result = tickHoshiaVisualState({
+      reason: "scheduled visual state refresh"
     });
-    broadcastHoshiaState(result.state);
-  }
-  void runDailyPostTick({
-    force: false,
-    session: null,
-    source: "scheduled_visual_tick"
-  }).catch((error) => {
-    console.warn("hoshia_daily_post_tick_failed", {
+    if (result.changed) {
+      moduleEventStore.append(createHoshiaVisualStateChangedEvent(result.state, null, {
+        roomId: config.roomId,
+        reason: result.reason,
+        source: "scheduled_tick"
+      }));
+      appendVisualStateChangedCharacterEvent(result.state, null, {
+        reason: result.reason,
+        source: "scheduled_tick"
+      });
+      broadcastHoshiaState(result.state);
+    }
+    void runDailyPostTick({
+      force: false,
+      session: null,
+      source: "scheduled_visual_tick"
+    }).catch((error) => {
+      console.warn("hoshia_daily_post_tick_failed", {
+        type: safeMetricIdentifier(error?.name || "Error", 48) || "Error",
+        message: safeMetricReason(error?.message) || "daily_post_tick_failed"
+      });
+    });
+  } catch (error) {
+    console.warn("hoshia_visual_tick_failed", {
       type: safeMetricIdentifier(error?.name || "Error", 48) || "Error",
-      message: safeMetricReason(error?.message) || "daily_post_tick_failed"
+      message: safeMetricReason(error?.message) || "visual_tick_failed"
     });
-  });
-  scheduleNextHoshiaVisualTick();
+  } finally {
+    scheduleNextHoshiaVisualTick();
+  }
 }
 
 async function runDailyPostTick({ force = false, ignoreLimit = false, session = null, source = "scheduled", newsTopic = null } = {}) {
-  hoshiaDailyCanonService.ensureTodayPlan();
+  await hoshiaDailyCanonService.ensureTodayPlanLive({ session });
   const diaryEvent = hoshiaDailyCanonService.getActiveEvent({ now: new Date(), create: true });
   const selectedNewsTopic = newsTopic || selectCachedNewsTopicForPost();
   const newsState = selectedNewsTopic
@@ -854,7 +870,7 @@ async function runDailyPostTick({ force = false, ignoreLimit = false, session = 
       applyNewsSignalFromTopic(selectedNewsTopic, session, "news_topic_post");
     }
     if (result.post.source_type !== "news_topic") {
-      hoshiaDailyCanonService.ensureActualDiary();
+      await hoshiaDailyCanonService.ensureActualDiaryLive({ session });
       const visualUpdate = updateHoshiaVisualState({
         body: {
           mood: result.post.mood,
@@ -999,6 +1015,72 @@ async function generateDailyPostLiveCandidate({ payload, session = null, source 
     source: reply.source,
     latency_ms: reply.latency_ms
   };
+}
+
+async function generateDailyCanonPlanLive({ now = new Date(), timeZone = "Asia/Shanghai", dayKey = "", fallbackPlan = null, session = null } = {}) {
+  const prompt = buildDailyCanonPlanLivePrompt({ now, timeZone, fallbackPlan });
+  const reply = await generateAiReply(shadowSession(session), prompt, {
+    ...config,
+    aiMode: "hoshiaclaw",
+    hoshiaClawFallbackToMock: false,
+    hoshiaclawFallbackToMock: false,
+    hoshiaClawStreamingEnabled: false,
+    hoshiaclawStreamingEnabled: false
+  }, globalThis.fetch, {
+    roomSession: true,
+    forceReply: true,
+    replyMode: "daily_canon_plan_live",
+    moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+    messages: [{
+      user_id: session?.user_id || "room",
+      nickname: session?.nickname || "Live room",
+      text: "daily canon plan live generation",
+      mentioned: true,
+      memory_enabled: false,
+      timestamp: now.toISOString()
+    }]
+  });
+  if (reply?.skipped || !reply?.text || reply.source !== "openai_compatible") {
+    recordRouteObservation(observabilityCounters, "daily_canon_plan_live", "skip");
+    return null;
+  }
+  const plan = parseDailyCanonPlanReply(reply, fallbackPlan, dayKey);
+  recordRouteObservation(observabilityCounters, "daily_canon_plan_live", plan ? "success" : "failed");
+  return plan;
+}
+
+async function generateActualDiaryLive({ now = new Date(), timeZone = "Asia/Shanghai", plan = null, fallbackDiary = null, session = null } = {}) {
+  const prompt = buildActualDiaryLivePrompt({ plan, now, timeZone });
+  const reply = await generateAiReply(shadowSession(session), prompt, {
+    ...config,
+    aiMode: "hoshiaclaw",
+    hoshiaClawFallbackToMock: false,
+    hoshiaclawFallbackToMock: false,
+    hoshiaClawStreamingEnabled: false,
+    hoshiaclawStreamingEnabled: false
+  }, globalThis.fetch, {
+    roomSession: true,
+    forceReply: true,
+    replyMode: "daily_actual_diary_live",
+    moduleContext: buildModuleContext({ providers: moduleProviders, session }),
+    moduleEvents: moduleEventStore.listRecent({ roomId: config.roomId, limit: 12 }),
+    messages: [{
+      user_id: session?.user_id || "room",
+      nickname: session?.nickname || "Live room",
+      text: "daily actual diary live generation",
+      mentioned: true,
+      memory_enabled: false,
+      timestamp: now.toISOString()
+    }]
+  });
+  if (reply?.skipped || !reply?.text || reply.source !== "openai_compatible") {
+    recordRouteObservation(observabilityCounters, "daily_actual_diary_live", "skip");
+    return null;
+  }
+  const diary = parseActualDiaryReply(reply, fallbackDiary, plan, now);
+  recordRouteObservation(observabilityCounters, "daily_actual_diary_live", diary ? "success" : "failed");
+  return diary;
 }
 
 async function runDailyPostShadowCheck({ force = false, session = null, diaryEvent = null, newsTopic = null, state = null, source = "scheduled" } = {}) {
@@ -3411,7 +3493,9 @@ function safeRuntimeModes() {
     daily_post_shadow_enabled: Boolean(config.hoshiaClawDailyPostShadowEnabled),
     news_topic_shadow_enabled: Boolean(config.hoshiaClawNewsTopicGenerateShadowEnabled),
     daily_post_live_enabled: Boolean(config.hoshiaClawDailyPostLiveEnabled),
-    news_topic_live_enabled: Boolean(config.hoshiaClawNewsTopicLiveEnabled)
+    news_topic_live_enabled: Boolean(config.hoshiaClawNewsTopicLiveEnabled),
+    daily_canon_live_enabled: Boolean(config.hoshiaClawDailyCanonLiveEnabled),
+    daily_actual_diary_live_enabled: Boolean(config.hoshiaClawDailyActualDiaryLiveEnabled)
   };
 }
 
