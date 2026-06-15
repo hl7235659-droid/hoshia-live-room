@@ -1972,6 +1972,7 @@ async function handleAiReplyBatch(batch) {
   });
 
   clearQuickReplyLead(batch);
+  await handleReplyActions(reply, batch);
   if (!reply.streamed && !streamedReply) {
     await broadcastProgressiveReplyDeltas({
       traceId: latencyTraceId,
@@ -2022,6 +2023,19 @@ async function handleAiReplyBatch(batch) {
   await setCharacterState(isValidState(reply.state) ? reply.state : nextCharacterState("ai_reply", reply.text));
   setTimeout(() => void setCharacterState("IDLE"), 1400);
   scheduleProactiveReplyCheck();
+}
+
+async function handleReplyActions(reply = {}, batch = []) {
+  const actions = Array.isArray(reply.actions) ? reply.actions : [];
+  if (!actions.length) return;
+  const session = batch.find((item) => item?.session)?.session;
+  if (!session) return;
+  for (const action of actions.slice(0, 3)) {
+    if (action?.type !== "music.request") continue;
+    const query = String(action.query || "").trim();
+    if (!query) continue;
+    await handleMusicRequestFromDanmaku(session, query, `ai action music request ${query}`);
+  }
 }
 
 function scheduleQuickReplyLead(item) {

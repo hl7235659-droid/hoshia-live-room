@@ -618,7 +618,24 @@ function optionalReplyMetadata(reply) {
   if (route) metadata.route = route;
   if (reply?.streamed === true) metadata.streamed = true;
   if (reply?.presentation && typeof reply.presentation === "object") metadata.presentation = reply.presentation;
+  const actions = normalizeReplyActions(reply?.actions);
+  if (actions.length) metadata.actions = actions;
   return metadata;
+}
+
+function normalizeReplyActions(actions) {
+  if (!Array.isArray(actions)) return [];
+  const normalized = [];
+  for (const action of actions) {
+    if (!action || typeof action !== "object") continue;
+    const type = String(action.type || "").trim();
+    if (type !== "music.request") continue;
+    const query = String(action.query || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (!query) continue;
+    normalized.push({ type, query });
+    if (normalized.length >= 3) break;
+  }
+  return normalized;
 }
 
 function bridgeProfile(options = {}) {

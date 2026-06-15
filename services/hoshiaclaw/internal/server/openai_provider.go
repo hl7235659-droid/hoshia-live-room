@@ -77,9 +77,10 @@ func (p *openAICompatibleProvider) Generate(ctx context.Context, request generat
 		return generateResult{}, err
 	}
 	var parsed struct {
-		Text    string `json:"text"`
-		State   string `json:"state"`
-		Skipped bool   `json:"skipped"`
+		Text    string        `json:"text"`
+		State   string        `json:"state"`
+		Skipped bool          `json:"skipped"`
+		Actions []replyAction `json:"actions"`
 	}
 	if err := decodeJSONObject(content, &parsed); err == nil {
 		reply := clampTextRunes(sanitizeString(parsed.Text), 600)
@@ -88,7 +89,7 @@ func (p *openAICompatibleProvider) Generate(ctx context.Context, request generat
 		if skipped {
 			state = "IDLE"
 		}
-		return generateResult{Text: reply, State: state, Source: openAICompatibleSource, Skipped: skipped}, nil
+		return generateResult{Text: reply, State: state, Source: openAICompatibleSource, Skipped: skipped, Actions: normalizeReplyActions(parsed.Actions)}, nil
 	} else if looksLikeJSONText(content) {
 		return generateResult{}, providerError{Code: "provider_bad_json"}
 	}
@@ -213,8 +214,9 @@ func buildGeneratePrompt(request generateRequest, text string) string {
 	name := firstNonEmpty(request.Nickname, "viewer")
 	roomID := firstNonEmpty(request.RoomID, "live-room")
 	lines := []string{fmt.Sprintf(`Task: Generate Hoshia's live-room reply.
-Return JSON only: {"text":"...","state":"IDLE|LISTENING|THINKING|SPEAKING","skipped":false}
+Return JSON only: {"text":"...","state":"IDLE|LISTENING|THINKING|SPEAKING","skipped":false,"actions":[]}
 Rules: keep the reply short; skip only when the message is empty or unsafe; do not expose private configuration.
+Allowed actions: only use {"type":"music.request","query":"song name"} when the viewer clearly asks Hoshia to play/request a specific song and query is the song/search text. Otherwise actions must be [].
 room_id: %s
 viewer: %s
 force_reply: %t
@@ -311,4 +313,20 @@ func decodeJSONObject(content string, target any) error {
 func looksLikeJSONText(content string) bool {
 	text := strings.TrimSpace(content)
 	return strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[")
+}
+
+func normalizeReplyActions(actions []replyAction) []replyAction {
+	normalized := make([]replyAction, 0, len(actions))
+	for _, action := range actions {
+		actionType := strings.TrimSpace(action.Type)
+		query := clampTextRunes(sanitizeString(action.Query), 160)
+		if actionType != "music.request" || query == "" {
+			continue
+		}
+		normalized = append(normalized, replyAction{Type: actionType, Query: query})
+		if len(normalized) >= 3 {
+			break
+		}
+	}
+	return normalized
 }

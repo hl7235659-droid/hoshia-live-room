@@ -193,6 +193,22 @@ test("hoshiaclaw mode sends authenticated compatible bridge request", async () =
   assert.deepEqual(reply.presentation, { action: "speak", expression: "happy" });
 });
 
+test("bridge replies forward safe structured music actions", async () => {
+  const reply = await generateAiReply(session, "ping", baseConfig, async () => responseJson(200, {
+    ok: true,
+    text: "收到啦，我给你放这首。",
+    state: "SPEAKING",
+    source: "astrbot",
+    actions: [
+      { type: "music.request", query: "落叶归根" },
+      { type: "unknown", query: "ignored" },
+      { type: "music.request", query: "" }
+    ]
+  }));
+
+  assert.deepEqual(reply.actions, [{ type: "music.request", query: "落叶归根" }]);
+});
+
 test("bridge replies unwrap JSON-looking text payloads", async () => {
   const reply = await generateAiReply(session, "ping", baseConfig, async () => responseJson(200, {
     ok: true,

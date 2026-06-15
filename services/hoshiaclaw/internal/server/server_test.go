@@ -179,7 +179,7 @@ func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
 		if !strings.Contains(prompt, "gateway_prompt:") || !strings.Contains(prompt, "active_context: 剧本杀朋友局") {
 			t.Fatalf("gateway prompt was not forwarded: %s", prompt)
 		}
-		return `{"text":"收到，我会轻一点说。","state":"SPEAKING","skipped":false}`
+		return `{"text":"收到，我给你放这首。","state":"SPEAKING","skipped":false,"actions":[{"type":"music.request","query":"落叶归根"},{"type":"unknown","query":"secret"}]}`
 	})
 	defer upstream.Close()
 
@@ -199,8 +199,11 @@ func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}
-	if result.Source != openAICompatibleSource || result.Text != "收到，我会轻一点说。" || result.State != "SPEAKING" || result.Skipped {
+	if result.Source != openAICompatibleSource || result.Text != "收到，我给你放这首。" || result.State != "SPEAKING" || result.Skipped {
 		t.Fatalf("unexpected generate result: %#v", result)
+	}
+	if len(result.Actions) != 1 || result.Actions[0].Type != "music.request" || result.Actions[0].Query != "落叶归根" {
+		t.Fatalf("unexpected generate actions: %#v", result.Actions)
 	}
 }
 

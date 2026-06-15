@@ -19,6 +19,12 @@ type generateResult struct {
 	State   string
 	Source  string
 	Skipped bool
+	Actions []replyAction
+}
+
+type replyAction struct {
+	Type  string `json:"type"`
+	Query string `json:"query"`
 }
 
 type summarizeResult struct {

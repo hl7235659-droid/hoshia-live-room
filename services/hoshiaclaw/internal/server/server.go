@@ -124,14 +124,21 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		"source":  result.Source,
 		"skipped": result.Skipped,
 	}
+	if len(result.Actions) > 0 {
+		payload["actions"] = result.Actions
+	}
 	if shouldStream(request.Stream, r) {
 		if result.Skipped {
 			s.writeNDJSON(w, []map[string]any{{"type": "skipped", "ok": true, "skipped": true, "source": result.Source}})
 			return
 		}
+		done := map[string]any{"type": "done", "ok": true, "text": result.Text, "state": result.State, "source": result.Source}
+		if len(result.Actions) > 0 {
+			done["actions"] = result.Actions
+		}
 		s.writeNDJSON(w, []map[string]any{
 			{"type": "delta", "text": result.Text, "source": result.Source},
-			{"type": "done", "ok": true, "text": result.Text, "state": result.State, "source": result.Source},
+			done,
 		})
 		return
 	}
