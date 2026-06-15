@@ -125,7 +125,7 @@ export function createHoshiaDailyCanonService({
       if (!force && Number(local.hour) < 23) return null;
       const dayKey = dayKeyFor(currentNow, safeTimeZone);
       const existing = readMemoryJson(db, actualDiaryMemoryId(dayKey));
-      if (existing) return existing;
+      if (!force && existing) return existing;
       const plan = this.getTodayPlan({ now: currentNow, create: true });
       const diary = buildActualDiary(plan, currentNow);
       storeActualDiary(db, diary, currentNow);
@@ -299,7 +299,7 @@ export function actualDiaryMemoryId(dayKey) {
 
 function storePlan(db, plan, now) {
   if (!db || typeof db.addHoshiaLifeMemory !== "function") return null;
-  return db.addHoshiaLifeMemory({
+  const memory = {
     id: planMemoryId(plan.day_key),
     character_id: characterId,
     type: "summary",
@@ -311,7 +311,11 @@ function storePlan(db, plan, now) {
     tags: ["daily_canon_plan", "today_life_plan", "diary", "full_day_v2"],
     created_at: asDate(now).toISOString(),
     expires_at: daysFrom(asDate(now), 21)
-  });
+  };
+  if (typeof db.upsertHoshiaLifeMemory === "function") {
+    return db.upsertHoshiaLifeMemory(memory);
+  }
+  return db.addHoshiaLifeMemory(memory);
 }
 
 function updatePlan(db, plan, now) {
@@ -328,7 +332,7 @@ function updatePlan(db, plan, now) {
 
 function storeActualDiary(db, diary, now) {
   if (!db || typeof db.addHoshiaLifeMemory !== "function") return null;
-  return db.addHoshiaLifeMemory({
+  const memory = {
     id: actualDiaryMemoryId(diary.day_key),
     character_id: characterId,
     type: "summary",
@@ -340,7 +344,11 @@ function storeActualDiary(db, diary, now) {
     tags: ["daily_diary_actual", "actual_daily_diary", "diary", "full_day_v2"],
     created_at: asDate(now).toISOString(),
     expires_at: daysFrom(asDate(now), 60)
-  });
+  };
+  if (typeof db.upsertHoshiaLifeMemory === "function") {
+    return db.upsertHoshiaLifeMemory(memory);
+  }
+  return db.addHoshiaLifeMemory(memory);
 }
 
 function readMemoryJson(db, id) {

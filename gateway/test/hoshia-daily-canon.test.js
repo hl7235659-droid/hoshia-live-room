@@ -40,6 +40,43 @@ test("daily canon creates one reusable plan per day", () => {
   }
 });
 
+test("daily canon replaces legacy partial plan instead of crashing on duplicate id", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-15T10:30:00.000Z");
+    const dayKey = dayKeyFor(now, "Asia/Shanghai");
+    const fullPlan = buildTodayLifePlan({ now, timeZone: "Asia/Shanghai" });
+    db.addHoshiaLifeMemory({
+      id: planMemoryId(dayKey),
+      character_id: "hoshia",
+      type: "summary",
+      source: "daily_canon_plan",
+      source_id: dayKey,
+      content: JSON.stringify({ ...fullPlan, events: fullPlan.events.slice(0, 8) }),
+      tags: ["daily_canon_plan", "legacy_partial"]
+    });
+    const service = createHoshiaDailyCanonService({
+      db,
+      clock: () => now,
+      timeZone: "Asia/Shanghai"
+    });
+
+    const plan = service.ensureTodayPlan();
+    const stored = JSON.parse(db.getHoshiaLifeMemory(planMemoryId(dayKey)).content);
+
+    assert.ok(plan.events.length >= 16);
+    assertFullDayCoverage(plan.events);
+    assert.equal(stored.events.length, plan.events.length);
+    assert.equal(db.searchHoshiaLifeMemories({
+      sourceFilter: "daily_canon_plan",
+      limit: 20,
+      now: now.toISOString()
+    }).length, 1);
+  } finally {
+    cleanup();
+  }
+});
+
 test("today life plan contains complete bounded events", () => {
   const plan = buildTodayLifePlan({
     now: new Date("2026-06-11T13:30:00.000Z"),
@@ -133,6 +170,48 @@ test("daily canon live accepts valid HoshiaCore plan and stores it", async () =>
 
     assert.equal(plan.theme, "HoshiaCore generated full day");
     assert.equal(db.getHoshiaLifeMemory(planMemoryId(dayKeyFor(now, "Asia/Shanghai"))).source, "daily_canon_plan");
+  } finally {
+    cleanup();
+  }
+});
+
+test("daily canon live replaces legacy partial plan with generated full day", async () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-15T02:30:00.000Z");
+    const dayKey = dayKeyFor(now, "Asia/Shanghai");
+    const fallback = buildTodayLifePlan({ now, timeZone: "Asia/Shanghai" });
+    db.addHoshiaLifeMemory({
+      id: planMemoryId(dayKey),
+      character_id: "hoshia",
+      type: "summary",
+      source: "daily_canon_plan",
+      source_id: dayKey,
+      content: JSON.stringify({ ...fallback, events: fallback.events.slice(0, 8) }),
+      tags: ["daily_canon_plan", "legacy_partial"]
+    });
+    const service = createHoshiaDailyCanonService({
+      db,
+      clock: () => now,
+      timeZone: "Asia/Shanghai",
+      async planGenerator() {
+        return {
+          ...fallback,
+          theme: "Generated replacement plan",
+          events: fallback.events.map((event) => ({ ...event }))
+        };
+      }
+    });
+
+    const plan = await service.ensureTodayPlanLive();
+
+    assert.equal(plan.theme, "Generated replacement plan");
+    assertFullDayCoverage(plan.events);
+    assert.equal(db.searchHoshiaLifeMemories({
+      sourceFilter: "daily_canon_plan",
+      limit: 20,
+      now: now.toISOString()
+    }).length, 1);
   } finally {
     cleanup();
   }
@@ -262,6 +341,47 @@ test("actual diary is created from the updated day plan", () => {
     assert.ok(diary.diary_text);
     assert.ok(diary.referenced_events.length);
     assert.equal(db.getHoshiaLifeMemory(actualDiaryMemoryId(dayKey)).source, "daily_diary_actual");
+  } finally {
+    cleanup();
+  }
+});
+
+test("actual diary force rewrite updates existing memory instead of duplicating id", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    const now = new Date("2026-06-11T15:30:00.000Z");
+    const dayKey = dayKeyFor(now, "Asia/Shanghai");
+    db.addHoshiaLifeMemory({
+      id: actualDiaryMemoryId(dayKey),
+      character_id: "hoshia",
+      type: "summary",
+      source: "daily_diary_actual",
+      source_id: dayKey,
+      content: JSON.stringify({
+        date: "2026-06-11",
+        day_key: dayKey,
+        diary_text: "old diary",
+        referenced_events: [],
+        summary: "old"
+      }),
+      tags: ["daily_diary_actual"]
+    });
+    const service = createHoshiaDailyCanonService({
+      db,
+      clock: () => now,
+      timeZone: "Asia/Shanghai"
+    });
+
+    const diary = service.ensureActualDiary({ now, force: true });
+    const stored = JSON.parse(db.getHoshiaLifeMemory(actualDiaryMemoryId(dayKey)).content);
+
+    assert.notEqual(diary.diary_text, "old diary");
+    assert.equal(stored.diary_text, diary.diary_text);
+    assert.equal(db.searchHoshiaLifeMemories({
+      sourceFilter: "daily_diary_actual",
+      limit: 20,
+      now: now.toISOString()
+    }).length, 1);
   } finally {
     cleanup();
   }
