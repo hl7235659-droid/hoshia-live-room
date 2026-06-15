@@ -583,7 +583,9 @@ export class LiveRoomDatabase {
       ORDER BY created_at DESC, id DESC
       LIMIT ?
     `).all(roomId, limit);
-    return rows.reverse().map((row) => JSON.parse(row.event_json));
+    return rows.reverse()
+      .map((row) => JSON.parse(row.event_json))
+      .filter(isDisplayableRoomMessage);
   }
 
   listRecentContextMessages(roomId, limit = 100) {
@@ -1630,6 +1632,18 @@ function compactContextMessage(row) {
   const color = normalizePublicColor(event.color);
   if (color) message.color = color;
   return message;
+}
+
+function isDisplayableRoomMessage(event) {
+  if (!event || event.role !== "ai") return true;
+  const text = String(event.text || "").trim();
+  if (!/^[\[{]/.test(text)) return true;
+  try {
+    JSON.parse(text);
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function normalizePublicColor(value) {

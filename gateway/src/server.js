@@ -90,7 +90,7 @@ import {
   dailyPostShadowPreflightSkipReason,
   runNewsTopicGenerateShadow
 } from "./hoshiaclaw-shadow.js";
-import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
+import { MusicService, isLikelyMusicRequestText, parseLocalMusicControlText, parseMusicRequestText } from "./music-service.js";
 import {
   buildWelcomeGreetingPrompt,
   fallbackWelcomeGreeting,
@@ -1579,7 +1579,13 @@ async function handleNaturalMusicIntentFromDanmaku(session, text) {
     musicState,
     moduleEvents
   });
-  if (!isActionableMusicIntent(intent)) return false;
+  if (!isActionableMusicIntent(intent)) {
+    if (isLikelyMusicRequestText(text)) {
+      await broadcastSystemText("♪ 没有成功点歌，请用 /song 歌名 再试一次。");
+      return true;
+    }
+    return false;
+  }
 
   await handleActionableMusicIntent(session, intent, musicState, text);
   return true;

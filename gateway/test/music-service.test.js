@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MusicService, parseLocalMusicControlText, parseMusicRequestText } from "../src/music-service.js";
+import { MusicService, isLikelyMusicRequestText, parseLocalMusicControlText, parseMusicRequestText } from "../src/music-service.js";
 
 class TestStore {
   constructor() {
@@ -35,6 +35,14 @@ test("music command parser accepts slash, direct, colon, and mention forms", () 
   assert.equal(parseMusicRequestText("@星娅 点歌 晴天"), "晴天");
   assert.equal(parseMusicRequestText("@主播 点歌 晴天"), "晴天");
   assert.equal(parseMusicRequestText("hello 点歌 晴天"), "");
+  assert.equal(parseMusicRequestText("点一首，落叶归根"), "落叶归根");
+  assert.equal(parseMusicRequestText("点首 落叶归根"), "落叶归根");
+  assert.equal(parseMusicRequestText("来一首 晴天"), "晴天");
+  assert.equal(parseMusicRequestText("来首 晴天"), "晴天");
+  assert.equal(parseMusicRequestText("帮我放落叶归根"), "落叶归根");
+  assert.equal(parseMusicRequestText("给我播放 落叶归根"), "落叶归根");
+  assert.equal(parseMusicRequestText("播放音乐"), "");
+  assert.equal(isLikelyMusicRequestText("点一首"), true);
 });
 
 test("local music control parser recognizes common playback commands", () => {

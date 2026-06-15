@@ -100,6 +100,35 @@ test("room messages are persisted and returned oldest to newest within limit", (
   }
 });
 
+test("recent room messages hide AI JSON text leaks without deleting stored rows", () => {
+  const { db, cleanup } = openTempDb();
+  try {
+    db.insertRoomMessage({
+      type: "ai_reply",
+      id: "message-json",
+      room_id: "room-1",
+      role: "ai",
+      nickname: "Hoshia",
+      text: "{\"text\":\"嘿嘿",
+      timestamp: "2026-06-09T00:00:00.000Z"
+    }, "2026-06-09T00:00:00.000Z");
+    db.insertRoomMessage({
+      type: "ai_reply",
+      id: "message-ok",
+      room_id: "room-1",
+      role: "ai",
+      nickname: "Hoshia",
+      text: "在剧本杀朋友局里差点露馅。",
+      timestamp: "2026-06-09T00:00:01.000Z"
+    }, "2026-06-09T00:00:01.000Z");
+
+    const messages = db.listRecentRoomMessages("room-1", 100);
+    assert.deepEqual(messages.map((message) => message.id), ["message-ok"]);
+  } finally {
+    cleanup();
+  }
+});
+
 test("context messages and rolling summaries are persisted", () => {
   const { db, cleanup } = openTempDb();
   try {

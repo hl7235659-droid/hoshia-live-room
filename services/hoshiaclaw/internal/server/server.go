@@ -21,6 +21,7 @@ type Server struct {
 
 type generateRequest struct {
 	Text                     string         `json:"text"`
+	Prompt                   string         `json:"prompt"`
 	Nickname                 string         `json:"nickname"`
 	RoomID                   string         `json:"room_id"`
 	Stream                   bool           `json:"stream"`

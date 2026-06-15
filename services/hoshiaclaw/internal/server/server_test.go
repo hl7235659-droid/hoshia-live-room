@@ -176,6 +176,9 @@ func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
 				t.Fatalf("prompt leaked %q: %s", forbidden, prompt)
 			}
 		}
+		if !strings.Contains(prompt, "gateway_prompt:") || !strings.Contains(prompt, "active_context: 剧本杀朋友局") {
+			t.Fatalf("gateway prompt was not forwarded: %s", prompt)
+		}
 		return `{"text":"收到，我会轻一点说。","state":"SPEAKING","skipped":false}`
 	})
 	defer upstream.Close()
@@ -186,6 +189,7 @@ func TestOpenAICompatibleGenerateJSONResponse(t *testing.T) {
 		Nickname:       "Alice",
 		RoomID:         "room",
 		ContextSummary: "summary https://internal.example/a",
+		Prompt:         "active_context: 剧本杀朋友局 https://internal.example/prompt",
 		Messages:       []chatMessage{{Nickname: "Bob", Text: `from C:\Users\me\secret.txt`}},
 		CharacterSnapshotContext: map[string]any{
 			"mood":         "calm",

@@ -219,6 +219,13 @@ room_id: %s
 viewer: %s
 force_reply: %t
 message: %s`, clampTextRunes(sanitizeString(roomID), 64), clampTextRunes(sanitizeString(name), 80), request.ForceReply, text)}
+	if prompt := clampTextRunes(sanitizeString(request.Prompt), 6000); prompt != "" {
+		lines = append(lines,
+			"gateway_prompt:",
+			prompt,
+			"Follow gateway_prompt when it provides active_context, diary rules, module context, or reply targets. If active_context contains a concrete current event, answer current-activity questions with that event's action or location; do not answer only with vague thinking phrases such as 在想事情, 在思考问题, or 有新想法还没成型 unless the current event itself is study, planning, review, or thinking.",
+		)
+	}
 	if summary := clampTextRunes(sanitizeString(request.ContextSummary), 1200); summary != "" {
 		lines = append(lines, "context_summary: "+summary)
 	}

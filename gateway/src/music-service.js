@@ -10,15 +10,34 @@ export function parseMusicRequestText(text) {
   const slash = value.match(/^\/song\s+(.{1,160})$/i);
   if (slash) return cleanMusicRequestQuery(slash[1]);
 
-  const direct = value.match(/^\u70b9\u6b4c(?:\s*[\uff1a:]\s*|\s+)(.{1,160})$/u);
+  const direct = value.match(/^(?:\u70b9\u6b4c|\u70b9\u4e00\u9996|\u70b9\u9996|\u6765\u4e00\u9996|\u6765\u9996)(?:\s*[\uff1a:，,]\s*|\s+)(.{1,160})$/u);
   if (direct) return cleanMusicRequestQuery(direct[1]);
 
-  const mentionCleaned = value
+  const play = value.match(/^(?:\u5e2e\u6211|\u7ed9\u6211|\u5e2e\u5fd9)?(?:\u653e|\u64ad\u653e|\u653e\u4e00\u4e0b)(?:\s*[\uff1a:，,]\s*|\s+)?(.{1,160})$/u);
+  if (play) return cleanMusicRequestQuery(play[1]);
+
+  const oldDirect = value.match(/^\u70b9\u6b4c(?:\s*[\uff1a:]\s*|\s+)(.{1,160})$/u);
+  if (oldDirect) return cleanMusicRequestQuery(oldDirect[1]);
+
+  const mentionCleaned = stripMusicMention(value);
+  const mentioned = mentionCleaned.match(/^(?:\u70b9\u6b4c|\u70b9\u4e00\u9996|\u70b9\u9996|\u6765\u4e00\u9996|\u6765\u9996)(?:\s*[\uff1a:，,]\s*|\s+)(.{1,160})$/u);
+  if (mentioned) return cleanMusicRequestQuery(mentioned[1]);
+  const mentionedPlay = mentionCleaned.match(/^(?:\u5e2e\u6211|\u7ed9\u6211|\u5e2e\u5fd9)?(?:\u653e|\u64ad\u653e|\u653e\u4e00\u4e0b)(?:\s*[\uff1a:，,]\s*|\s+)?(.{1,160})$/u);
+  if (mentionedPlay) return cleanMusicRequestQuery(mentionedPlay[1]);
+  return "";
+}
+
+export function isLikelyMusicRequestText(text) {
+  const value = stripMusicMention(String(text || "").trim());
+  if (!value) return false;
+  if (/^\/song\b/i.test(value)) return true;
+  return /^(?:\u70b9\u6b4c|\u70b9\u4e00\u9996|\u70b9\u9996|\u6765\u4e00\u9996|\u6765\u9996|\u5e2e\u6211(?:\u653e|\u64ad\u653e)|\u7ed9\u6211(?:\u653e|\u64ad\u653e)|(?:\u653e|\u64ad\u653e)\u4e00\u4e0b)/u.test(value);
+}
+
+function stripMusicMention(value) {
+  return String(value || "")
     .replace(/@(?:Hoshia|hoshia|\u661f\u5a05|\u4e3b\u64ad)\s*/giu, "")
     .trim();
-  const mentioned = mentionCleaned.match(/^\u70b9\u6b4c(?:\s*[\uff1a:]\s*|\s+)(.{1,160})$/u);
-  if (mentioned) return cleanMusicRequestQuery(mentioned[1]);
-  return "";
 }
 
 export function parseLocalMusicControlText(text) {
@@ -594,11 +613,13 @@ function localMusicIntent(intent, confidence, replyHint) {
 }
 
 function cleanMusicRequestQuery(value) {
-  return String(value || "")
+  const query = String(value || "")
     .replace(/\s+/g, " ")
-    .replace(/^(?:一首|首|歌|歌曲|音乐)\s*/i, "")
+    .replace(/^(?:一首|首|歌|歌曲)\s*/i, "")
     .trim()
     .slice(0, 160);
+  if (/^(?:音乐|歌曲|歌|一首歌)$/i.test(query)) return "";
+  return query;
 }
 
 function parseXiaomusicSearchChain(value) {
