@@ -544,8 +544,9 @@ class LiveRoomBridgePlugin(Star):
         for item in self._clean_context_messages(recent_context)[-120:]:
             role = "Hoshia" if item["role"] == "ai" else (item["nickname"] or "viewer")
             user_suffix = f" ({item['user_id']})" if item["user_id"] and item["role"] != "ai" else ""
+            color_suffix = f" color={item['color']}" if item["color"] and item["role"] != "ai" else ""
             timestamp = f"[{item['timestamp']}] " if item["timestamp"] else ""
-            lines.append(f"- {timestamp}{role}{user_suffix}: {item['text']}")
+            lines.append(f"- {timestamp}{role}{user_suffix}{color_suffix}: {item['text']}")
         if lines:
             sections.append(
                 "最近聊天记录。涉及刚才说了什么时，以这里为准：\n"
@@ -568,6 +569,7 @@ class LiveRoomBridgePlugin(Star):
             "current_activity": 220,
             "current_diary_event": 240,
             "active_event": 220,
+            "current_viewer": 220,
             "recent_user_memory": 220,
             "tone_bias": 160,
         }.items():
@@ -605,6 +607,7 @@ class LiveRoomBridgePlugin(Star):
             "current_activity": "Current activity",
             "current_diary_event": "Current diary event",
             "active_event": "Current user-facing event",
+            "current_viewer": "Current viewer public context",
             "recent_user_memory": "Recent user preference signal",
             "tone_bias": "Tone bias",
         }
@@ -643,10 +646,17 @@ class LiveRoomBridgePlugin(Star):
                 "role": role,
                 "user_id": str(item.get("user_id", "")).strip()[:80],
                 "nickname": str(item.get("nickname", "")).strip()[:32],
+                "color": self._safe_public_color(item.get("color")),
                 "text": text[:500],
                 "timestamp": str(item.get("timestamp", "")).strip()[:40],
             })
         return messages
+
+    def _safe_public_color(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", text):
+            return text.upper()
+        return ""
 
     def _clean_module_context(self, value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, list):

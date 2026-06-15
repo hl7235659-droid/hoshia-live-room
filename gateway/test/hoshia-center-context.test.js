@@ -109,6 +109,7 @@ test("context payload message truncates text without adding raw fields", () => {
     user_id: "u1",
     nickname: "viewer",
     text: "abcdefghijklmnopqrstuvwxyz",
+    color: "#7ddcff",
     raw_prompt: "hidden",
     timestamp: "2026-06-12T00:00:00.000Z"
   }, { maxMessageLength: 5 });
@@ -118,8 +119,21 @@ test("context payload message truncates text without adding raw fields", () => {
     user_id: "u1",
     nickname: "viewer",
     text: "abcde",
+    color: "#7DDCFF",
     timestamp: "2026-06-12T00:00:00.000Z"
   });
+});
+
+test("context payload message filters invalid public colors", () => {
+  const result = contextPayloadMessage({
+    role: "user",
+    user_id: "u1",
+    nickname: "viewer",
+    text: "hello",
+    color: "token-red"
+  });
+
+  assert.equal(result.color, undefined);
 });
 
 test("room context summary refresh compresses overflow messages", async () => {

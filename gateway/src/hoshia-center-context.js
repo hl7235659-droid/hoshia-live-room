@@ -206,13 +206,21 @@ export function selectContextMessagesForBatch(messages = [], batch = [], limit =
 }
 
 export function contextPayloadMessage(message = {}, { maxMessageLength = 500 } = {}) {
-  return {
+  const payload = {
     role: message.role,
     user_id: message.user_id || "",
     nickname: message.nickname || "",
     text: String(message.text || "").slice(0, maxMessageLength),
     timestamp: message.timestamp || message.created_at || ""
   };
+  const color = safeDanmakuColor(message.color);
+  if (color) payload.color = color;
+  return payload;
+}
+
+function safeDanmakuColor(value) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toUpperCase() : "";
 }
 
 function positiveInt(value, fallback, min, max) {

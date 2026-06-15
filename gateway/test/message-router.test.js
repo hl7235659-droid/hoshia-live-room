@@ -44,6 +44,14 @@ test("message router classifies common Chinese live-room messages", () => {
   assert.equal(classifyMessageRoute(batch("/刷新状态")), "command");
 });
 
+test("message router classifies actual Chinese context and memory questions", () => {
+  assert.equal(classifyMessageRoute(batch("你现在在干嘛，动态是什么？")), "diary_related");
+  assert.equal(classifyMessageRoute(batch("环境信息系统现在是什么状态")), "diary_related");
+  assert.equal(classifyMessageRoute(batch("你刚才自己说了什么")), "memory_related");
+  assert.equal(classifyMessageRoute(batch("前100条信息里我问了什么")), "memory_related");
+  assert.equal(classifyMessageRoute(batch("我的弹幕颜色是什么")), "memory_related");
+});
+
 test("smalltalk context policy avoids heavy context and memory events", () => {
   const policy = buildContextPolicy("smalltalk", batch("hello"));
   assert.equal(policy.fastLane, true);
@@ -62,6 +70,7 @@ test("heavy routes keep memory and summary context available", () => {
   assert.equal(policy.includeLifeMemory, true);
   assert.equal(policy.includeLivingMemory, true);
   assert.equal(policy.consumeModuleMemoryEvents, true);
+  assert.ok(policy.recentContextLimit >= 100);
   assert.ok(policy.livingMemoryK >= 1);
 });
 
@@ -93,8 +102,21 @@ test("active context is compact and safe for prompt insertion", () => {
 
   assert.match(activeContext.current_state, /mood=calm/);
   assert.match(activeContext.recent_user_memory, /cozy and direct/);
+  assert.match(activeContext.current_viewer, /nickname=Alice/);
   assert.ok(activeContext.chat_hooks.length >= 1);
   assert.ok(formatActiveContextLines(activeContext).some((line) => line.includes("active_context")));
+});
+
+test("active context exposes current viewer public color safely", () => {
+  const activeContext = buildActiveContext({
+    audienceUsers: [{ user_id: "user-1", online: true, danmaku_color: "#112233" }],
+    batch: batch("我的弹幕颜色是什么", {
+      session: { ...session, danmaku_color: "#7ddcff" }
+    })
+  });
+
+  assert.match(activeContext.current_viewer, /danmaku_color=#7DDCFF/);
+  assert.match(formatActiveContextLines(activeContext).join("\n"), /Current viewer: .*#7DDCFF/);
 });
 
 test("active context exposes current diary event as a concrete reply hook", () => {

@@ -588,7 +588,7 @@ export class LiveRoomDatabase {
 
   listRecentContextMessages(roomId, limit = 100) {
     const rows = this.db.prepare(`
-      SELECT id, room_id, type, role, user_id, nickname, text, timestamp, created_at
+      SELECT id, room_id, type, role, user_id, nickname, text, event_json, timestamp, created_at
       FROM room_messages
       WHERE room_id = ?
         AND role IN ('user', 'ai')
@@ -600,7 +600,7 @@ export class LiveRoomDatabase {
 
   listContextMessagesAfter(roomId, afterCreatedAt = "", afterId = "", limit = 600) {
     const rows = this.db.prepare(`
-      SELECT id, room_id, type, role, user_id, nickname, text, timestamp, created_at
+      SELECT id, room_id, type, role, user_id, nickname, text, event_json, timestamp, created_at
       FROM room_messages
       WHERE room_id = ?
         AND role IN ('user', 'ai')
@@ -1615,7 +1615,8 @@ function parseJsonObject(value) {
 }
 
 function compactContextMessage(row) {
-  return {
+  const event = parseJsonObject(row.event_json);
+  const message = {
     id: row.id,
     room_id: row.room_id,
     type: row.type,
@@ -1626,6 +1627,14 @@ function compactContextMessage(row) {
     timestamp: row.timestamp,
     created_at: row.created_at
   };
+  const color = normalizePublicColor(event.color);
+  if (color) message.color = color;
+  return message;
+}
+
+function normalizePublicColor(value) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toUpperCase() : "";
 }
 
 function compactPostInteraction(row) {

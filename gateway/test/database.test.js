@@ -111,6 +111,7 @@ test("context messages and rolling summaries are persisted", () => {
       nickname: "Alice",
       role: "user",
       text: "I am preparing a demo this week",
+      color: "#7ddcff",
       timestamp: "2026-06-09T00:00:00.000Z"
     }, "2026-06-09T00:00:00.000Z");
     db.insertRoomMessage({
@@ -127,6 +128,7 @@ test("context messages and rolling summaries are persisted", () => {
     const contextMessages = db.listContextMessagesAfter("room-1", "", "", 10);
     assert.equal(contextMessages.length, 2);
     assert.equal(contextMessages[0].nickname, "Alice");
+    assert.equal(contextMessages[0].color, "#7DDCFF");
     assert.equal(contextMessages[1].role, "ai");
 
     const summary = db.upsertRoomContextSummary({

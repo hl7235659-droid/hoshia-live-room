@@ -58,7 +58,7 @@ const routePolicies = {
     fastLane: true
   },
   memory_related: {
-    recentContextLimit: 60,
+    recentContextLimit: 100,
     includeContextSummary: true,
     refreshSummarySync: true,
     includeLifeMemory: true,
@@ -100,9 +100,11 @@ export function classifyMessageRoute(batch = []) {
   const text = messages.map((item) => item?.text || "").join("\n").trim();
   const lower = text.toLowerCase();
   const mentioned = messages.some((item) => item?.mentioned || item?.forceReply);
+  const cjkRoute = classifyCjkRoute(text);
   const asciiRoute = classifyAsciiRoute(lower);
 
   if (!text) return "smalltalk";
+  if (cjkRoute) return cjkRoute;
   if (asciiRoute) return asciiRoute;
   if (matches(lower, commandPatterns)) return "command";
   if (matches(lower, emotionalPatterns)) return "emotional";
@@ -137,6 +139,7 @@ export function buildActiveContext({ visualState = null, audienceUsers = [], mod
   const userMemory = latest?.session?.ai_profile?.memory_enabled
     ? summarizeProfile(latest.session.ai_profile, latest.session.nickname)
     : "";
+  const currentViewer = summarizeCurrentViewer(latest?.session, audienceUsers);
   const hooks = chatHooksFromModules(moduleContext, moduleEvents);
   const state = visualState || {};
   const currentDiaryEvent = formatDiaryEventForReply(diaryEvent);
@@ -151,6 +154,7 @@ export function buildActiveContext({ visualState = null, audienceUsers = [], mod
     current_activity: safeText(state.state_reason || state.visual_description || "", 180),
     current_diary_event: currentDiaryEvent,
     active_event: latest?.text ? `${safeText(latest.session?.nickname || "网友", 32)}: ${safeText(latest.text, 120)}` : "",
+    current_viewer: currentViewer,
     recent_user_memory: userMemory,
     chat_hooks: hooks,
     tone_bias: toneBiasForState(state, audienceUsers)
@@ -184,6 +188,7 @@ export function formatActiveContextLines(activeContext = {}) {
     ["Current activity", activeContext.current_activity],
     ["Current diary event", activeContext.current_diary_event],
     ["Active event", activeContext.active_event],
+    ["Current viewer", activeContext.current_viewer],
     ["Recent user memory", activeContext.recent_user_memory],
     ["Tone bias", activeContext.tone_bias]
   ].filter(([, value]) => value);
@@ -211,6 +216,14 @@ function classifyAsciiRoute(text) {
   if (/\b(code|project|api|database|deploy|frontend|backend|gateway|astrbot|docker|github|bug|latency|performance|streaming|tts|llm|prompt)\b/.test(text)) return "project_discussion";
   if (/\b(what is|why|how many|where|who is|explain|lookup|fact|news)\b/.test(text) || /\?$/.test(text)) return "factual_question";
   if (/^(hi|hello|hey|yo|good morning|good night)\b/.test(text) || /\b(lol|haha|cute|just passing by)\b/.test(text)) return "smalltalk";
+  return "";
+}
+
+function classifyCjkRoute(text) {
+  const value = String(text || "");
+  if (!value) return "";
+  if (/(?:\u8bb0\u5f97|\u8bb0\u4f4f|\u8bb0\u5fc6|\u4e0a\u6b21|\u4ee5\u524d|\u4e4b\u524d|\u521a\u624d|\u521a\u521a|\u524d\u9762)|\u524d\s*\d+\s*\u6761|\u804a\u8fc7|\u8bf4\u8fc7|\u4f60\u8bf4\u4e86\u4ec0\u4e48|\u81ea\u5df1\u8bf4\u4e86\u4ec0\u4e48|\u5f39\u5e55.*(?:\u989c\u8272|\u8272)/.test(value)) return "memory_related";
+  if (/\u52a8\u6001|\u73af\u5883\u4fe1\u606f|\u73b0\u5728.*(?:\u5728\u5e72\u561b|\u5e72\u4ec0\u4e48|\u505a\u4ec0\u4e48|\u72b6\u6001|\u5fc3\u60c5)|\u4eca\u5929.*(?:\u505a|\u5e72\u561b|\u5e72\u4ec0\u4e48|\u65e5\u8bb0|\u53d1\u751f)/.test(value)) return "diary_related";
   return "";
 }
 
@@ -254,6 +267,25 @@ function summarizeProfile(profile = {}, fallbackName = "") {
     profile.interests ? `关注 ${safeText(profile.interests, 120)}` : ""
   ].filter(Boolean);
   return parts.join("; ");
+}
+
+function summarizeCurrentViewer(session = {}, audienceUsers = []) {
+  if (!session || typeof session !== "object") return "";
+  const userId = safeText(session.user_id, 80);
+  const audience = (Array.isArray(audienceUsers) ? audienceUsers : []).find((item) => item?.user_id === userId) || {};
+  const nickname = safeText(session.nickname || audience.nickname || "", 32);
+  const color = safeDanmakuColor(session.danmaku_color || audience.danmaku_color || "");
+  const parts = [
+    nickname ? `nickname=${nickname}` : "",
+    color ? `danmaku_color=${color}` : "",
+    audience.online !== undefined ? `online=${Boolean(audience.online)}` : ""
+  ].filter(Boolean);
+  return parts.join("; ");
+}
+
+function safeDanmakuColor(value) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toUpperCase() : "";
 }
 
 function chatHooksFromModules(moduleContext = [], moduleEvents = []) {
