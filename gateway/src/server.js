@@ -273,6 +273,7 @@ const hoshiaVisualTickWindow = normalizeHoshiaTickWindow(
 );
 let hoshiaVisualTickTimer = null;
 let hoshiaCommentReplyTimer = null;
+let hoshiaNewsTopicSyncTimer = null;
 let currentHoshiaPresentation = null;
 const observabilityCounters = createRuntimeObservabilityCounters();
 
@@ -1353,6 +1354,32 @@ function scheduleCommentReplyTick(delayMs = 60000) {
   hoshiaCommentReplyTimer.unref?.();
 }
 
+function scheduleHoshiaNewsTopicSync(delayMs = 15 * 60 * 1000) {
+  if (hoshiaNewsTopicSyncTimer) clearTimeout(hoshiaNewsTopicSyncTimer);
+  if (!config.hoshiaNewsEnabled) return;
+  hoshiaNewsTopicSyncTimer = setTimeout(() => {
+    void syncHoshiaNewsTopics().finally(() => scheduleHoshiaNewsTopicSync());
+  }, Math.max(5000, Number(delayMs) || 15 * 60 * 1000));
+  hoshiaNewsTopicSyncTimer.unref?.();
+}
+
+async function syncHoshiaNewsTopics() {
+  if (!config.hoshiaNewsEnabled) return;
+  try {
+    const result = await hoshiaNewsService.topics({ limit: 8, query: "daily news topics" });
+    if (!result.ok) {
+      console.warn("hoshia_news_topic_sync_skipped", {
+        reason: safeMetricReason(result.reason || "news_topics_unavailable")
+      });
+    }
+  } catch (error) {
+    console.warn("hoshia_news_topic_sync_failed", {
+      type: safeMetricIdentifier(error?.name || "Error", 48) || "Error",
+      message: safeMetricReason(error?.message) || "news_topic_sync_failed"
+    });
+  }
+}
+
 function scheduleNextHoshiaVisualTick() {
   if (hoshiaVisualTickTimer) clearTimeout(hoshiaVisualTickTimer);
   hoshiaVisualTickTimer = setTimeout(
@@ -1364,6 +1391,7 @@ function scheduleNextHoshiaVisualTick() {
 
 scheduleNextHoshiaVisualTick();
 scheduleCommentReplyTick();
+scheduleHoshiaNewsTopicSync(10000);
 
 async function handleDanmaku(session, payload) {
   const text = String(payload.text || "").trim();
