@@ -193,6 +193,50 @@ test("hoshiaclaw mode sends authenticated compatible bridge request", async () =
   assert.deepEqual(reply.presentation, { action: "speak", expression: "happy" });
 });
 
+test("bridge replies unwrap JSON-looking text payloads", async () => {
+  const reply = await generateAiReply(session, "ping", baseConfig, async () => responseJson(200, {
+    ok: true,
+    text: JSON.stringify({ text: "嘿嘿，刚才在剧本杀里差点暴露。", state: "SPEAKING" }),
+    state: "SPEAKING",
+    source: "astrbot"
+  }));
+
+  assert.equal(reply.text, "嘿嘿，刚才在剧本杀里差点暴露。");
+  assert.equal(reply.state, "SPEAKING");
+  assert.equal(reply.source, "astrbot");
+});
+
+test("room replies skip malformed JSON-looking bridge text", async () => {
+  const reply = await generateAiReply(
+    { ...session, user_id: "room", nickname: "Live room" },
+    "Recent danmaku:\n[1] Alice @Hoshia: 你又在思考？",
+    baseConfig,
+    async () => responseJson(200, {
+      ok: true,
+      text: "{\"text\":\"嘿嘿",
+      state: "SPEAKING",
+      source: "astrbot"
+    }),
+    {
+      roomSession: true,
+      messages: [
+        {
+          user_id: "user-a",
+          nickname: "Alice",
+          text: "@Hoshia 你又在思考？",
+          mentioned: true,
+          timestamp: "2026-06-15T10:54:00.000Z"
+        }
+      ]
+    }
+  );
+
+  assert.equal(reply.skipped, true);
+  assert.equal(reply.source, "astrbot_error_skipped");
+  assert.equal(reply.text, "");
+  assert.equal(reply.state, "IDLE");
+});
+
 test("astrbot single-target replies strip duplicate display alias mentions", async () => {
   const reply = await generateAiReply(
     { ...session, user_id: "room", nickname: "小房间留言" },
@@ -451,7 +495,12 @@ test("astrbot stream failure falls back to one-shot JSON reply", async () => {
         return responseNdjson(["not json"]);
       }
       assert.equal(body.stream, undefined);
-      return responseJson(200, { ok: true, text: "fallback reply", state: "SPEAKING", source: "astrbot" });
+      return responseJson(200, {
+        ok: true,
+        text: JSON.stringify({ text: "fallback reply" }),
+        state: "SPEAKING",
+        source: "astrbot"
+      });
     },
     {
       onDelta: () => {

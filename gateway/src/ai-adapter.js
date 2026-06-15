@@ -569,7 +569,7 @@ function normalizeReply(reply, fallbackSource) {
     };
   }
 
-  const text = String(reply?.text || "").trim();
+  const text = normalizeReplyText(reply?.text);
   if (!text) throw new Error("astrbot_bridge_empty_text");
 
   const state = String(reply?.state || "SPEAKING").toUpperCase();
@@ -580,6 +580,34 @@ function normalizeReply(reply, fallbackSource) {
     latency_ms: Number.isFinite(Number(reply?.latency_ms)) ? Number(reply.latency_ms) : undefined,
     ...optionalReplyMetadata(reply)
   };
+}
+
+function normalizeReplyText(value) {
+  let text = String(value || "").trim();
+  for (let depth = 0; depth < 2; depth += 1) {
+    if (!looksLikeJsonText(text)) return text;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error("astrbot_bridge_invalid_json_text");
+    }
+    if (typeof parsed === "string") {
+      text = parsed.trim();
+      continue;
+    }
+    if (parsed && typeof parsed === "object" && "text" in parsed) {
+      text = String(parsed.text || "").trim();
+      continue;
+    }
+    throw new Error("astrbot_bridge_invalid_json_text");
+  }
+  if (looksLikeJsonText(text)) throw new Error("astrbot_bridge_invalid_json_text");
+  return text;
+}
+
+function looksLikeJsonText(text) {
+  return typeof text === "string" && /^[\[{]/.test(text.trim());
 }
 
 function optionalReplyMetadata(reply) {

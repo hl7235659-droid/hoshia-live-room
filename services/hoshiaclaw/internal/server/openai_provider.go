@@ -89,6 +89,8 @@ func (p *openAICompatibleProvider) Generate(ctx context.Context, request generat
 			state = "IDLE"
 		}
 		return generateResult{Text: reply, State: state, Source: openAICompatibleSource, Skipped: skipped}, nil
+	} else if looksLikeJSONText(content) {
+		return generateResult{}, providerError{Code: "provider_bad_json"}
 	}
 	reply := clampTextRunes(sanitizeString(content), 600)
 	return generateResult{Text: reply, State: "SPEAKING", Source: openAICompatibleSource, Skipped: reply == ""}, nil
@@ -297,4 +299,9 @@ func decodeJSONObject(content string, target any) error {
 		text = text[start : end+1]
 	}
 	return json.Unmarshal([]byte(text), target)
+}
+
+func looksLikeJSONText(content string) bool {
+	text := strings.TrimSpace(content)
+	return strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[")
 }

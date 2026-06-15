@@ -2805,7 +2805,8 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
       "active_context 只当作快速的当前状态参考，不要机械复述。"
     ] : []),
     ...(contextPolicy.route === "diary_related" ? [
-      "日记类回复规则：如果对方问 Hoshia 现在在做什么、今天做了什么，或者为什么小记里这么写，先从当前日记事件回答。先提一个具体动作或小事件，再补心情、吐槽或追问。可以轻轻扩写小记，但不要说成真实出行、外部新闻、私人浏览或真实成就。不要只用 tired、low energy、quiet、resting 之类的泛状态词。"
+      "日记类回复规则：如果对方问 Hoshia 现在在做什么、今天做了什么，或者为什么小记里这么写，先从当前日记事件回答。先提一个具体动作或小事件，再补心情、吐槽或追问。可以轻轻扩写小记，但不要说成真实出行、外部新闻、私人浏览或真实成就。不要只用 tired、low energy、quiet、resting 之类的泛状态词。",
+      "如果对方问“现在在干嘛”“又在思考？”“是不是还在想事情”，优先使用 active_context 里的事件标题、地点、动作或 chat hook 回答，例如正在剧本杀、点歌、吃东西、训练、写作业等具体事。除非当前事件本身是学习、整理、复盘或 thinking 活动，不要回答“在思考问题”“在想事情”“有新想法还没成型”这类占位话术。"
     ] : []),
     ...(Array.isArray(lifeMemoryPacket) && lifeMemoryPacket.length ? [
       ...lifeMemoryPacket,

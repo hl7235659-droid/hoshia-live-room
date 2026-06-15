@@ -217,6 +217,20 @@ func TestOpenAICompatibleGeneratePlainTextFallback(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleGenerateRejectsMalformedJSONText(t *testing.T) {
+	upstream := newMockChatCompletionServer(t, func(t *testing.T, r *http.Request, _ map[string]any) string {
+		t.Helper()
+		return `{"text":"嘿嘿`
+	})
+	defer upstream.Close()
+
+	provider := newTestOpenAIProvider(upstream.URL)
+	_, err := provider.Generate(context.Background(), generateRequest{Text: "hello"})
+	if err == nil || !strings.Contains(err.Error(), "provider_bad_json") {
+		t.Fatalf("expected provider_bad_json, got %v", err)
+	}
+}
+
 func TestOpenAICompatibleSummarizeJSONAndPlainText(t *testing.T) {
 	responses := []string{
 		`{"summary":"Alice 正在准备演示。 "}`,
