@@ -560,7 +560,7 @@ test("news_topic content uses topic hooks with current visual state", () => {
     social_need: 42
   }, new Date("2026-06-10T12:00:00.000Z"));
 
-  assert.match(content, /二次元雷达|这个话题像把梗图递到嘴边|弹幕接龙/);
+  assert.match(content, /刷到|第一反应不是播报|接梗|这个话题像把梗图递到嘴边/);
   assert.doesNotMatch(content, /报道称|新闻播报|http/i);
 });
 
@@ -673,7 +673,7 @@ test("repeated identical state uses diary detail instead of duplicating content"
     assert.equal(first.created, true);
     assert.equal(second.created, true);
     assert.notEqual(second.post.content, first.post.content);
-    assert.match(second.post.content, /直播间|小东西|椅子|回血|便签|桌面|话题/);
+    assert.match(second.post.content, /星港小窗|宿舍桌面|小东西|椅子|回血|便签|桌面|话题/);
     assert.doesNotMatch(second.post.content, /Stage notes|room setup|topic notes|wanted to say/);
     assert.doesNotMatch(second.post.content, /这条和今天的小日记有关|单纯报状态|状态还是|能量条|小标签|近况/);
     assert.doesNotMatch(second.post.content, /token=|\/home\/ubuntu|\.env/i);
@@ -789,11 +789,23 @@ test("daily content reflects energy and social need without external topics", ()
     social_need: 90
   }, new Date("2026-06-10T18:00:00.000Z"));
 
-  assert.match(content, /低电量|有人来|灯|台灯/);
+  assert.match(content, /低电量|台灯|瓶盖|慢一点|接一句|灯调暗/);
   assert.doesNotMatch(content, /这条和今天的小日记有关|单纯报状态|状态还是|能量条|小标签|近况/);
   assert.doesNotMatch(content, /小红书|微博|B站|新闻|http/i);
   assert.equal(normalizeDailyPostLimit(0), 1);
   assert.equal(normalizeDailyPostLimit(20), 10);
+});
+
+test("thinking daily content uses concrete objects instead of status labels", () => {
+  const content = buildDailyPostContent({
+    activity: "thinking",
+    mood: "focused",
+    energy: 72,
+    social_need: 45
+  }, new Date("2026-06-10T14:00:00.000Z"));
+
+  assert.match(content, /便签|书签|课业|杯子|耳机|草稿纸/);
+  assert.doesNotMatch(content, /\b(?:busy|tired|studying|quiet)\b/i);
 });
 
 function visualState(state) {

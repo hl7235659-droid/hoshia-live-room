@@ -52,15 +52,34 @@ test("message router classifies actual Chinese context and memory questions", ()
   assert.equal(classifyMessageRoute(batch("我的弹幕颜色是什么")), "memory_related");
 });
 
-test("smalltalk context policy avoids heavy context and memory events", () => {
+test("message router classifies current hot-topic questions as context-heavy", () => {
+  assert.equal(classifyMessageRoute(batch("最近有什么热点你怎么看")), "diary_related");
+  assert.equal(classifyMessageRoute(batch("给这个新闻锐评一下")), "diary_related");
+});
+
+test("smalltalk context policy keeps personality, life, and module context available", () => {
   const policy = buildContextPolicy("smalltalk", batch("hello"));
-  assert.equal(policy.fastLane, true);
+  assert.equal(policy.fastLane, false);
   assert.equal(policy.includeContextSummary, false);
   assert.equal(policy.refreshSummarySync, false);
-  assert.equal(policy.includeLifeMemory, false);
-  assert.equal(policy.includeLivingMemory, false);
-  assert.equal(policy.consumeModuleMemoryEvents, false);
-  assert.equal(policy.recentContextLimit, 6);
+  assert.equal(policy.includeLifeMemory, true);
+  assert.equal(policy.includeLivingMemory, true);
+  assert.equal(policy.includeNewsMemory, true);
+  assert.equal(policy.consumeModuleMemoryEvents, true);
+  assert.equal(policy.recentContextLimit, 12);
+  assert.equal(policy.moduleEventLimit, 12);
+  assert.ok(policy.livingMemoryK >= 1);
+});
+
+test("factual question context policy can use recent life and news hooks", () => {
+  const policy = buildContextPolicy("factual_question", batch("what is this news"));
+  assert.equal(policy.fastLane, false);
+  assert.equal(policy.includeLifeMemory, true);
+  assert.equal(policy.includeLivingMemory, true);
+  assert.equal(policy.includeNewsMemory, true);
+  assert.equal(policy.consumeModuleMemoryEvents, true);
+  assert.equal(policy.recentContextLimit, 32);
+  assert.equal(policy.moduleEventLimit, 16);
 });
 
 test("heavy routes keep memory and summary context available", () => {

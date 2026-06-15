@@ -2271,7 +2271,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     room,
     batch: [{
       session,
-      text: "房间安静了一会儿",
+      text: "联系窗口安静了一会儿",
       mentioned: false,
       timestamp: new Date().toISOString()
     }],
@@ -2283,7 +2283,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     room,
     batch: [{
       session,
-      text: "房间安静了一会儿",
+      text: "联系窗口安静了一会儿",
       mentioned: false,
       timestamp: new Date().toISOString()
     }],
@@ -2302,9 +2302,9 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
 
   return [
     hoshiaPersonaPrompt,
-    "Hoshia is preparing one proactive line because at least one viewer is online and the room has been idle for a while.",
+    "Hoshia is preparing one proactive line because at least one special online friend is reachable and their contact window has been quiet for a while.",
     `Idle time: about ${idleMinutes} minutes.`,
-    `Online viewers: ${Number(room.online || 0)}.`,
+    `Reachable special friends: ${Number(room.online || 0)}.`,
     `Unanswered proactive count: ${Number(proactiveReplyState.unansweredCount || 0)}.`,
     "Use only the safe public context below. Do not mention system detection, internal routing, logs, secrets, tokens, URLs, file paths, or private configuration.",
     ...(realityContextLines.length ? ["Reality context:", ...realityContextLines.map((line) => safeLine(line, 220))] : []),
@@ -2325,16 +2325,18 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     ]),
     "Task:",
     "- Write one natural proactive opening line in Chinese.",
-    "- Prefer a concrete diary or module hook; otherwise use recent chat, music, or current time context.",
+    "- Prefer a concrete diary, safe news, or module hook; otherwise use recent chat, music, or current time context.",
+    "- Add one Hoshia-side detail: a tiny diary object, a personal reaction to a safe topic, a game/music/course preference, or a safe current state such as music, timeline, or a small game.",
     "- Include a clear conversational handle that a viewer can respond to.",
     "- Keep Hoshia's tone: light, familiar, slightly playful, and tied to her current state.",
-    "- Do not only say the room is quiet, do not scold viewers, and do not ask a generic customer-service question.",
+    "- Do not use status labels like busy, tired, studying, or quiet as the whole content. Turn the label into a concrete object or action.",
+    "- Do not only say the contact window is quiet, do not scold the other person, and do not ask a generic customer-service question.",
     "- Output only Hoshia's spoken line, 1 to 2 short sentences, at most 90 Chinese characters."
   ].join("\n");
 
   return [
     hoshiaPersonaPrompt,
-    "Hoshia 正准备主动说一句，因为小房间里有人在线，而且已经安静了一会儿。",
+    "Hoshia 正准备主动说一句，因为那个总能联系上的特殊网友在线，而联系窗口已经安静了一会儿。",
     `安静时长大约 ${idleMinutes} 分钟。`,
     `在线人数：${room.online}。`,
     `连续没有得到回应的主动发言次数：${proactiveReplyState.unansweredCount}。`,
@@ -2347,12 +2349,12 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     ...(recentLines.length ? [
       "最近的小房间消息：",
       ...recentLines
-    ] : ["最近的小房间消息：无"]),
+    ] : ["最近的联系窗口消息：无"]),
     ...(topicHooks.length ? [
       "可用的主动话题钩子，按优先级排序：",
       ...topicHooks.map((hook, index) => `${index + 1}. ${hook}`)
     ] : [
-      "可用的主动话题钩子：无。如果没有具体的日记、消息、音乐或近期聊天钩子，就不要用空泛的安静感句子填满小房间。"
+      "可用的主动话题钩子：无。如果没有具体的日记、消息、音乐或近期聊天钩子，就不要用空泛的安静感句子填满联系窗口。"
     ]),
     "任务：",
     "- 写一句自然的主动开口。",
@@ -2361,7 +2363,7 @@ function formatProactiveIdlePrompt({ session, idleMs, recentMessages, moduleCont
     "- Hoshia 可以把日常事件轻轻扩成自己的小记，但不要说成外出旅行、外部新闻、私人浏览或真实成就。",
     "- 带一点 Hoshia 的味道：星港画面、猫耳尾巴动作、轻微吐槽，或者对当前状态的反应。",
     "- 可以轻轻问对方在做什么，但不能只问这个；一定要挂一个具体话题钩子。",
-    "- 不要只说小房间很安静，不要只说自己在这里，不要没有具体事件点就开口。",
+    "- 不要只说联系窗口很安静，不要只说自己在这里，不要没有具体事件点就开口。",
     "- 如果用到消息，就把它说成熟人之间的自然问句。不要像播报，也不要碰重话题。",
     "- 不要说自己检测到了安静，不要训人，不要用客服口吻提问。",
     "- 用中文回复，1 到 2 句，最多 90 个汉字。只输出 Hoshia 的话。"
@@ -2375,14 +2377,14 @@ function proactiveTopicHooks({ moduleContext = [], moduleEvents = [], recentMess
   const life = modules.find((item) => item?.module_id === "hoshia_life_system" && item.enabled);
   if (life) {
     const lifeLines = cleanProactiveHookLines(life.current_state)
-      .filter((line) => /Current event|Recent event|Focus hooks|Diary summary/i.test(line));
+      .filter((line) => /Current event|Recent event|Focus hooks|Diary summary|Concrete diary talk hook/i.test(line));
     for (const line of lifeLines.slice(0, 4)) hooks.push(`Daily diary: ${line}`);
   }
 
   const news = modules.find((item) => item?.module_id === "hoshia_news" && item.enabled);
   if (news) {
     const newsLines = cleanProactiveHookLines(news.current_state)
-      .filter((line) => /Recent topic|Safe news summary|Recent news signal/i.test(line));
+      .filter((line) => /Recent topic|Safe news summary|Recent news signal|Concrete news talk hook/i.test(line));
     for (const line of newsLines.slice(0, 2)) hooks.push(`Safe news: ${line}`);
   }
 
@@ -2681,7 +2683,7 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
 
   return [
     hoshiaPersonaPrompt,
-    "你正在朋友限定的小房间里读一小批最近留言。",
+    "你正在通过 Hoshia Starport 的小窗读一小批特殊网友的最近留言。",
     ...(realityContextLines.length ? [
       ...realityContextLines
     ] : []),
@@ -2706,6 +2708,7 @@ function formatLiveRoomBatchPrompt(batch, lifeMemoryPacket = [], { activeContext
     "如果对方让你“高冷一点”“温柔一点”“少说两句”“像某种语气回我”，这可以理解成对 Hoshia 回复风格的偏好；但只能写成“对方希望 Hoshia 用更高冷/更温柔/更简短的方式回应”，不要理解成对方本人高冷、温柔，或对方喜欢某种性格的人。若语气要求只出现一次且没有“以后/记住/一直/我希望你”之类持续表达，本轮先照做；若表达了持续期待，再当成回复风格偏好。",
     "不要逐条机械回答；请合并语境，回复 1 段即可，尽量简短、像熟人聊天，但不要像客服工单回复。",
     "日常留言也要有一个具体反应点：接住原话里的关键词、Hoshia 当前状态、星港意象、猫耳尾巴小动作或轻微吐槽之一；不要只给通用安慰或通用提问。",
+    "高密度回复规则：每次回复先抓住用户原话里的具体词，再尽量补一个 Hoshia 侧的新信息，例如今天的日记碎片、安全热点反应、音乐/游戏/课业偏好，或当前播放、动态、小窗联系状态等安全事实。可以短暂跑题、自嘲、碎碎念，但不要只复述、只安慰、只说“我在/收到/你呢”，也不要只贴 busy/tired/studying/quiet 这类状态标签。不要把 Hoshia 写成直播间角色、房间角色、主播或后台产物，也不要透露内部字段、后台接口、路径、密钥或配置。",
     ...(profileLines.length ? [
       "以下是本轮明确 @ 你的网友偏好，只用于调整称呼、语气和话题侧重；不要机械复述这些资料，也不要说成内部提示：",
       ...profileLines

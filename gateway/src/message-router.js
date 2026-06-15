@@ -10,16 +10,16 @@ const routes = new Set([
 
 const routePolicies = {
   smalltalk: {
-    recentContextLimit: 6,
+    recentContextLimit: 12,
     includeContextSummary: false,
     refreshSummarySync: false,
-    includeLifeMemory: false,
-    includeLivingMemory: false,
-    livingMemoryK: 0,
-    moduleEventLimit: 8,
-    consumeModuleMemoryEvents: false,
-    includeNewsMemory: false,
-    fastLane: true
+    includeLifeMemory: true,
+    includeLivingMemory: true,
+    livingMemoryK: 1,
+    moduleEventLimit: 12,
+    consumeModuleMemoryEvents: true,
+    includeNewsMemory: true,
+    fastLane: false
   },
   emotional: {
     recentContextLimit: 16,
@@ -46,16 +46,16 @@ const routePolicies = {
     fastLane: false
   },
   factual_question: {
-    recentContextLimit: 18,
+    recentContextLimit: 32,
     includeContextSummary: false,
     refreshSummarySync: false,
-    includeLifeMemory: false,
-    includeLivingMemory: false,
-    livingMemoryK: 0,
-    moduleEventLimit: 8,
-    consumeModuleMemoryEvents: false,
-    includeNewsMemory: false,
-    fastLane: true
+    includeLifeMemory: true,
+    includeLivingMemory: true,
+    livingMemoryK: 2,
+    moduleEventLimit: 16,
+    consumeModuleMemoryEvents: true,
+    includeNewsMemory: true,
+    fastLane: false
   },
   memory_related: {
     recentContextLimit: 100,
@@ -223,6 +223,7 @@ function classifyCjkRoute(text) {
   const value = String(text || "");
   if (!value) return "";
   if (/(?:\u8bb0\u5f97|\u8bb0\u4f4f|\u8bb0\u5fc6|\u4e0a\u6b21|\u4ee5\u524d|\u4e4b\u524d|\u521a\u624d|\u521a\u521a|\u524d\u9762)|\u524d\s*\d+\s*\u6761|\u804a\u8fc7|\u8bf4\u8fc7|\u4f60\u8bf4\u4e86\u4ec0\u4e48|\u81ea\u5df1\u8bf4\u4e86\u4ec0\u4e48|\u5f39\u5e55.*(?:\u989c\u8272|\u8272)/.test(value)) return "memory_related";
+  if (/(?:\u70ed\u70b9|\u70ed\u699c|\u65b0\u95fb|\u8bdd\u9898|\u6897|\u5403\u74dc|\u9510\u8bc4|\u600e\u4e48\u770b|\u4f60\u770b\u8fc7|\u4f60\u542c\u8fc7|\u6700\u8fd1.*(?:\u6709\u4ec0\u4e48|\u770b\u5230|\u5237\u5230|\u804a\u4ec0\u4e48))/.test(value)) return "diary_related";
   if (/\u52a8\u6001|\u73af\u5883\u4fe1\u606f|\u73b0\u5728.*(?:\u5728\u5e72\u561b|\u5e72\u4ec0\u4e48|\u505a\u4ec0\u4e48|\u72b6\u6001|\u5fc3\u60c5)|\u4eca\u5929.*(?:\u505a|\u5e72\u561b|\u5e72\u4ec0\u4e48|\u65e5\u8bb0|\u53d1\u751f)/.test(value)) return "diary_related";
   return "";
 }
@@ -295,7 +296,15 @@ function chatHooksFromModules(moduleContext = [], moduleEvents = []) {
   const visual = moduleContext.find((item) => (item?.module_id === "hoshia_visual" || item?.module_id === "hoshia_visual_state") && item.enabled);
   if (visual?.current_state?.length) hooks.push(safeText(visual.current_state[0], 140));
   const life = moduleContext.find((item) => item?.module_id === "hoshia_life_system" && item.enabled);
-  if (life?.current_state?.length) hooks.push(safeText(life.current_state[0], 140));
+  if (life?.current_state?.length) {
+    const lifeHook = life.current_state.find((line) => /hook|event|diary|话题|片段/i.test(String(line || ""))) || life.current_state[0];
+    hooks.push(safeText(lifeHook, 160));
+  }
+  const news = moduleContext.find((item) => item?.module_id === "hoshia_news" && item.enabled);
+  if (news?.current_state?.length) {
+    const newsHook = news.current_state.find((line) => /topic|summary|signal|hook|热点|话题/i.test(String(line || ""))) || news.current_state[0];
+    hooks.push(safeText(newsHook, 160));
+  }
   const event = moduleEvents.find((item) => item?.summary_hint);
   if (event) hooks.push(safeText(event.summary_hint, 140));
   return hooks.filter(Boolean).slice(0, 3);

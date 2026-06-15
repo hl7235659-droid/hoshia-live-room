@@ -252,6 +252,7 @@ test("hoshia news module context exposes only safe topic summary fields", () => 
   assert.equal(context.enabled, true);
   assert.equal(context.current_state.some((line) => line.includes("topic count: 7")), true);
   assert.equal(context.current_state.some((line) => line.includes("Open source tool")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Concrete news talk hook")), true);
   assert.equal(context.capabilities.some((line) => line.includes("conversation hooks")), true);
   assert.equal(context.limits.some((line) => line.includes("source citation")), true);
   assert.doesNotMatch(serialized, /https?:\/\/|token|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
@@ -367,6 +368,7 @@ test("hoshia life module context exposes only safe daily canon summaries", () =>
   assert.equal(context.capabilities.some((line) => line.includes("校园日常细节")), true);
   assert.equal(context.limits.some((line) => line.includes("原始记忆 JSON")), true);
   assert.equal(context.limits.some((line) => line.includes("真实世界已验证事实")), true);
+  assert.equal(context.current_state.some((line) => line.includes("Concrete diary talk hook")), true);
   assertNoMojibake(context);
   assert.doesNotMatch(serialized, /https?:\/\/|\.env|E:\\\\|10\.0\.0\.5|rsshub|tavily/i);
 

@@ -303,6 +303,9 @@ export function buildHoshiaNewsModuleContext(newsService, session) {
   ];
   if (state.safe_summary) currentState.push(`Safe news summary: ${state.safe_summary}.`);
   if (state.recent_signal) currentState.push(`Recent news signal: ${state.recent_signal}.`);
+  if (state.safe_summary || state.recent_signal) {
+    currentState.push(`Concrete news talk hook: Hoshia can react personally to ${state.safe_summary || state.recent_signal}, with a short opinion or joke instead of reporting it.`);
+  }
   for (const [index, title] of state.recent_titles.slice(0, 5).entries()) {
     currentState.push(`Recent topic ${index + 1}: ${title}.`);
   }
@@ -390,6 +393,11 @@ export function buildHoshiaLifeModuleContext(lifeSystem, session) {
   const recentEvents = Array.isArray(state.recent_events) ? state.recent_events.slice(0, 3) : [];
   for (const [index, event] of recentEvents.entries()) {
     currentState.push(`刚留下的生活片段 ${index + 1}：${formatEventLine(event)}。`);
+  }
+  if (state.active_event) {
+    currentState.push(`Concrete diary talk hook: ${formatEventLine(state.active_event)}; answer with one personal reaction, not a status label.`);
+  } else if (recentEvents.length) {
+    currentState.push(`Concrete diary talk hook: ${formatEventLine(recentEvents[0])}; use it as a small lived fragment if the room needs a new angle.`);
   }
   if (Array.isArray(state.current_focus_candidates) && state.current_focus_candidates.length) {
     currentState.push(`可以自然聊起的小话题：${state.current_focus_candidates.slice(0, 3).map((item) => cleanText(item, 80)).join("；")}。`);

@@ -27,6 +27,8 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   assert.match(server, /日记类回复规则/);
   assert.match(server, /可以轻轻扩写小记/);
   assert.match(server, /music_ack/);
+  assert.match(server, /高密度回复规则/);
+  assert.match(server, /Hoshia 侧的新信息/);
 });
 
 test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to speak", () => {
@@ -36,6 +38,7 @@ test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to spea
   assert.match(bridge, /不要为了证明自己在场而填补安静/);
   assert.match(bridge, /current_diary_event/);
   assert.match(bridge, /Current diary event/);
+  assert.match(bridge, /模块上下文是给 Hoshia 找话题用的材料/);
 });
 
 test("AstrBot bridge includes RSSHub and Tavily news topic capability", () => {
@@ -85,7 +88,7 @@ test("AstrBot bridge has proactive idle topic strategy", () => {
   assert.match(bridge, /具体、容易接的话题点/);
   assert.match(bridge, /今天的日常状态、最近经历、日记摘要/);
   assert.match(bridge, /不要说成真实旅行/);
-  assert.match(bridge, /不要只说小房间很安静/);
+  assert.match(bridge, /不要只说联系窗口很安静/);
   assert.match(bridge, /today light campus chat topic/);
 });
 
@@ -94,7 +97,9 @@ test("gateway proactive idle prompt prioritizes diary hooks over generic silence
 
   assert.match(server, /可用的主动话题钩子，按优先级排序/);
   assert.match(server, /Daily diary: \$\{line\}/);
+  assert.match(server, /Prefer a concrete diary, safe news, or module hook/);
+  assert.match(server, /Hoshia-side detail/);
   assert.match(server, /优先用日记钩子/);
-  assert.match(server, /不要只说小房间很安静/);
+  assert.match(server, /不要只说联系窗口很安静/);
   assert.match(server, /如果没有具体的日记、消息、音乐或近期聊天钩子/);
 });

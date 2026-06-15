@@ -105,8 +105,8 @@ Important options:
 - `HOSHIA_DAILY_POST_MIN` / `HOSHIA_DAILY_POST_MAX`: daily automatic post floor and cap; defaults to `1` and `5`.
 - `HOSHIA_STATE_POST_MIN_INTERVAL_MINUTES`: minimum spacing between automatic posts; defaults to `90`.
 - `HOSHIA_STATE_POST_ACTIVE_WINDOW_START` / `HOSHIA_STATE_POST_ACTIVE_WINDOW_END`: local active posting window for automatic posts; defaults to `10:00`-`23:50`.
-- `HOSHIA_NEWS_ENABLED`: enables the gateway-side safe news context switch; defaults to `false`.
-- `HOSHIA_NEWS_POST_ENABLED`: allows news topics to be used for automatic Hoshia timeline posts; defaults to `false`.
+- `HOSHIA_NEWS_ENABLED`: enables the gateway-side safe news context switch; defaults to `true`.
+- `HOSHIA_NEWS_POST_ENABLED`: allows news topics to be used for automatic Hoshia timeline posts; defaults to `true`.
 - `HOSHIA_NEWS_POST_DAILY_LIMIT`: maximum news-based Hoshia posts per day; defaults to `1`.
 - `HOSHIA_NEWS_SIGNAL_TTL_HOURS`: how long a recent news signal can be considered fresh; defaults to `6`.
 - `HOSHIA_NEWS_TOPIC_MAX_AGE_HOURS`: maximum age for news topics shown to Hoshia; defaults to `36`.

@@ -593,6 +593,8 @@ export function createHoshiaDailyPostCharacterEvent(post, session = null, {
 export function buildDailyPostContent(state = {}, now = new Date(), timeZone = defaultTimeZone, context = {}) {
   const currentState = normalizeVisualState(state);
   const rhythm = campusRhythmFor(asDate(now), timeZone);
+  const expressiveLine = expressiveDailyPostLine(currentState, rhythm, context);
+  if (expressiveLine) return cleanText(expressiveLine, 700);
   const campusLine = campusTemplateForState(currentState, rhythm, context);
   if (campusLine) return cleanText(campusLine, 700);
   const repeatCount = repeatedStatePostCount(context.recentPosts, currentState);
@@ -609,12 +611,152 @@ export function buildNewsTopicPostContent(topic = {}, state = {}, now = new Date
   if (!safeTopic) return "";
   const currentState = normalizeVisualState(state);
   const campusRhythm = campusRhythmFor(asDate(now), timeZone);
-  const campusTone = campusStateTone(currentState);
-  const campusHook = pickFirst(safeTopic.meme_hooks) || pickFirst(safeTopic.reply_hooks) || safeTopic.reaction_style;
-  const campusReaction = campusHook
-    ? `第一反应是「${campusHook}」，感觉很适合拿来当今晚宿舍聊天的开场。`
-    : `第一反应有点${safeTopic.reaction_style || "想吐槽"}，先贴在这里等晚点慢慢聊。`;
-  return cleanText(`${campusRhythm}${campusTone}看到一个话题：${safeTopic.post_seed}。${campusReaction} 你们会怎么接这句话？`, 700);
+  const subject = safeTopic.title || safeTopic.post_seed;
+  const categoryLine = safeTopic.category ? `#${safeTopic.category}` : "#today";
+  const campusHook = pickFirst(safeTopic.meme_hooks)
+    || pickFirst(safeTopic.reply_hooks)
+    || safeTopic.conversation_starter
+    || safeTopic.reaction_style;
+  const reaction = campusHook
+    ? `第一反应不是播报，是想把「${campusHook}」贴到宿舍群里等人接梗。`
+    : `第一反应有点${safeTopic.reaction_style || "想吐槽"}，先记下来，晚点再慢慢吵。`;
+  const stateLead = expressiveStateLead(currentState);
+  return cleanText(`${campusRhythm}${stateLead}刷到「${subject}」 ${categoryLine}。${reaction} ${safeTopic.post_seed}。你们要是接这句，会从哪里开始歪？`, 700);
+}
+
+function expressiveDailyPostLine(state = {}, rhythm = "", context = {}) {
+  const repeatCount = repeatedStatePostCount(context.recentPosts, state);
+  const event = expressiveEventHook(normalizeDiaryEvent(context.diaryEvent), state, repeatCount);
+  const index = normalizeSequence(context.sequence) + repeatCount;
+  const lead = event || expressiveStateMoment(state, rhythm, index);
+  if (!lead) return "";
+  return `${lead} ${expressiveTailQuestion(state, index)}`;
+}
+
+function expressiveStateMoment(state = {}, rhythm = "", index = 1) {
+  const again = index > 2 ? "又翻到一个小片段：" : "";
+  const pools = {
+    gaming: [
+      `${rhythm}${again}排位那一下我还在脑内回放，键盘都被我盯得像证人。嘴上说算了，手指已经偷偷复盘第三遍了。`,
+      `${rhythm}${again}游戏脑还没退场，耳机线绕在水杯边上，像在提醒我别把胜负欲带进宿舍。`
+    ],
+    sports: [
+      `${rhythm}${again}从操场回来以后腿比嘴诚实，水杯空了半个，奶油苏打的幻想倒是很满。`,
+      `${rhythm}${again}训练后的风吹完，人清醒了一点，就是站起来这件事暂时被我列为高难度副本。`
+    ],
+    otaku: [
+      `${rhythm}${again}刚翻到一段角色讨论，差点把枕头举起来给全宿舍看，理智把我按回椅子上。`,
+      `${rhythm}${again}新番和评论区一起把我拽走五分钟，回来发现便签上只剩一个很嚣张的问号。`
+    ],
+    thinking: [
+      `${rhythm}${again}便签贴了半张桌子，书签也开始排队，课业和你的消息窗口像两个标签页互相抢我注意力。`,
+      `${rhythm}${again}我在整理今天的计划，杯子、耳机、草稿纸都摆成了很像认真学习的样子。`
+    ],
+    sleepy: [
+      `${rhythm}${again}宿舍灯刚刚好，键盘灯也像快睡着了，我现在是低电量但还想偷看一眼弹幕的状态。`,
+      `${rhythm}${again}眼皮在打折出售，脑子还倔强地开着一个小标签页，标题叫“再撑五分钟”。`
+    ],
+    happy: [
+      `${rhythm}${again}今天心情有点轻，桌角贴纸都顺眼了，尾巴大概已经先替我摇了两下。`,
+      `${rhythm}${again}刚刚哼歌被自己抓包，装淡定失败，耳机比我更像共犯。`
+    ],
+    emo: [
+      `${rhythm}${again}情绪有点低电量，台灯调暗以后，连瓶盖滚到桌边都像在提醒我慢一点。`,
+      `${rhythm}${again}我把屏幕亮度往下按了一格，心里那点乱也跟着小声了一点，不算好，但能坐住。`
+    ]
+  };
+  const options = pools[state.activity] || [
+    `${rhythm}${again}今天没有大事件，只有杯子、便签、屏幕角落和一点慢慢冒出来的话。`
+  ];
+  return options[index % options.length];
+}
+
+function expressiveEventHook(event, state = {}, repeatCount = 0) {
+  if (!event) return "";
+  const byType = {
+    room_activity: [
+      "刚整理星港小窗的时候翻到一条没接住的话，像夹在便签下面的小纸条，我先把它放回桌面上。",
+      "宿舍桌面的小东西挪了一轮，结果我自己先卡在椅子里，像被待办清单反向收纳了。"
+    ],
+    random_detail: [
+      "刚才有个很小的画面路过，没什么用，但它偏要留在脑子里，像桌角那点擦不掉的铅笔印。",
+      "窗外那点光落下来时，我差点把要说的话忘干净，幸好耳机线替我绊了一下。"
+    ],
+    campus_life: [
+      "课业处理到一半，突然很想把杯子也排整齐，仿佛这样脑子里的标签页也能少两个。",
+      "便签纸换了个位置，事情好像就没那么乱了。虽然大概率只是我在骗自己。"
+    ],
+    interest_intake: [
+      "本来只是随手看一眼讨论，结果脑内已经开始排队发言，吵得我差点忘了喝水。",
+      "有个作品评论我想反驳三句，最后只默默多看了两眼，像在攒一个晚点再吵的小雷。"
+    ],
+    anime_game: [
+      "刚才那一步越想越不服气。先记着，下次不许再手慢，我对自己的嘴硬程度很有信心。",
+      "游戏复盘到一半，突然发现自己嘴硬得很明显，键盘都快替我笑出来了。"
+    ],
+    sport: [
+      "坐下来的时候才发现腿比嘴诚实，今天先慢慢回血，别让操场风把我吹成空壳。",
+      "水杯空了半个，体力也空了半格，很公平，就是我本人不太服。"
+    ],
+    private_mood: [
+      "灯暗一点以后，人也跟着安静下来。没什么大事，就是想把自己放小一点。",
+      "情绪像没拧紧的瓶盖，先不碰它，让它在桌边自己滚一会儿。"
+    ],
+    user_related: [
+      "刚刚那句弹幕还在屏幕边上，像被轻轻戳了一下，我嘴上没说，耳朵已经知道了。",
+      "有人从屏幕另一边冒泡以后，宿舍灯都没刚才那么空。我先装作只是刚好在线。"
+    ]
+  };
+  const options = byType[event.type] || [];
+  return options[repeatCount % Math.max(options.length, 1)] || "";
+}
+
+function expressiveTailQuestion(state = {}, index = 1) {
+  const tails = {
+    gaming: [
+      "你们遇到这种局会立刻复盘，还是先嘴硬十分钟？",
+      "要是你接这局，会先骂手感还是先怪匹配？"
+    ],
+    sports: [
+      "有人现在也在回血吗，借我一点站起来的意志力。",
+      "你们运动后第一口想喝什么，我现在很容易被说服。"
+    ],
+    otaku: [
+      "你们最近有哪句角色台词会突然卡在脑子里吗？",
+      "如果我开个小讨论，你们会先聊剧情还是先聊人设？"
+    ],
+    thinking: [
+      "你们整理东西是越整越清醒，还是越整越想逃？",
+      "谁来接一句，我现在很需要一个不那么像待办的开头。"
+    ],
+    sleepy: [
+      "如果我说再撑五分钟，你们会信吗？",
+      "有人也在低电量在线吗，接一句就算互相充电。"
+    ],
+    happy: [
+      "你们今天有没有一个很小但很顺眼的瞬间？",
+      "快接一句，不然我就要把这点小开心藏到抽屉里了。"
+    ],
+    emo: [
+      "你们低电量的时候会找人说话，还是先把灯调暗？",
+      "谁来轻轻接一句，别太响，我现在听得见。"
+    ]
+  };
+  const options = tails[state.activity] || [
+    "你们那边现在有什么小事正在发生吗？",
+    "随便接一句也行，我想听点活人的声音。"
+  ];
+  return options[index % options.length];
+}
+
+function expressiveStateLead(state = {}) {
+  if (state.activity === "sleepy" || state.energy <= 30) return "困到反应慢半拍，";
+  if (state.activity === "happy" || state.mood === "playful") return "尾巴已经先笑出来了，";
+  if (state.activity === "thinking" || state.mood === "focused") return "认真想了一下，";
+  if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一会儿，结果还是被抓到了，";
+  if (state.activity === "gaming") return "刚从胜负欲里抬头，";
+  if (state.activity === "otaku") return "二次元雷达动了一下，";
+  return "坐在星见大学宿舍桌边，";
 }
 
 export function dayKeyFor(value = new Date(), timeZone = defaultTimeZone) {
@@ -689,7 +831,7 @@ function campusBaseLineForState(state, rhythm, repeatCount = 0) {
     thinking: `${rhythm}${again}适合慢慢想事情，先把散掉的想法排成队。`,
     emo: `${rhythm}${again}先低功耗待机一下，等心里的风慢慢停。`
   };
-  return fallback[state.activity] || `${rhythm}${again}没有安排很大的事，就在星见大学的日常和宿舍小房间之间慢慢待着。`;
+  return fallback[state.activity] || `${rhythm}${again}没有安排很大的事，就在星见大学的日常和宿舍桌边之间慢慢待着。`;
 }
 
 function campusEventLine(event, repeatCount = 0) {
@@ -714,8 +856,8 @@ function campusEventPostLine(event, state = {}, repeatCount = 0) {
   if (!event) return "";
   const byType = {
     room_activity: [
-      "整理小房间的时候翻到一条没说完的话，先压在便签下面。晚点醒一点再讲。",
-      "刚才把直播间的小东西挪了挪，结果自己先困在椅子里了。",
+      "整理星港小窗的时候翻到一条没说完的话，先压在便签下面。晚点醒一点再讲。",
+      "刚才把宿舍桌面的小东西挪了挪，结果自己先困在椅子里了。",
       "桌面收了一半，话题也收了一半，剩下的等我回血。"
     ],
     random_detail: [
@@ -816,7 +958,7 @@ function campusStateTone(state) {
   if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一会儿，结果还是被抓到了，";
   if (state.activity === "gaming") return "刚从胜负欲里抬头，";
   if (state.activity === "otaku") return "二次元雷达动了一下，";
-  return "窝在宿舍小房间里，";
+  return "坐在星见大学宿舍桌边，";
 }
 
 function listDailyPostsForDate({ db, now, limit, timeZone }) {
@@ -892,6 +1034,9 @@ function normalizeNewsTopic(topic = {}, now = new Date()) {
   if (!reactionStyle && memeHooks.length === 0 && replyHooks.length === 0) return null;
 
   return {
+    title: cleanText(topic.title, 120),
+    category: cleanIdentifier(topic.category, 48),
+    conversation_starter: cleanText(topic.conversation_starter ?? topic.conversationStarter, 120),
     post_seed: postSeed,
     reaction_style: reactionStyle,
     meme_hooks: memeHooks,
@@ -938,7 +1083,7 @@ function newsTopicStateTone(state) {
   if (state.activity === "emo" || state.social_need >= 75) return "本来想安静一下，结果还是被戳到了，";
   if (state.activity === "gaming") return "刚从胜负欲里抬头，";
   if (state.activity === "otaku") return "二次元雷达动了一下，";
-  return "窝在宿舍小房间里，";
+  return "坐在星见大学宿舍桌边，";
 }
 
 function reactionLineForNewsTopic(topic, hook) {
@@ -1349,7 +1494,7 @@ function templateForState(state, rhythm) {
   if (state.activity === "happy") return `今天${rhythm}心情明亮一点，连桌面上的小物都看起来很顺眼。`;
   if (state.activity === "thinking") return `今天${rhythm}适合慢慢想事情，先把散掉的想法排成队。`;
   if (state.activity === "emo") return `今天${rhythm}先低功耗待机一下，等心里的风慢慢停。`;
-  return `今天${rhythm}没有安排很大的事，就在宿舍小房间和自己的小桌面之间慢慢待着。`;
+  return `今天${rhythm}没有安排很大的事，就在宿舍桌边和自己的小桌面之间慢慢待着。`;
 }
 
 function repeatedStatePostCount(posts = [], state = {}) {
@@ -1410,7 +1555,7 @@ function diaryEventLabel(event, state = {}) {
     anime_game: "游戏和二次元念头",
     social: "想和人说话的时刻",
     private_mood: "安静低电量的小情绪",
-    room_activity: "小房间整理",
+    room_activity: "星港小窗整理",
     random_detail: "路过的小细节",
     interest_intake: "刚刚看过的兴趣话题",
     user_related: "特殊网友来过的痕迹"
