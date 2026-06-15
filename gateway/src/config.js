@@ -75,6 +75,7 @@ export const config = {
   hoshiaNewsPostDailyLimit: Number(process.env.HOSHIA_NEWS_POST_DAILY_LIMIT || 1),
   hoshiaNewsSignalTtlHours: Number(process.env.HOSHIA_NEWS_SIGNAL_TTL_HOURS || 6),
   hoshiaNewsTopicMaxAgeHours: Number(process.env.HOSHIA_NEWS_TOPIC_MAX_AGE_HOURS || 36),
+  hoshiaNewsBridgeMode: enumValue(process.env.HOSHIA_NEWS_BRIDGE_MODE || "", ["", "mock", "astrbot", "hoshiaclaw"], ""),
   musicEnabled: parseBool(process.env.MUSIC_ENABLED, false),
   musicProvider: enumValue(process.env.MUSIC_PROVIDER || "xiaomusic", ["xiaomusic"], "xiaomusic"),
   musicProviderBaseUrl: process.env.MUSIC_PROVIDER_BASE_URL || "",

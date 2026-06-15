@@ -263,7 +263,11 @@ export function normalizeHoshiaNewsConfig(config = {}) {
     maxAgeMinutes,
     maxAgeMs: maxAgeMinutes * 60 * 1000,
     bridgeOptions: {
-      aiMode: String(config.aiMode || config.AI_MODE || "mock"),
+      aiMode: normalizeBridgeMode(firstDefined(
+        config.hoshiaNewsBridgeMode,
+        config.newsBridgeMode,
+        config.HOSHIA_NEWS_BRIDGE_MODE
+      ), config.aiMode || config.AI_MODE || "mock"),
       roomId: String(config.roomId || config.ROOM_ID || "private-pixel-live").slice(0, 80),
       astrbotBridgeUrl: String(config.astrbotBridgeUrl || config.ASTRBOT_BRIDGE_URL || ""),
       astrbotBridgeToken: String(config.astrbotBridgeToken || config.ASTRBOT_BRIDGE_TOKEN || ""),
@@ -462,6 +466,13 @@ function parseBool(value, fallback) {
   if (value === undefined || value === "") return fallback;
   if (typeof value === "boolean") return value;
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
+function normalizeBridgeMode(value, fallback) {
+  const mode = String(value || "").trim().toLowerCase();
+  if (["mock", "astrbot", "hoshiaclaw"].includes(mode)) return mode;
+  const fallbackMode = String(fallback || "").trim().toLowerCase();
+  return ["mock", "astrbot", "hoshiaclaw"].includes(fallbackMode) ? fallbackMode : "mock";
 }
 
 function firstDefined(...values) {

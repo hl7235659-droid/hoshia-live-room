@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   HoshiaNewsService,
+  normalizeHoshiaNewsConfig,
   sanitizeNewsStatus,
   sanitizeNewsTopic,
   sanitizeNewsTopics
@@ -89,6 +90,23 @@ test("news service disabled mode avoids bridge calls", async () => {
   assert.equal((await service.refresh()).reason, "news_disabled");
   assert.equal((await service.status()).enabled, false);
   assert.deepEqual((await service.topics()).topics, []);
+});
+
+test("news bridge mode can target AstrBot while main AI mode uses HoshiaClaw", () => {
+  const config = normalizeHoshiaNewsConfig({
+    hoshiaNewsEnabled: true,
+    aiMode: "hoshiaclaw",
+    hoshiaNewsBridgeMode: "astrbot",
+    roomId: "live-room-dev",
+    astrbotBridgeUrl: "http://astrbot:18081/live-room/generate",
+    astrbotBridgeToken: "secret-token",
+    hoshiaClawBridgeUrl: "http://live-room-hoshiaclaw:8080/live-room/generate",
+    hoshiaClawBridgeToken: "other-token"
+  });
+
+  assert.equal(config.bridgeOptions.aiMode, "astrbot");
+  assert.equal(config.bridgeOptions.roomId, "live-room-dev");
+  assert.equal(config.bridgeOptions.astrbotBridgeUrl, "http://astrbot:18081/live-room/generate");
 });
 
 test("news service returns safe bridge unavailable result", async () => {
