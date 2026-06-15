@@ -19,6 +19,7 @@ const awakeningFinalBgUrl = appPath("assets/hoshia-awakening-final-bg.jpg");
 const introStorageKey = "hoshia:lastRegisteredUsername";
 const autoLoginStorageKey = "hoshia:autoLogin:v1";
 const maxHistoryMessages = 100;
+type HistoryDrawerState = "closed" | "normal" | "expanded";
 
 type GameCatalogItem = {
   id: string;
@@ -2080,7 +2081,7 @@ function BottomDock({
   onSendStart: () => void;
   onDemoSend?: (text: string) => void;
 }) {
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyMode, setHistoryMode] = useState<HistoryDrawerState>("normal");
   const [musicOpen, setMusicOpen] = useState(false);
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [text, setText] = useState("");
@@ -2089,17 +2090,18 @@ function BottomDock({
   const onlineMembers = (audience?.users || []).filter((user) => user.online && user.nickname !== nickname);
 
   function toggleHistory() {
-    setHistoryOpen((current) => {
-      const next = !current;
-      if (next) setMusicOpen(false);
-      return next;
+    setHistoryMode((current) => {
+      setMusicOpen(false);
+      if (current === "closed") return "normal";
+      if (current === "normal") return "expanded";
+      return "closed";
     });
   }
 
   function toggleMusic() {
     setMusicOpen((current) => {
       const next = !current;
-      if (next) setHistoryOpen(false);
+      if (next) setHistoryMode("closed");
       return next;
     });
   }
@@ -2134,26 +2136,27 @@ function BottomDock({
   }
 
   const canSend = (socketStatus === "live" || socketStatus === "demo") && Boolean(text.trim());
+  const historyVisible = historyMode !== "closed";
+  const historyExpanded = historyMode === "expanded";
+  const historyToggleLabel = historyMode === "closed" ? "展开留言" : historyMode === "normal" ? "展开更多留言" : "收起留言";
 
   return (
-    <section className={`bottom-dock ${historyOpen ? "history-open" : ""} ${musicOpen ? "music-open" : ""}`} aria-label="留言栏">
-      <section className={`history-drawer ${historyOpen || musicOpen ? "open" : ""} ${musicOpen ? "music-active" : ""}`} aria-label="留言记录">
+    <section className={`bottom-dock ${historyVisible ? "history-open" : ""} ${historyExpanded ? "history-expanded" : ""} ${musicOpen ? "music-open" : ""}`} aria-label="留言栏">
+      <section className={`history-drawer ${historyVisible || musicOpen ? "open" : ""} ${historyExpanded ? "expanded" : ""} ${musicOpen ? "music-active" : ""}`} aria-label="留言记录">
         <div className="history-header">
           <button
             type="button"
             className="history-toggle"
-            aria-expanded={historyOpen}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              toggleHistory();
-            }}
+            aria-expanded={historyVisible}
+            aria-label={historyToggleLabel}
+            onClick={toggleHistory}
             onKeyDown={(event) => {
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
               toggleHistory();
             }}
           >
-            {historyOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            {historyMode === "expanded" ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
             <span>留言</span>
           </button>
           <button
@@ -2178,7 +2181,7 @@ function BottomDock({
             playbackNotice={musicPlaybackNotice}
             expanded={musicOpen}
           />
-        ) : historyOpen ? (
+        ) : historyVisible ? (
           <DanmakuHistory messages={messages} onMention={insertMention} />
         ) : null}
       </section>

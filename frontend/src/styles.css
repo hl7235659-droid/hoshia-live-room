@@ -49,11 +49,18 @@ button:disabled {
   width: 100%;
   max-width: 100vw;
   min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: stretch;
   padding: 0;
   overflow: hidden;
+  --app-height: 100vh;
+  --app-height: 100svh;
+  --app-height: 100dvh;
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
 }
 
 .live-phone,
@@ -62,6 +69,7 @@ button:disabled {
   max-width: 430px;
   min-width: 0;
   min-height: 100vh;
+  min-height: var(--app-height);
   box-shadow: 0 28px 80px rgba(34, 115, 163, 0.2);
   overflow: hidden;
 }
@@ -70,10 +78,19 @@ button:disabled {
   position: relative;
   isolation: isolate;
   height: 100vh;
+  height: var(--app-height);
   background: #9ee7ff;
-  --control-x: 18px;
-  --control-bottom: max(14px, env(safe-area-inset-bottom));
-  --control-height: 94px;
+  --control-x: clamp(12px, 4.2vw, 18px);
+  --control-bottom: max(10px, var(--safe-bottom));
+  --sendbar-height: clamp(58px, 11dvh, 70px);
+  --control-status-height: 20px;
+  --control-height: calc(var(--sendbar-height) + var(--control-status-height));
+  --dock-expanded-height: clamp(154px, 33dvh, 224px);
+  --dock-history-expanded-height: min(75dvh, calc(var(--app-height) - var(--stage-safe-top) - 24px));
+  --dock-height: var(--control-height);
+  --stage-safe-top: max(76px, calc(68px + var(--safe-top)));
+  --stage-safe-bottom: calc(var(--dock-height) + var(--control-bottom) + 18px);
+  --character-stage-bottom: max(0px, var(--safe-bottom));
 }
 
 .live-phone::before {
@@ -581,10 +598,10 @@ button:disabled {
 .timeline-open-link {
   position: absolute;
   z-index: 14;
-  left: 14px;
-  top: 224px;
-  width: 42px;
-  height: 46px;
+  left: clamp(10px, 3.5vw, 14px);
+  top: clamp(158px, 31dvh, 224px);
+  width: clamp(38px, 11vw, 42px);
+  height: clamp(40px, 11.5vw, 46px);
   border: 1px solid rgba(255, 127, 186, 0.3);
   display: grid;
   place-items: center;
@@ -1365,9 +1382,9 @@ button:disabled {
 .stage-headline {
   position: absolute;
   z-index: 6;
-  top: 116px;
+  top: clamp(86px, 16dvh, 116px);
   left: 16px;
-  max-width: 210px;
+  max-width: min(210px, calc(100% - 96px));
   pointer-events: none;
 }
 
@@ -1433,10 +1450,15 @@ button:disabled {
 
 .live2d-adapter {
   position: absolute;
-  inset: 76px 0 108px;
+  top: var(--stage-safe-top);
+  right: 0;
+  bottom: var(--character-stage-bottom);
+  left: 0;
   z-index: 2;
   display: grid;
   place-items: end center;
+  min-height: 180px;
+  overflow: hidden;
 }
 
 .live2d-canvas-host {
@@ -1482,7 +1504,7 @@ button:disabled {
   position: absolute;
   z-index: 1;
   left: 50%;
-  bottom: 126px;
+  bottom: clamp(72px, 17dvh, 126px);
   width: min(58vw, 230px);
   height: min(58vw, 230px);
   border: 2px solid rgba(255, 255, 255, 0.68);
@@ -1500,7 +1522,7 @@ button:disabled {
   position: absolute;
   z-index: 1;
   left: 50%;
-  bottom: 78px;
+  bottom: clamp(38px, 10dvh, 78px);
   width: min(54vw, 246px);
   height: 34px;
   border-radius: 999px;
@@ -1515,7 +1537,7 @@ button:disabled {
   z-index: 3;
   width: min(102vw, 430px);
   max-width: 108%;
-  max-height: 118%;
+  max-height: min(118%, calc(var(--app-height) - var(--stage-safe-top) - var(--character-stage-bottom) - 8px));
   object-fit: contain;
   object-position: center bottom;
   user-select: none;
@@ -1600,7 +1622,10 @@ button:disabled {
 
 .stage-danmaku {
   position: absolute;
-  inset: 76px 0 120px;
+  top: var(--stage-safe-top);
+  right: 0;
+  bottom: var(--stage-safe-bottom);
+  left: 0;
   z-index: 1;
   overflow: hidden;
   pointer-events: none;
@@ -1640,7 +1665,7 @@ button:disabled {
 }
 
 .history-drawer {
-  --dock-panel-height: 190px;
+  --dock-panel-height: calc(var(--dock-expanded-height) - var(--control-height));
   position: relative;
   z-index: 1;
   width: 100%;
@@ -1658,13 +1683,23 @@ button:disabled {
 .history-drawer.open {
   height: var(--dock-panel-height);
   min-height: 0;
+  max-height: var(--dock-panel-height);
+}
+
+.history-drawer.expanded {
+  --dock-panel-height: calc(var(--dock-history-expanded-height) - var(--control-height));
+  height: var(--dock-panel-height);
+  max-height: var(--dock-panel-height);
 }
 
 .history-drawer.music-active {
   height: var(--dock-panel-height);
+  max-height: var(--dock-panel-height);
 }
 
 .history-header {
+  position: relative;
+  z-index: 3;
   width: 100%;
   min-width: 0;
   height: 30px;
@@ -2121,13 +2156,13 @@ button:disabled {
 
 .sendbar {
   position: relative;
-  min-height: 70px;
+  min-height: var(--sendbar-height);
   margin: 0;
-  padding: 10px 12px 3px;
+  padding: clamp(6px, 1.6dvh, 10px) clamp(8px, 3vw, 12px) 2px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 48px;
+  grid-template-columns: auto minmax(0, 1fr) clamp(42px, 12vw, 48px);
   align-items: center;
-  gap: 8px;
+  gap: clamp(6px, 2vw, 8px);
   background: transparent;
   border: 0;
 }
@@ -2152,7 +2187,8 @@ button:disabled {
   right: var(--control-x);
   bottom: var(--control-bottom);
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: minmax(0, auto) auto;
+  max-height: min(var(--dock-expanded-height), calc(var(--app-height) - var(--stage-safe-top) - 38px));
   overflow: visible;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(230, 249, 255, 0.42)),
@@ -2162,6 +2198,25 @@ button:disabled {
   border-radius: 18px;
   box-shadow: 0 12px 30px rgba(34, 115, 163, 0.18);
   pointer-events: auto;
+}
+
+.bottom-dock.history-open,
+.bottom-dock.music-open {
+  height: min(var(--dock-expanded-height), calc(var(--app-height) - var(--stage-safe-top) - 38px));
+}
+
+.bottom-dock.history-expanded {
+  height: var(--dock-history-expanded-height);
+  max-height: var(--dock-history-expanded-height);
+}
+
+.live-phone:has(.bottom-dock.history-open),
+.live-phone:has(.bottom-dock.music-open) {
+  --dock-height: var(--dock-expanded-height);
+}
+
+.live-phone:has(.bottom-dock.history-expanded) {
+  --dock-height: var(--dock-history-expanded-height);
 }
 
 .music-room {
@@ -2416,8 +2471,8 @@ button:disabled {
 }
 
 .sendbar input {
-  height: 50px;
-  padding: 0 14px;
+  height: clamp(42px, 8.5dvh, 50px);
+  padding: 0 clamp(10px, 3.5vw, 14px);
   border: 2px solid rgba(43, 127, 169, 0.38);
   border-radius: 16px;
   color: #172033;
@@ -2427,8 +2482,8 @@ button:disabled {
 }
 
 .sendbar button {
-  width: 48px;
-  height: 48px;
+  width: clamp(42px, 12vw, 48px);
+  height: clamp(42px, 8.5dvh, 48px);
   display: grid;
   place-items: center;
   border-radius: 16px;
@@ -2437,8 +2492,8 @@ button:disabled {
 
 .mention-combo {
   position: relative;
-  width: 76px;
-  height: 48px;
+  width: clamp(66px, 20vw, 76px);
+  height: clamp(42px, 8.5dvh, 48px);
   display: inline-flex;
   align-items: stretch;
   border-radius: 16px;
@@ -2446,8 +2501,8 @@ button:disabled {
 }
 
 .sendbar .mention-expand {
-  width: 34px;
-  flex: 0 0 34px;
+  width: clamp(29px, 9vw, 34px);
+  flex: 0 0 clamp(29px, 9vw, 34px);
   border-radius: 16px 0 0 16px;
   border-right: 0;
   background: rgba(216, 245, 255, 0.82);
@@ -2455,9 +2510,9 @@ button:disabled {
 }
 
 .sendbar .mention-hoshia {
-  width: 42px;
-  min-width: 42px;
-  flex: 0 0 42px;
+  width: clamp(37px, 11vw, 42px);
+  min-width: clamp(37px, 11vw, 42px);
+  flex: 0 0 clamp(37px, 11vw, 42px);
   padding: 0;
   border-radius: 0 16px 16px 0;
   color: #294b60;
@@ -2474,9 +2529,9 @@ button:disabled {
 .mention-picker {
   position: absolute;
   left: 0;
-  bottom: 48px;
+  bottom: clamp(42px, 8.5dvh, 48px);
   width: 100%;
-  max-height: 210px;
+  max-height: min(210px, calc(var(--app-height) - var(--stage-safe-top) - var(--dock-height) - 24px));
   padding: 7px;
   display: grid;
   gap: 6px;
@@ -2544,8 +2599,8 @@ button:disabled {
 }
 
 .control-status {
-  min-height: 18px;
-  padding: 0 14px 6px;
+  min-height: var(--control-status-height);
+  padding: 0 clamp(10px, 3.5vw, 14px) 4px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2925,7 +2980,82 @@ button:disabled {
 
   .timeline-open-link {
     left: 10px;
-    top: 218px;
+    top: clamp(150px, 30dvh, 212px);
+  }
+}
+
+@media (max-height: 700px) {
+  .live-phone {
+    --control-x: clamp(10px, 3.5vw, 14px);
+    --sendbar-height: clamp(54px, 10dvh, 62px);
+    --control-status-height: 18px;
+    --dock-expanded-height: clamp(132px, 30dvh, 188px);
+    --stage-safe-top: max(68px, calc(60px + var(--safe-top)));
+    --stage-safe-bottom: calc(var(--dock-height) + var(--control-bottom) + 12px);
+  }
+
+  .overlay-top {
+    min-height: 68px;
+    padding-top: max(8px, var(--safe-top));
+    padding-bottom: 6px;
+  }
+
+  .stage-headline {
+    top: clamp(78px, 15dvh, 96px);
+  }
+
+  .timeline-open-link {
+    top: clamp(132px, 28dvh, 184px);
+  }
+
+  .game-open-link {
+    top: clamp(182px, 38dvh, 232px);
+  }
+
+  .history-drawer {
+    height: 28px;
+    grid-template-rows: 28px minmax(0, 1fr);
+  }
+
+  .history-header,
+  .history-toggle,
+  .music-header-toggle {
+    height: 28px;
+  }
+}
+
+@media (max-height: 600px) {
+  .live-phone {
+    --sendbar-height: 52px;
+    --control-status-height: 16px;
+    --dock-expanded-height: 132px;
+    --stage-safe-top: max(62px, calc(56px + var(--safe-top)));
+  }
+
+  .animated-stage-title {
+    font-size: 24px;
+  }
+
+  .stage-headline {
+    top: 74px;
+  }
+
+  .timeline-open-link,
+  .game-open-link {
+    width: 38px;
+    height: 40px;
+  }
+
+  .timeline-open-link {
+    top: 128px;
+  }
+
+  .game-open-link {
+    top: 174px;
+  }
+
+  .sendbar input {
+    font-size: 14px;
   }
 }
 
@@ -4788,10 +4918,10 @@ button:disabled {
 .game-open-link {
   position: absolute;
   z-index: 14;
-  left: 14px;
-  top: 278px;
-  width: 42px;
-  height: 46px;
+  left: clamp(10px, 3.5vw, 14px);
+  top: clamp(204px, 42dvh, 278px);
+  width: clamp(38px, 11vw, 42px);
+  height: clamp(40px, 11.5vw, 46px);
   padding: 0;
   border: 1px solid rgba(68, 245, 255, 0.42);
   border-radius: 16px;
@@ -6071,7 +6201,7 @@ button:disabled {
 @media (max-width: 380px) {
   .game-open-link {
     left: 10px;
-    top: 270px;
+    top: clamp(194px, 40dvh, 256px);
   }
 
   .game-launcher-backdrop {
@@ -6158,6 +6288,8 @@ button:disabled {
 
 /* Login glass redesign */
 .login-shell {
+  min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
   align-items: center;
   padding: clamp(18px, 4vw, 44px);
@@ -6256,7 +6388,7 @@ button:disabled {
   max-width: 390px;
   min-height: min(90vw, 390px);
   height: auto;
-  max-height: calc(100dvh - 36px);
+  max-height: calc(var(--app-height) - 36px);
   margin: 0;
   padding: clamp(22px, 5vw, 30px);
   display: grid;
@@ -6372,8 +6504,8 @@ button:disabled {
 
 .login-shell .login-card form {
   display: grid;
-  gap: 14px;
-  padding-top: 12px;
+  gap: clamp(10px, 2dvh, 14px);
+  padding-top: clamp(8px, 1.8dvh, 12px);
   border-top: 0;
 }
 
@@ -6400,8 +6532,8 @@ button:disabled {
 }
 
 .login-shell .auth-switch {
-  height: 42px;
-  padding: 0 0 10px;
+  height: clamp(36px, 7dvh, 42px);
+  padding: 0 0 clamp(6px, 1.6dvh, 10px);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
@@ -6413,7 +6545,7 @@ button:disabled {
 }
 
 .login-shell .login-card .auth-switch button {
-  height: 32px;
+  height: clamp(28px, 5.8dvh, 32px);
   border: 0;
   border-radius: 0;
   color: rgba(255, 255, 255, 0.6);
@@ -6429,7 +6561,7 @@ button:disabled {
 }
 
 .login-shell .login-card label {
-  gap: 8px;
+  gap: clamp(5px, 1.4dvh, 8px);
 }
 
 .login-shell .login-card label span {
@@ -6441,7 +6573,7 @@ button:disabled {
 }
 
 .login-shell .login-card input {
-  height: 48px;
+  height: clamp(40px, 8dvh, 48px);
   padding: 0 2px;
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.38);
@@ -6468,7 +6600,7 @@ button:disabled {
 
 .login-shell .login-card .inline-code-button {
   min-width: 108px;
-  height: 42px;
+  height: clamp(38px, 7.2dvh, 42px);
   padding: 0 12px;
   color: rgba(255, 255, 255, 0.88);
   background: rgba(255, 255, 255, 0.12);
@@ -6476,7 +6608,7 @@ button:disabled {
 }
 
 .login-shell .login-card button {
-  height: 50px;
+  height: clamp(42px, 8.5dvh, 50px);
   border: 0;
   border-radius: 0;
   color: rgba(255, 255, 255, 0.96);
@@ -6627,11 +6759,48 @@ button:disabled {
   .login-shell .login-card {
     width: min(92vw, 390px);
     min-height: auto;
-    max-height: calc(100dvh - 32px);
+    max-height: calc(var(--app-height) - 32px);
     padding: 24px 20px;
     align-content: start;
   }
 
+}
+
+@media (max-height: 640px) {
+  .login-shell {
+    padding: 12px;
+  }
+
+  .login-shell .login-card {
+    min-height: auto;
+    max-height: calc(var(--app-height) - 24px);
+    padding: 20px 18px 28px;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .login-glass-header {
+    gap: 10px;
+  }
+
+  .login-title-copy > span {
+    margin-bottom: 5px;
+  }
+
+  .login-shell .login-card h1 {
+    font-size: 34px;
+  }
+
+  .login-shell .login-card p {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .login-presence {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
 }
 
 @media (max-width: 319px) {
