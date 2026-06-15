@@ -347,7 +347,7 @@ export async function refreshNewsTopics(options, payload = {}, fetchImpl = globa
     fetchImpl,
     "news_refresh"
   );
-  if (!body?.ok) {
+  if (!body?.ok && body?.accepted !== true && body?.already_running !== true) {
     throw new Error(`astrbot_news_refresh_${body?.error || "failed"}`);
   }
   return body;

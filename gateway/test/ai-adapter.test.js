@@ -585,6 +585,24 @@ test("news adapter refresh uses dedicated bridge endpoint", async () => {
   assert.equal(result.stage, "queued");
 });
 
+test("news adapter refresh accepts queued background jobs", async () => {
+  const result = await refreshNewsTopics(
+    baseConfig,
+    { force: false, reason: "startup" },
+    async () => responseJson(202, {
+      ok: false,
+      accepted: true,
+      running: true,
+      stage: "queued",
+      topic_count: 0
+    })
+  );
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.running, true);
+  assert.equal(result.stage, "queued");
+});
+
 test("news adapter status uses dedicated bridge endpoint", async () => {
   const result = await getNewsRefreshStatus(baseConfig, {}, async (url, options) => {
     assert.equal(url, "http://astrbot:18081/live-room/capabilities/news/status");
