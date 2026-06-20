@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+const serverSource = [
+  readFileSync(new URL("../src/server.js", import.meta.url), "utf8"),
+  readFileSync(new URL("../src/hoshia-interaction-controller.js", import.meta.url), "utf8")
+].join("\n");
 
 test("character core routes comment live through HoshiaClaw while preserving AstrBot rollback", () => {
   assert.match(serverSource, /if \(!\["astrbot", "hoshiaclaw"\]\.includes\(config\.aiMode\)\) return "";/);
