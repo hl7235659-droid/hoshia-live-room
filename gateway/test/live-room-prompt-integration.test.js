@@ -6,9 +6,13 @@ test("gateway prompt wiring includes Hoshia persona and host life context", () =
   const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const musicDanmakuController = readFileSync(new URL("../src/music-danmaku-controller.js", import.meta.url), "utf8");
   const proactiveLiveRoomController = readFileSync(new URL("../src/proactive-live-room-controller.js", import.meta.url), "utf8");
+  const liveAiReplyController = readFileSync(new URL("../src/live-ai-reply-controller.js", import.meta.url), "utf8");
+  const dailyOpsController = readFileSync(new URL("../src/hoshia-daily-ops-controller.js", import.meta.url), "utf8");
   const gatewayPromptWiring = `${server}
 ${musicDanmakuController}
-${proactiveLiveRoomController}`;
+${proactiveLiveRoomController}
+${liveAiReplyController}
+${dailyOpsController}`;
 
   assert.match(server, /import \{ buildHostLifeContext \} from "\.\/host-life-context\.js";/);
   assert.match(server, /import \{ hoshiaPersonaPrompt \} from "\.\/hoshia-persona\.js";/);

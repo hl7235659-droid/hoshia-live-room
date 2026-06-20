@@ -230,6 +230,7 @@ export function createCharacterEventWriter({
     recordCommentReplyShadowMetric,
     recordDailyPostLiveMetric,
     recordModuleMemoryEventsSafely,
+    recordShadowMetricEvent,
     recordProactiveLiveMetric,
     recordProactiveShadowMetric
   };

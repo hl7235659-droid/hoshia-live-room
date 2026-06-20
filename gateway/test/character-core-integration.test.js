@@ -4,7 +4,8 @@ import test from "node:test";
 
 const serverSource = [
   readFileSync(new URL("../src/server.js", import.meta.url), "utf8"),
-  readFileSync(new URL("../src/hoshia-interaction-controller.js", import.meta.url), "utf8")
+  readFileSync(new URL("../src/hoshia-interaction-controller.js", import.meta.url), "utf8"),
+  readFileSync(new URL("../src/live-ai-reply-controller.js", import.meta.url), "utf8")
 ].join("\n");
 
 test("character core routes comment live through HoshiaClaw while preserving AstrBot rollback", () => {
