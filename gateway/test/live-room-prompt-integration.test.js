@@ -4,31 +4,34 @@ import test from "node:test";
 
 test("gateway prompt wiring includes Hoshia persona and host life context", () => {
   const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const musicDanmakuController = readFileSync(new URL("../src/music-danmaku-controller.js", import.meta.url), "utf8");
+  const gatewayPromptWiring = `${server}
+${musicDanmakuController}`;
 
   assert.match(server, /import \{ buildHostLifeContext \} from "\.\/host-life-context\.js";/);
   assert.match(server, /import \{ hoshiaPersonaPrompt \} from "\.\/hoshia-persona\.js";/);
-  assert.match(server, /hostLifeContextLines = buildHostLifeContext/);
-  assert.match(server, /Hoshia 是否真的想说/);
-  assert.match(server, /不要像客服工单回复/);
-  assert.match(server, /日常留言也要有一个具体反应点/);
-  assert.match(server, /星港画面、猫耳尾巴动作/);
-  assert.match(server, /Hoshia 自身问题优先级规则/);
-  assert.match(server, /优先按 Hoshia 人格宪法和 canon 自然回答/);
-  assert.match(server, /用户偏好的回复风格只改变语气，不改变 Hoshia 自己的核心偏好、身份和关系定位/);
-  assert.match(server, /禁止用“你喜欢什么我都可以聊”“看氛围”“节奏好就行”“都可以呀”/);
-  assert.match(server, /canon 不是答题清单，只在被问到 Hoshia 自己时自然带出/);
-  assert.match(server, /问音乐\/电影时可提 60\/70 年代摇滚、后来的金属、2000 年左右有点土但抓人的老歌、20 世纪中期以后的老电影/);
-  assert.match(server, /问游戏时可提王者荣耀、蛋仔派对和游戏可以像第八艺术/);
-  assert.match(server, /问大学生活时可提课程、食堂、宿舍、图书馆、操场训练、深夜日记/);
-  assert.match(server, /不要硬猜成矿物学、艺术史或手作鉴赏/);
-  assert.match(server, /如果有外部资料参考，只自然接一两点，不要说自己查了、搜了，也不要装成深度粉丝/);
-  assert.match(server, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
-  assert.match(server, /diaryEvent/);
-  assert.match(server, /日记类回复规则/);
-  assert.match(server, /可以轻轻扩写小记/);
-  assert.match(server, /music_ack/);
-  assert.match(server, /高密度回复规则/);
-  assert.match(server, /Hoshia 侧的新信息/);
+  assert.match(gatewayPromptWiring, /hostLifeContextLines = buildHostLifeContext/);
+  assert.match(gatewayPromptWiring, /Hoshia 是否真的想说/);
+  assert.match(gatewayPromptWiring, /不要像客服工单回复/);
+  assert.match(gatewayPromptWiring, /日常留言也要有一个具体反应点/);
+  assert.match(gatewayPromptWiring, /星港画面、猫耳尾巴动作/);
+  assert.match(gatewayPromptWiring, /Hoshia 自身问题优先级规则/);
+  assert.match(gatewayPromptWiring, /优先按 Hoshia 人格宪法和 canon 自然回答/);
+  assert.match(gatewayPromptWiring, /用户偏好的回复风格只改变语气，不改变 Hoshia 自己的核心偏好、身份和关系定位/);
+  assert.match(gatewayPromptWiring, /禁止用“你喜欢什么我都可以聊”“看氛围”“节奏好就行”“都可以呀”/);
+  assert.match(gatewayPromptWiring, /canon 不是答题清单，只在被问到 Hoshia 自己时自然带出/);
+  assert.match(gatewayPromptWiring, /问音乐\/电影时可提 60\/70 年代摇滚、后来的金属、2000 年左右有点土但抓人的老歌、20 世纪中期以后的老电影/);
+  assert.match(gatewayPromptWiring, /问游戏时可提王者荣耀、蛋仔派对和游戏可以像第八艺术/);
+  assert.match(gatewayPromptWiring, /问大学生活时可提课程、食堂、宿舍、图书馆、操场训练、深夜日记/);
+  assert.match(gatewayPromptWiring, /不要硬猜成矿物学、艺术史或手作鉴赏/);
+  assert.match(gatewayPromptWiring, /如果有外部资料参考，只自然接一两点，不要说自己查了、搜了，也不要装成深度粉丝/);
+  assert.match(gatewayPromptWiring, /diaryEvent = hoshiaDailyCanonService\.getActiveEvent/);
+  assert.match(gatewayPromptWiring, /diaryEvent/);
+  assert.match(gatewayPromptWiring, /日记类回复规则/);
+  assert.match(gatewayPromptWiring, /可以轻轻扩写小记/);
+  assert.match(gatewayPromptWiring, /music_ack/);
+  assert.match(gatewayPromptWiring, /高密度回复规则/);
+  assert.match(gatewayPromptWiring, /Hoshia 侧的新信息/);
 });
 
 test("AstrBot bridge proactive judge asks whether Hoshia genuinely wants to speak", () => {
