@@ -5,8 +5,10 @@ import test from "node:test";
 test("gateway prompt wiring includes Hoshia persona and host life context", () => {
   const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const musicDanmakuController = readFileSync(new URL("../src/music-danmaku-controller.js", import.meta.url), "utf8");
+  const proactiveLiveRoomController = readFileSync(new URL("../src/proactive-live-room-controller.js", import.meta.url), "utf8");
   const gatewayPromptWiring = `${server}
-${musicDanmakuController}`;
+${musicDanmakuController}
+${proactiveLiveRoomController}`;
 
   assert.match(server, /import \{ buildHostLifeContext \} from "\.\/host-life-context\.js";/);
   assert.match(server, /import \{ hoshiaPersonaPrompt \} from "\.\/hoshia-persona\.js";/);
@@ -97,12 +99,15 @@ test("AstrBot bridge has proactive idle topic strategy", () => {
 
 test("gateway proactive idle prompt prioritizes diary hooks over generic silence", () => {
   const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const proactiveLiveRoomController = readFileSync(new URL("../src/proactive-live-room-controller.js", import.meta.url), "utf8");
+  const gatewayPromptWiring = `${server}
+${proactiveLiveRoomController}`;
 
-  assert.match(server, /可用的主动话题钩子，按优先级排序/);
-  assert.match(server, /Daily diary: \$\{line\}/);
-  assert.match(server, /Prefer a concrete diary, safe news, or module hook/);
-  assert.match(server, /Hoshia-side detail/);
-  assert.match(server, /优先用日记钩子/);
-  assert.match(server, /不要只说联系窗口很安静/);
-  assert.match(server, /如果没有具体的日记、消息、音乐或近期聊天钩子/);
+  assert.match(gatewayPromptWiring, /可用的主动话题钩子，按优先级排序/);
+  assert.match(gatewayPromptWiring, /Daily diary: \$\{line\}/);
+  assert.match(gatewayPromptWiring, /Prefer a concrete diary, safe news, or module hook/);
+  assert.match(gatewayPromptWiring, /Hoshia-side detail/);
+  assert.match(gatewayPromptWiring, /优先用日记钩子/);
+  assert.match(gatewayPromptWiring, /不要只说联系窗口很安静/);
+  assert.match(gatewayPromptWiring, /如果没有具体的日记、消息、音乐或近期聊天钩子/);
 });
