@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.codex-remote-attachments/
 node_modules/
 dist/
 build/

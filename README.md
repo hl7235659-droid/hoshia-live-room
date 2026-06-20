@@ -159,6 +159,20 @@ docker compose up -d live-room-gateway live-room-web
 
 The sidecar runtime mounts `data/hoshiaclaw`, `logs/hoshiaclaw`, and `private/hoshiaclaw`. These paths are ignored by Git and are for local/server runtime state only. Do not store raw user transcripts, real model provider tokens, private URLs, SSH details, or tunnel information in committed files.
 
+Local Hoshiaclaw verification:
+
+```bash
+cd services/hoshiaclaw
+go test ./...
+go vet ./...
+```
+
+If Go is not installed on the local machine, run the same checks through Docker from the repository root:
+
+```bash
+docker run --rm -v "$PWD/services/hoshiaclaw:/src" -w /src golang:1.22 sh -c "go test ./... && go vet ./..."
+```
+
 To test a real OpenAI-compatible model while keeping room traffic on the current backend, keep `AI_MODE` unchanged and only switch the sidecar provider in a private server `.env`:
 
 ```env

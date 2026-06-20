@@ -80,7 +80,8 @@ test("interest system captures purified interest signals and stays sensitive-saf
     const allMemories = db.searchHoshiaLifeMemories({
       sourceFilter: "interest_system",
       query: "",
-      limit: 20
+      limit: 20,
+      now: "2026-06-11T12:00:00.000Z"
     });
 
     assert.equal(memories.length >= 1, true);
