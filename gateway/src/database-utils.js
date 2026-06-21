@@ -1,4 +1,8 @@
-const defaultSummaryTimeZone = "Asia/Shanghai";
+export const defaultSummaryTimeZone = "Asia/Shanghai";
+
+export function normalizeUsername(username) {
+  return String(username || "").trim().toLowerCase();
+}
 
 export function parseJsonObject(value) {
   try {
