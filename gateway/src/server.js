@@ -210,11 +210,18 @@ const hoshiaInterestSystem = createHoshiaInterestSystem({
 });
 const hoshiaInterestKnowledgeService = createHoshiaInterestKnowledgeService();
 let hoshiaDailyOpsController = null;
+let hoshiaInteractionController = null;
 async function generateDailyCanonPlanLive(options = {}) {
   return hoshiaDailyOpsController?.generateDailyCanonPlanLive(options) ?? null;
 }
 async function generateActualDiaryLive(options = {}) {
   return hoshiaDailyOpsController?.generateActualDiaryLive(options) ?? null;
+}
+async function generatePostCommentReply(options = {}) {
+  return hoshiaInteractionController?.generatePostCommentReply(options) ?? null;
+}
+async function generatePostCommentReplyShadow(options = {}) {
+  return hoshiaInteractionController?.generatePostCommentReplyShadow(options) ?? null;
 }
 const hoshiaDailyCanonService = createHoshiaDailyCanonService({
   db,
@@ -497,7 +504,7 @@ const liveAiReplyController = createLiveAiReplyController({
 });
 const { enqueueAiReply } = liveAiReplyController;
 
-const hoshiaInteractionController = createHoshiaInteractionController({
+hoshiaInteractionController = createHoshiaInteractionController({
   appendCharacterEvent,
   appendTimelineCommentReplyCharacterEvent,
   appendVisualStateChangedCharacterEvent,
@@ -538,8 +545,6 @@ const hoshiaInteractionController = createHoshiaInteractionController({
 const {
   clearCommentReplyTimer,
   generateGameReport,
-  generatePostCommentReply,
-  generatePostCommentReplyShadow,
   runCommentReplyTick,
   scheduleCommentReplyTick,
   scheduleWelcomeGreeting
