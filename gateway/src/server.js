@@ -603,6 +603,7 @@ hoshiaDailyOpsController = createHoshiaDailyOpsController({
 });
 const {
   clearDailyOpsTimers,
+  getHoshiaOpsSummary,
   runDailyPostTick,
   scheduleHoshiaNewsTopicSync,
   scheduleNextHoshiaVisualTick
