@@ -1,0 +1,75 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QQMusic Resolver</title>
+  <style>
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10131a;color:#f6f7fb;margin:0;padding:32px;}
+    main{max-width:860px;margin:0 auto;}
+    .card{background:#181d27;border:1px solid #2a3140;border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+    textarea,input{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid #374155;background:#0d1118;color:#f6f7fb;padding:12px;font:14px ui-monospace,Consolas,monospace;}
+    textarea{min-height:160px;resize:vertical;}
+    button{border:0;border-radius:999px;background:#8b5cf6;color:white;padding:10px 18px;font-weight:700;cursor:pointer;margin-top:10px;}
+    button.secondary{background:#334155;}
+    pre{white-space:pre-wrap;background:#0d1118;border-radius:12px;padding:12px;overflow:auto;}
+    .warn{color:#fbbf24}.ok{color:#86efac}.muted{color:#9ca3af}
+  </style>
+</head>
+<body>
+<main>
+  <h1>QQMusic Resolver 私有管理页</h1>
+  <p class="warn">请只通过 SSH 隧道访问。不要把 QQ Cookie 发到聊天，不要提交到 Git。</p>
+  <section class="card">
+    <h2>状态</h2>
+    <button class="secondary" onclick="loadStatus()">刷新状态</button>
+    <pre id="status">loading...</pre>
+  </section>
+  <section class="card">
+    <h2>更新 QQ 音乐 Cookie</h2>
+    <p class="muted">浏览器登录 y.qq.com 后，从 Network 请求复制 Cookie 字符串粘贴在这里。服务端只保存私有文件，页面不会回显 Cookie。</p>
+    <textarea id="cookie" placeholder="uin=o...; qm_keyst=...; ..."></textarea>
+    <button onclick="saveCookie()">保存 Cookie</button>
+    <pre id="saveResult"></pre>
+  </section>
+  <section class="card">
+    <h2>搜索/解析测试</h2>
+    <input id="query" value="晴天" />
+    <button onclick="testSearch()">测试搜索</button>
+    <button class="secondary" onclick="testResolve()">解析第一首</button>
+    <pre id="testResult"></pre>
+  </section>
+</main>
+<script>
+let lastItems = [];
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  return await r.json();
+}
+async function loadStatus(){
+  const data = await api('/auth/status');
+  document.getElementById('status').textContent = JSON.stringify(data,null,2);
+}
+async function saveCookie(){
+  const cookie = document.getElementById('cookie').value;
+  const data = await api('/auth/cookie',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cookie})});
+  document.getElementById('cookie').value = '';
+  document.getElementById('saveResult').textContent = JSON.stringify(data,null,2);
+  await loadStatus();
+}
+async function testSearch(){
+  const q = encodeURIComponent(document.getElementById('query').value);
+  const data = await api('/search?q='+q+'&limit=5');
+  lastItems = data.data || [];
+  document.getElementById('testResult').textContent = JSON.stringify({...data, data:lastItems.map(({_raw,...x})=>x)},null,2);
+}
+async function testResolve(){
+  if(!lastItems.length) await testSearch();
+  const item = lastItems[0];
+  const data = await api('/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(item)});
+  document.getElementById('testResult').textContent = JSON.stringify(data,null,2);
+}
+loadStatus();
+</script>
+</body>
+</html>

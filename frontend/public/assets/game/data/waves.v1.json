@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "waves": [
+    {
+      "minute": 0,
+      "spawn_rate": 1.0,
+      "families": [
+        "noise"
+      ]
+    },
+    {
+      "minute": 3,
+      "spawn_rate": 1.2,
+      "families": [
+        "noise",
+        "shadow"
+      ]
+    },
+    {
+      "minute": 6,
+      "spawn_rate": 1.45,
+      "families": [
+        "noise",
+        "glitch",
+        "drone"
+      ]
+    },
+    {
+      "minute": 10,
+      "spawn_rate": 1.75,
+      "families": [
+        "glitch",
+        "drone",
+        "shadow"
+      ]
+    },
+    {
+      "minute": 15,
+      "spawn_rate": 2.0,
+      "boss": true
+    }
+  ]
+}

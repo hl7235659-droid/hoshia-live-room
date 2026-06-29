@@ -1,0 +1,448 @@
+{
+  "schemaVersion": 1,
+  "kind": "jobs",
+  "packId": "hoshia-radio-cyber-pixel-mowdown",
+  "count": 10,
+  "statScale": {
+    "maxHp": "生命上限",
+    "speed": "移动速度倍率",
+    "attack": "基础攻击倍率",
+    "cooldown": "技能冷却倍率，数值越低越快",
+    "pickup": "拾取范围倍率",
+    "luck": "稀有升级权重倍率"
+  },
+  "jobs": [
+    {
+      "id": "star_idol",
+      "name": "星屑偶像",
+      "role": "中距离节奏型",
+      "tagline": "用应援音符把噪声海切成闪亮星屑。",
+      "startingWeapon": {
+        "id": "sparkle_mic",
+        "name": "星屑麦克风",
+        "damageType": "sound",
+        "pattern": "扇形音符弹幕，命中后留下短暂魅惑脉冲"
+      },
+      "baseStats": {
+        "maxHp": 90,
+        "speed": 1.05,
+        "attack": 1.0,
+        "cooldown": 0.95,
+        "pickup": 1.15,
+        "luck": 1.08
+      },
+      "passive": "每次升级后获得 12 秒应援光环，拾取范围和经验吸附提升。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "cheerful",
+          "excited"
+        ],
+        "activityTags": [
+          "singing",
+          "chatting"
+        ],
+        "commentaryTone": "舞台应援、亮晶晶的鼓励",
+        "directorTags": [
+          "stage_lights",
+          "fan_chant",
+          "sparkle_drop"
+        ]
+      },
+      "upgradeTags": [
+        "sound",
+        "charm",
+        "pickup",
+        "tempo"
+      ]
+    },
+    {
+      "id": "neon_samurai",
+      "name": "霓虹武士",
+      "role": "近战爆发型",
+      "tagline": "拔刀时像把整条霓虹街切成像素雨。",
+      "startingWeapon": {
+        "id": "neon_katana",
+        "name": "霓虹太刀",
+        "damageType": "blade",
+        "pattern": "前方半月斩，第三刀追加穿透剑气"
+      },
+      "baseStats": {
+        "maxHp": 115,
+        "speed": 1.08,
+        "attack": 1.12,
+        "cooldown": 1.02,
+        "pickup": 0.92,
+        "luck": 0.98
+      },
+      "passive": "贴近敌群时积累刀光层数，层数满后下一次攻击必定暴击。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "focused",
+          "excited"
+        ],
+        "activityTags": [
+          "game_focus",
+          "live2d_pose"
+        ],
+        "commentaryTone": "冷静报点、帅气收刀",
+        "directorTags": [
+          "duel_ring",
+          "clean_cut",
+          "neon_rain"
+        ]
+      },
+      "upgradeTags": [
+        "blade",
+        "crit",
+        "dash",
+        "risk"
+      ]
+    },
+    {
+      "id": "stream_hacker",
+      "name": "直播黑客",
+      "role": "远程控制型",
+      "tagline": "把敌人的路径表改成自投罗网。",
+      "startingWeapon": {
+        "id": "packet_spike",
+        "name": "封包尖刺",
+        "damageType": "data",
+        "pattern": "自动锁定最近目标，命中后弹跳到低血量目标"
+      },
+      "baseStats": {
+        "maxHp": 82,
+        "speed": 0.98,
+        "attack": 1.03,
+        "cooldown": 0.9,
+        "pickup": 1.0,
+        "luck": 1.12
+      },
+      "passive": "每 18 秒标记一名精英敌人，击败后掉落额外经验碎片。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "mischievous",
+          "focused"
+        ],
+        "activityTags": [
+          "reading_news",
+          "chatting"
+        ],
+        "commentaryTone": "坏笑解说、像在拆穿敌方小把戏",
+        "directorTags": [
+          "glitch_path",
+          "data_burst",
+          "target_mark"
+        ]
+      },
+      "upgradeTags": [
+        "data",
+        "chain",
+        "mark",
+        "control"
+      ]
+    },
+    {
+      "id": "radio_miko",
+      "name": "电波巫女",
+      "role": "结界续航型",
+      "tagline": "把祈愿铃声调到能驱散噪声妖怪的频段。",
+      "startingWeapon": {
+        "id": "antenna_ofuda",
+        "name": "天线御札",
+        "damageType": "signal",
+        "pattern": "环绕御札缓慢旋转，周期性展开净化结界"
+      },
+      "baseStats": {
+        "maxHp": 105,
+        "speed": 0.96,
+        "attack": 0.94,
+        "cooldown": 0.98,
+        "pickup": 1.08,
+        "luck": 1.05
+      },
+      "passive": "受到伤害后生成一次小结界，短时间内降低后续伤害。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "calm",
+          "worried"
+        ],
+        "activityTags": [
+          "idle",
+          "tts_active"
+        ],
+        "commentaryTone": "温柔守护、提醒玩家稳住阵线",
+        "directorTags": [
+          "safe_circle",
+          "purify_noise",
+          "soft_alarm"
+        ]
+      },
+      "upgradeTags": [
+        "signal",
+        "shield",
+        "orbit",
+        "recovery"
+      ]
+    },
+    {
+      "id": "pixel_nekomata",
+      "name": "像素猫又",
+      "role": "高速拾取型",
+      "tagline": "两条尾巴负责卖萌，第三条负责偷走经验宝石。",
+      "startingWeapon": {
+        "id": "cat_cursor",
+        "name": "猫爪光标",
+        "damageType": "cute",
+        "pattern": "快速抓击随机近身目标，拾取经验后追加一次扑击"
+      },
+      "baseStats": {
+        "maxHp": 78,
+        "speed": 1.22,
+        "attack": 0.92,
+        "cooldown": 0.88,
+        "pickup": 1.25,
+        "luck": 1.0
+      },
+      "passive": "连续拾取经验会叠加猫步，短时间内提升闪避和移动速度。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "mischievous",
+          "cheerful"
+        ],
+        "activityTags": [
+          "chatting",
+          "receiving_gift"
+        ],
+        "commentaryTone": "俏皮吐槽、把危险说成猫猫小游戏",
+        "directorTags": [
+          "cat_dash",
+          "gift_spark",
+          "playful_swarm"
+        ]
+      },
+      "upgradeTags": [
+        "cute",
+        "dash",
+        "pickup",
+        "evasion"
+      ]
+    },
+    {
+      "id": "quantum_tuner",
+      "name": "量子调音师",
+      "role": "区域调频型",
+      "tagline": "调准一格频率，整片战场都会跟着共振。",
+      "startingWeapon": {
+        "id": "phase_tuning_fork",
+        "name": "相位音叉",
+        "damageType": "resonance",
+        "pattern": "在脚下生成共振环，延迟后向外扩散"
+      },
+      "baseStats": {
+        "maxHp": 88,
+        "speed": 1.0,
+        "attack": 1.05,
+        "cooldown": 1.0,
+        "pickup": 1.02,
+        "luck": 1.1
+      },
+      "passive": "同一敌人被多个共振环命中时，额外受到频率叠加伤害。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "focused",
+          "calm"
+        ],
+        "activityTags": [
+          "listening_music",
+          "singing"
+        ],
+        "commentaryTone": "认真调音、像在做一场像素声学实验",
+        "directorTags": [
+          "resonance_zone",
+          "beat_grid",
+          "frequency_lock"
+        ]
+      },
+      "upgradeTags": [
+        "resonance",
+        "zone",
+        "stack",
+        "tempo"
+      ]
+    },
+    {
+      "id": "barrage_knight",
+      "name": "弹幕骑士",
+      "role": "防御反击型",
+      "tagline": "盾牌接住弹幕，再把它们原封不动还回去。",
+      "startingWeapon": {
+        "id": "bullet_shield",
+        "name": "弹幕盾",
+        "damageType": "guard",
+        "pattern": "身前生成盾弧，格挡后释放反击星弹"
+      },
+      "baseStats": {
+        "maxHp": 128,
+        "speed": 0.92,
+        "attack": 0.98,
+        "cooldown": 1.05,
+        "pickup": 0.95,
+        "luck": 1.0
+      },
+      "passive": "护盾命中越多，下一轮反击星弹数量越多。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "worried",
+          "focused"
+        ],
+        "activityTags": [
+          "game_focus",
+          "idle"
+        ],
+        "commentaryTone": "稳健守线、鼓励玩家别急着贪输出",
+        "directorTags": [
+          "shield_wall",
+          "counter_star",
+          "safe_lane"
+        ]
+      },
+      "upgradeTags": [
+        "guard",
+        "shield",
+        "counter",
+        "survival"
+      ]
+    },
+    {
+      "id": "scrap_engineer",
+      "name": "废线工程师",
+      "role": "召唤建造型",
+      "tagline": "把报废网线和坏掉风扇拼成临时炮台。",
+      "startingWeapon": {
+        "id": "junk_turret",
+        "name": "废线炮台",
+        "damageType": "machine",
+        "pattern": "周期性部署小炮台，炮台优先攻击最近敌人"
+      },
+      "baseStats": {
+        "maxHp": 100,
+        "speed": 0.9,
+        "attack": 1.0,
+        "cooldown": 0.96,
+        "pickup": 0.98,
+        "luck": 1.04
+      },
+      "passive": "拾取磁带零件后缩短下一座炮台的部署时间。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "focused",
+          "mischievous"
+        ],
+        "activityTags": [
+          "reading_news",
+          "game_focus"
+        ],
+        "commentaryTone": "认真修东西，但偶尔吐槽机器又冒烟",
+        "directorTags": [
+          "turret_lane",
+          "scrap_drop",
+          "repair_window"
+        ]
+      },
+      "upgradeTags": [
+        "machine",
+        "summon",
+        "zone",
+        "utility"
+      ]
+    },
+    {
+      "id": "moon_courier",
+      "name": "月面快递员",
+      "role": "机动投递型",
+      "tagline": "把补给包送到战场中央，顺便用尾焰烧穿敌群。",
+      "startingWeapon": {
+        "id": "lunar_booster",
+        "name": "月面推进器",
+        "damageType": "fire",
+        "pattern": "冲刺后留下尾焰轨迹，轨迹持续灼烧敌人"
+      },
+      "baseStats": {
+        "maxHp": 96,
+        "speed": 1.16,
+        "attack": 1.02,
+        "cooldown": 1.0,
+        "pickup": 1.05,
+        "luck": 0.96
+      },
+      "passive": "每隔一段时间投递公开补给箱，拾取后随机获得护盾、经验或短暂加速。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "excited",
+          "lonely"
+        ],
+        "activityTags": [
+          "receiving_gift",
+          "chatting"
+        ],
+        "commentaryTone": "像在替观众送达应援包，轻快但有一点太空孤独感",
+        "directorTags": [
+          "supply_drop",
+          "rocket_lane",
+          "moon_echo"
+        ]
+      },
+      "upgradeTags": [
+        "fire",
+        "dash",
+        "supply",
+        "mobility"
+      ]
+    },
+    {
+      "id": "dream_director",
+      "name": "梦核导演",
+      "role": "规则改写型",
+      "tagline": "喊一声开拍，敌群就得按她的分镜走位。",
+      "startingWeapon": {
+        "id": "cutboard_remote",
+        "name": "分镜遥控器",
+        "damageType": "dream",
+        "pattern": "随机标记扇区，短暂延迟后播放爆破分镜"
+      },
+      "baseStats": {
+        "maxHp": 86,
+        "speed": 1.02,
+        "attack": 1.06,
+        "cooldown": 0.97,
+        "pickup": 1.0,
+        "luck": 1.14
+      },
+      "passive": "每次出现升级三选一时，额外提升与当前 Hoshia mood 匹配的升级权重。",
+      "hoshiaMapping": {
+        "moodTags": [
+          "sleepy",
+          "lonely",
+          "calm"
+        ],
+        "activityTags": [
+          "live2d_pose",
+          "idle",
+          "listening_music"
+        ],
+        "commentaryTone": "梦话式旁白、把危险包装成奇怪电影片场",
+        "directorTags": [
+          "dream_cut",
+          "scene_rewrite",
+          "soft_glitch"
+        ]
+      },
+      "upgradeTags": [
+        "dream",
+        "luck",
+        "zone",
+        "director"
+      ]
+    }
+  ]
+}

@@ -4,6 +4,11 @@
     "type": "string",
     "default": ""
   },
+  "streaming_enabled": {
+    "description": "Enable NDJSON streaming replies for /live-room/generate when the gateway requests stream=true.",
+    "type": "bool",
+    "default": true
+  },
   "host": {
     "description": "Bind host inside AstrBot container. Use 0.0.0.0 for Docker-network-only access.",
     "type": "string",
@@ -15,8 +20,139 @@
     "default": 18081
   },
   "system_prompt": {
-    "description": "Optional live-room system prompt prepended to AstrBot LLM calls.",
+    "description": "Optional role-facing system prompt prepended to LLM calls.",
     "type": "string",
-    "default": "You are Hoshia, a private cyber pixel anime live-room host. Reply briefly, warmly, and in Chinese unless the user asks otherwise."
+    "default": "你是 Hoshia，星见大学的大一女生，运动系猫娘。你正在和一个总能联系上的特殊网友聊天。保持像熟人聊天一样自然、温暖、简短；默认用中文回复，除非对方明确要求其他语言。只按普通大学生日常来回应，不把自己说成后台产物、表演角色、房间角色或被研究的人，也不要提到后台插件、接口、字段名或工程实现。"
+  },
+  "judge_provider_name": {
+    "description": "Small model provider used to decide whether Hoshia should proactively reply when nobody mentioned her.",
+    "type": "string",
+    "default": "tencentmaas/deepseek-v4-flash",
+    "_special": "select_provider"
+  },
+  "proactive_reply_threshold": {
+    "description": "Heartflow-lite threshold from 0 to 1. Higher means Hoshia speaks less when not mentioned.",
+    "type": "float",
+    "default": 0.62
+  },
+  "min_proactive_interval_seconds": {
+    "description": "Minimum seconds between non-mention proactive replies.",
+    "type": "int",
+    "default": 12
+  },
+  "energy_decay": {
+    "description": "Energy consumed by each proactive reply.",
+    "type": "float",
+    "default": 0.16
+  },
+  "energy_recovery": {
+    "description": "Energy recovered whenever a non-mention batch is skipped.",
+    "type": "float",
+    "default": 0.04
+  },
+  "livingmemory_enabled": {
+    "description": "Enable LivingMemory recall/write integration for web live-room viewers.",
+    "type": "bool",
+    "default": false
+  },
+  "livingmemory_auto_summary_enabled": {
+    "description": "Summarize stable viewer facts and write them to LivingMemory after successful replies.",
+    "type": "bool",
+    "default": true
+  },
+  "livingmemory_persona_id": {
+    "description": "Persona ID used to isolate Hoshia live-room memories.",
+    "type": "string",
+    "default": "hoshia-live-room"
+  },
+  "livingmemory_recall_k": {
+    "description": "Maximum LivingMemory items recalled for each viewer or news pool.",
+    "type": "int",
+    "default": 5
+  },
+  "livingmemory_max_participants": {
+    "description": "Maximum live-room viewers recalled/summarized per batch.",
+    "type": "int",
+    "default": 3
+  },
+  "livingmemory_news_retention_days": {
+    "description": "Retention hint stored in metadata for daily news memories.",
+    "type": "int",
+    "default": 7
+  },
+  "livingmemory_recent_state_retention_days": {
+    "description": "Default retention days for temporary recent-state viewer memories.",
+    "type": "int",
+    "default": 30
+  },
+  "news_capability_enabled": {
+    "description": "Enable the RSSHub + Tavily news topic capability inside the bridge.",
+    "type": "bool",
+    "default": false
+  },
+  "news_refresh_enabled": {
+    "description": "Run the news topic refresh scheduler inside AstrBot bridge.",
+    "type": "bool",
+    "default": false
+  },
+  "news_room_id": {
+    "description": "Live-room room_id whose LivingMemory news pool receives scheduled topic memories.",
+    "type": "string",
+    "default": "private-pixel-live"
+  },
+  "news_refresh_hour": {
+    "description": "Local hour of day for scheduled news refresh, 0-23.",
+    "type": "int",
+    "default": 9
+  },
+  "news_refresh_timezone": {
+    "description": "Timezone used by the news refresh scheduler.",
+    "type": "string",
+    "default": "Asia/Shanghai"
+  },
+  "news_refresh_on_startup": {
+    "description": "Run one news refresh shortly after bridge startup.",
+    "type": "bool",
+    "default": false
+  },
+  "news_source_urls": {
+    "description": "Comma-separated RSSHub/RSS/JSON feed URLs. Prefer internal self-hosted RSSHub URLs such as http://rsshub:1200/...",
+    "type": "string",
+    "default": ""
+  },
+  "news_refresh_max_items": {
+    "description": "Maximum deduplicated feed items sent to the topic editor per refresh.",
+    "type": "int",
+    "default": 30
+  },
+  "news_refresh_timeout_seconds": {
+    "description": "HTTP timeout for RSSHub and Tavily requests.",
+    "type": "int",
+    "default": 10
+  },
+  "tavily_api_key": {
+    "description": "Private Tavily API key used only for selective background search. Keep it in server-side AstrBot config.",
+    "type": "string",
+    "default": ""
+  },
+  "knowledge_lookup_enabled": {
+    "description": "Allow the bridge to selectively use Tavily before chat replies when a viewer mentions an unfamiliar work, meme, song, game, movie, or niche term. The tool name and sources are never exposed to Hoshia.",
+    "type": "bool",
+    "default": true
+  },
+  "knowledge_lookup_timeout_seconds": {
+    "description": "HTTP timeout for selective Tavily knowledge lookup during chat replies.",
+    "type": "int",
+    "default": 6
+  },
+  "tavily_max_queries_per_refresh": {
+    "description": "Maximum Tavily background-search calls per news refresh.",
+    "type": "int",
+    "default": 6
+  },
+  "news_retention_days": {
+    "description": "Retention days for daily news topic memories. Overrides livingmemory_news_retention_days for news topics.",
+    "type": "int",
+    "default": 7
   }
 }

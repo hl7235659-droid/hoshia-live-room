@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "bosses": [
+    {
+      "id": "boss_signal_hydra",
+      "name": "多头信号蛇",
+      "spawn_minute": 15,
+      "hp": 2400,
+      "damage": 24,
+      "speed": 38,
+      "patterns": [
+        "arc_bullets",
+        "summon_noise",
+        "cross_laser"
+      ],
+      "color": "#ff4fd8"
+    },
+    {
+      "id": "boss_rain_cache",
+      "name": "雨夜缓存体",
+      "spawn_minute": 15,
+      "hp": 2600,
+      "damage": 20,
+      "speed": 34,
+      "patterns": [
+        "slow_field",
+        "shadow_swarm",
+        "pulse_ring"
+      ],
+      "color": "#6478ff"
+    }
+  ]
+}

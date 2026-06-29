@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "enemies": [
+    {
+      "id": "noise_slime",
+      "name": "噪声史莱姆",
+      "family": "noise",
+      "archetype": "chaser",
+      "hp": 16,
+      "speed": 54,
+      "damage": 8,
+      "xp": 1,
+      "score": 8,
+      "spawn_weight": 7,
+      "color": "#2af7ff",
+      "size": 13
+    },
+    {
+      "id": "pixel_bat",
+      "name": "像素蝙蝠",
+      "family": "shadow",
+      "archetype": "fast",
+      "hp": 10,
+      "speed": 88,
+      "damage": 7,
+      "xp": 1,
+      "score": 10,
+      "spawn_weight": 4,
+      "color": "#a574ff",
+      "size": 10
+    },
+    {
+      "id": "adware_bug",
+      "name": "广告虫",
+      "family": "glitch",
+      "archetype": "zigzag",
+      "hp": 20,
+      "speed": 62,
+      "damage": 9,
+      "xp": 2,
+      "score": 14,
+      "spawn_weight": 4,
+      "color": "#ff62d0",
+      "size": 12
+    },
+    {
+      "id": "relay_drone",
+      "name": "中继无人机",
+      "family": "drone",
+      "archetype": "ranged",
+      "hp": 34,
+      "speed": 44,
+      "damage": 12,
+      "xp": 3,
+      "score": 28,
+      "spawn_weight": 2,
+      "color": "#ffd966",
+      "size": 15
+    },
+    {
+      "id": "glitch_knight",
+      "name": "故障骑士",
+      "family": "glitch",
+      "archetype": "elite",
+      "hp": 90,
+      "speed": 42,
+      "damage": 18,
+      "xp": 8,
+      "score": 90,
+      "spawn_weight": 1,
+      "color": "#ff3d6e",
+      "size": 20
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "packId": "hoshia-radio-cyber-pixel-mowdown",
+  "packVersion": "1.1.0",
+  "title": "电波赛博像素割草",
+  "locale": "zh-CN",
+  "summary": "面向直播间的轻量像素割草小游戏公开配置：职业、导演规则和升级三选一池。",
+  "contentStyle": {
+    "genre": [
+      "survivors-like",
+      "pixel",
+      "cyber-radio",
+      "live-room"
+    ],
+    "tone": "电波、赛博、可爱但带一点末日频道噪声",
+    "camera": "俯视角小地图，角色自动攻击，玩家主要负责走位和升级选择",
+    "visualKeywords": [
+      "霓虹像素",
+      "CRT 扫描线",
+      "弹幕星尘",
+      "故障电台",
+      "直播间应援灯"
+    ]
+  },
+  "dataFiles": [
+    {
+      "kind": "jobs",
+      "path": "data/jobs.v1.json",
+      "description": "10 个可选职业与对应的 Hoshia 玩法风格。"
+    },
+    {
+      "kind": "weapons",
+      "path": "data/weapons.v1.json",
+      "description": "武器与攻击表现的公开玩法配置。"
+    },
+    {
+      "kind": "enemies",
+      "path": "data/enemies.v1.json",
+      "description": "小怪族群、强度和生成权重配置。"
+    },
+    {
+      "kind": "bosses",
+      "path": "data/bosses.v1.json",
+      "description": "15 分钟 BOSS 与对应战斗风格配置。"
+    },
+    {
+      "kind": "biomes",
+      "path": "data/biomes.v1.json",
+      "description": "根据 Hoshia activity/mood 切换的场景配置。"
+    },
+    {
+      "kind": "upgrades",
+      "path": "data/upgrades.v1.json",
+      "description": "升级三选一的候选池与职业专属选项。"
+    },
+    {
+      "kind": "waves",
+      "path": "data/waves.v1.json",
+      "description": "15 分钟波次节奏与 BOSS 出场规则。"
+    },
+    {
+      "kind": "directorRules",
+      "path": "data/director-rules.v1.json",
+      "description": "按 Hoshia mood/activity 调整怪物、掉落和节奏的导演规则。"
+    },
+    {
+      "kind": "locales",
+      "path": "data/locales.zh-CN.v1.json",
+      "description": "小游戏 UI 文案占位配置。"
+    },
+    {
+      "kind": "visuals",
+      "path": "visuals.v1.json",
+      "description": "公开像素素材映射：角色、职业、武器、敌人、BOSS、场景、掉落物和特效。"
+    }
+  ],
+  "publicDataPolicy": {
+    "publicOnly": true,
+    "safeForModuleContext": true,
+    "notes": [
+      "仅包含玩法文本、数值和安全的 Hoshia mood/activity 映射。",
+      "不包含本地绝对路径、凭据、服务器地址或私有运行时信息。",
+      "如接入记忆系统，只写入提纯后的偏好或近期状态，不保存完整游戏流水。"
+    ]
+  },
+  "hoshiaModule": {
+    "moduleId": "hoshia_pixel_game",
+    "displayName": "像素割草小游戏",
+    "contextProviderHint": "可从本包读取职业、当前波次、公开 mood/activity 标签和安全事件摘要，生成 module_context。",
+    "safeContextFields": [
+      "class_id",
+      "stage_id",
+      "state_activity",
+      "state_mood",
+      "difficulty_tier",
+      "result",
+      "waves_cleared",
+      "boss_result",
+      "duration_seconds",
+      "score_tier",
+      "rank_tier",
+      "unlock_reason"
+    ],
+    "eventWhitelist": [
+      {
+        "eventType": "hoshia_pixel_game.run_started",
+        "dataFields": [
+          "class_id",
+          "stage_id",
+          "state_activity",
+          "state_mood",
+          "difficulty_tier"
+        ]
+      },
+      {
+        "eventType": "hoshia_pixel_game.run_finished",
+        "dataFields": [
+          "class_id",
+          "stage_id",
+          "state_activity",
+          "state_mood",
+          "difficulty_tier",
+          "result",
+          "waves_cleared",
+          "boss_result",
+          "duration_seconds",
+          "score_tier"
+        ]
+      },
+      {
+        "eventType": "hoshia_pixel_game.class_unlocked",
+        "dataFields": [
+          "class_id",
+          "stage_id",
+          "score_tier",
+          "unlock_reason"
+        ]
+      }
+    ],
+    "memoryGuidance": [
+      "单局结果默认只作为短期信号。",
+      "多次稳定选择同类职业或升级时，才可提纯为偏好。",
+      "记忆里只保留偏好摘要，例如偏好高速走位、召唤物或音波武器。"
+    ]
+  },
+  "creditsFile": "CREDITS.md"
+}

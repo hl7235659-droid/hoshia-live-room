@@ -1,0 +1,13 @@
+# Keep the requested public game data files visible even though the repo root
+# ignores runtime data directories.
+!/data/
+/data/*
+!/data/jobs.v1.json
+!/data/director-rules.v1.json
+!/data/upgrades.v1.json
+!/data/weapons.v1.json
+!/data/enemies.v1.json
+!/data/bosses.v1.json
+!/data/biomes.v1.json
+!/data/waves.v1.json
+!/data/locales.zh-CN.v1.json

@@ -4,6 +4,8 @@ import {
   decodeSessionCookie,
   encodeSessionCookie,
   hashInvite,
+  hashPassword,
+  verifyPassword,
   verifyInvite
 } from "../src/security.js";
 
@@ -20,3 +22,9 @@ test("session cookie signature rejects tampering", () => {
   assert.equal(decodeSessionCookie(cookie, "secret-2"), null);
 });
 
+test("password hashes verify without storing plain text", () => {
+  const digest = hashPassword("correct horse battery");
+  assert.notEqual(digest.includes("correct horse battery"), true);
+  assert.equal(verifyPassword("correct horse battery", digest), true);
+  assert.equal(verifyPassword("wrong password", digest), false);
+});

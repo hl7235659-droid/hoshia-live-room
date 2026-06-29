@@ -1,0 +1,230 @@
+.music-room {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 9px 10px 8px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(23, 32, 51, 0.14);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.54), transparent 38%),
+    rgba(216, 245, 255, 0.26);
+}
+
+.music-room-now,
+.music-queue {
+  display: flex;
+  align-items: center;
+}
+
+.music-room-now {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  gap: 8px;
+  justify-content: flex-start;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.music-room-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #294b60;
+  background: rgba(255, 241, 123, 0.76);
+  box-shadow: 0 7px 14px rgba(34, 115, 163, 0.12);
+}
+
+.music-room-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.music-room-inline-controls {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(41, 75, 96, 0.72);
+}
+
+.music-room-inline-controls button,
+.music-queue-remove {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-weight: 950;
+  line-height: 1;
+  transform: none;
+}
+
+.music-room-inline-controls button {
+  min-width: 13px;
+  height: 22px;
+  font-size: 17px;
+  opacity: 0.76;
+}
+
+.music-room-inline-controls button:hover:not(:disabled),
+.music-room-inline-controls button:focus-visible:not(:disabled),
+.music-queue-remove:hover:not(:disabled),
+.music-queue-remove:focus-visible:not(:disabled) {
+  opacity: 1;
+  color: #172033;
+}
+
+.music-room-inline-controls button:disabled,
+.music-queue-remove:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.music-room-title span,
+.music-notice,
+.music-queue small {
+  color: #6c7890;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.music-room-title span {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.music-room-title strong {
+  display: block;
+  min-width: 0;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-room-expanded {
+  grid-column: 1 / -1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-8px) scaleY(0.96);
+  transform-origin: top center;
+  transition:
+    max-height 320ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 180ms ease,
+    transform 300ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.music-room.open .music-room-expanded {
+  max-height: 100%;
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+}
+
+.music-queue {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.music-queue-row,
+.music-queue-empty {
+  min-height: 28px;
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 0;
+  background: transparent;
+  border-top: 1px solid rgba(41, 75, 96, 0.13);
+  color: #294b60;
+  font-size: 11px;
+  font-weight: 900;
+  animation: musicQueueRowIn 260ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+.music-queue-row {
+  grid-template-columns: 34px minmax(0, 1fr) minmax(64px, auto) 14px;
+}
+
+.music-queue-index {
+  color: rgba(41, 75, 96, 0.62);
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.music-queue-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-queue-row em {
+  max-width: 110px;
+  overflow: hidden;
+  color: #5d7386;
+  font-size: 10px;
+  font-style: normal;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-queue-remove {
+  width: 14px;
+  height: 22px;
+  justify-self: end;
+  color: rgba(41, 75, 96, 0.54);
+  font-size: 14px;
+  opacity: 0.78;
+}
+
+.music-queue-empty {
+  grid-template-columns: 1fr;
+  color: #6c7890;
+}
+
+.music-notice {
+  margin: 0;
+}
+
+.music-room.disabled {
+  opacity: 0.72;
+}
+
+@keyframes musicQueueRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+

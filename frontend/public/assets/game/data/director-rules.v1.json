@@ -1,0 +1,379 @@
+{
+  "schemaVersion": 1,
+  "kind": "directorRules",
+  "packId": "hoshia-radio-cyber-pixel-mowdown",
+  "directorId": "radio_cyber_stage_director",
+  "safeInputContract": {
+    "description": "导演只读取公开直播间氛围、公开小游戏状态和已净化的短文本标签。",
+    "acceptedFields": {
+      "mood": [
+        "calm",
+        "cheerful",
+        "excited",
+        "sleepy",
+        "focused",
+        "worried",
+        "mischievous",
+        "lonely"
+      ],
+      "activity": [
+        "idle",
+        "chatting",
+        "singing",
+        "listening_music",
+        "reading_news",
+        "receiving_gift",
+        "live2d_pose",
+        "tts_active",
+        "game_focus"
+      ],
+      "gameState": [
+        "job_id",
+        "wave",
+        "hp_ratio",
+        "level",
+        "public_event_summary"
+      ]
+    },
+    "forbiddenFields": [
+      "local_path",
+      "private_endpoint",
+      "credential",
+      "raw_chat_log",
+      "database_path",
+      "server_address"
+    ]
+  },
+  "hoshiaMoodMap": [
+    {
+      "mood": "calm",
+      "displayName": "平静电台",
+      "directorModifiers": {
+        "spawnTempo": 0.94,
+        "eliteRate": 0.9,
+        "pickupBias": [
+          "shield",
+          "orbit"
+        ],
+        "palette": "深蓝电波"
+      },
+      "announcerHints": [
+        "Hoshia 会提醒玩家慢慢拉扯。",
+        "更容易出现保护和环绕类升级。"
+      ]
+    },
+    {
+      "mood": "cheerful",
+      "displayName": "元气应援",
+      "directorModifiers": {
+        "spawnTempo": 1.03,
+        "eliteRate": 1.0,
+        "pickupBias": [
+          "pickup",
+          "charm"
+        ],
+        "palette": "粉紫霓虹"
+      },
+      "announcerHints": [
+        "Hoshia 会把连击讲成舞台应援。",
+        "普通敌群更密，但经验掉落更积极。"
+      ]
+    },
+    {
+      "mood": "excited",
+      "displayName": "高能过载",
+      "directorModifiers": {
+        "spawnTempo": 1.14,
+        "eliteRate": 1.12,
+        "pickupBias": [
+          "damage",
+          "dash"
+        ],
+        "palette": "亮黄青蓝"
+      },
+      "announcerHints": [
+        "Hoshia 会催促玩家打出更高连击。",
+        "精英刷新略多，但爆发类升级权重提升。"
+      ]
+    },
+    {
+      "mood": "sleepy",
+      "displayName": "梦游频道",
+      "directorModifiers": {
+        "spawnTempo": 0.88,
+        "eliteRate": 0.86,
+        "pickupBias": [
+          "dream",
+          "slow"
+        ],
+        "palette": "雾粉夜蓝"
+      },
+      "announcerHints": [
+        "Hoshia 会用梦话式旁白描述战场。",
+        "敌人速度稍慢，区域延迟爆破更常见。"
+      ]
+    },
+    {
+      "mood": "focused",
+      "displayName": "专注锁频",
+      "directorModifiers": {
+        "spawnTempo": 1.0,
+        "eliteRate": 1.08,
+        "pickupBias": [
+          "crit",
+          "mark"
+        ],
+        "palette": "冷白青绿"
+      },
+      "announcerHints": [
+        "Hoshia 会给出更明确的走位和目标提示。",
+        "标记、暴击和精准打击权重提升。"
+      ]
+    },
+    {
+      "mood": "worried",
+      "displayName": "护航警报",
+      "directorModifiers": {
+        "spawnTempo": 0.92,
+        "eliteRate": 0.95,
+        "pickupBias": [
+          "shield",
+          "recovery"
+        ],
+        "palette": "橙红警示"
+      },
+      "announcerHints": [
+        "Hoshia 会优先提醒血量和逃生路线。",
+        "护盾、回血和安全通道事件更容易出现。"
+      ]
+    },
+    {
+      "mood": "mischievous",
+      "displayName": "坏笑乱码",
+      "directorModifiers": {
+        "spawnTempo": 1.06,
+        "eliteRate": 1.03,
+        "pickupBias": [
+          "chain",
+          "glitch"
+        ],
+        "palette": "酸绿洋红"
+      },
+      "announcerHints": [
+        "Hoshia 会调侃敌人走进陷阱。",
+        "弹跳、乱码和路径扰动事件权重提升。"
+      ]
+    },
+    {
+      "mood": "lonely",
+      "displayName": "月面回声",
+      "directorModifiers": {
+        "spawnTempo": 0.97,
+        "eliteRate": 1.0,
+        "pickupBias": [
+          "summon",
+          "supply"
+        ],
+        "palette": "银灰月紫"
+      },
+      "announcerHints": [
+        "Hoshia 会把补给和召唤物说成陪伴。",
+        "支援无人机、炮台和补给箱更容易出现。"
+      ]
+    }
+  ],
+  "hoshiaActivityMap": [
+    {
+      "activity": "idle",
+      "displayName": "待机巡房",
+      "directorShift": "节奏放缓，适合熟悉职业和走位。",
+      "preferredEventTags": [
+        "safe_lane",
+        "soft_alarm"
+      ]
+    },
+    {
+      "activity": "chatting",
+      "displayName": "聊天互动",
+      "directorShift": "生成更多轻量目标，方便 Hoshia 穿插吐槽。",
+      "preferredEventTags": [
+        "fan_chant",
+        "playful_swarm"
+      ]
+    },
+    {
+      "activity": "singing",
+      "displayName": "唱歌中",
+      "directorShift": "强化节拍、音波和共振类升级权重。",
+      "preferredEventTags": [
+        "beat_grid",
+        "stage_lights"
+      ]
+    },
+    {
+      "activity": "listening_music",
+      "displayName": "听歌中",
+      "directorShift": "刷怪波次更贴近节拍，区域攻击更稳定。",
+      "preferredEventTags": [
+        "resonance_zone",
+        "frequency_lock"
+      ]
+    },
+    {
+      "activity": "reading_news",
+      "displayName": "读新闻",
+      "directorShift": "更容易出现标记目标、资料碎片和可控精英。",
+      "preferredEventTags": [
+        "target_mark",
+        "data_burst"
+      ]
+    },
+    {
+      "activity": "receiving_gift",
+      "displayName": "收到礼物",
+      "directorShift": "补给、幸运和应援掉落短时提高。",
+      "preferredEventTags": [
+        "gift_spark",
+        "supply_drop"
+      ]
+    },
+    {
+      "activity": "live2d_pose",
+      "displayName": "Live2D 表演",
+      "directorShift": "镜头感增强，分镜爆破和姿态相关事件更常见。",
+      "preferredEventTags": [
+        "dream_cut",
+        "duel_ring"
+      ]
+    },
+    {
+      "activity": "tts_active",
+      "displayName": "语音播报",
+      "directorShift": "降低瞬时压力，给播报留出安全窗口。",
+      "preferredEventTags": [
+        "safe_circle",
+        "soft_alarm"
+      ]
+    },
+    {
+      "activity": "game_focus",
+      "displayName": "专心游玩",
+      "directorShift": "提高精英、连击和高风险高回报升级权重。",
+      "preferredEventTags": [
+        "clean_cut",
+        "counter_star"
+      ]
+    }
+  ],
+  "waveRules": [
+    {
+      "id": "boot_signal",
+      "waves": [
+        1,
+        2,
+        3
+      ],
+      "goal": "让玩家理解职业武器和拾取节奏。",
+      "spawnTags": [
+        "tiny_noise",
+        "slow_drone"
+      ],
+      "maxPressure": 0.35
+    },
+    {
+      "id": "neon_street",
+      "waves": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "goal": "开始形成割草爽感，加入少量夹击。",
+      "spawnTags": [
+        "runner_bit",
+        "shield_bug",
+        "side_lane"
+      ],
+      "maxPressure": 0.58
+    },
+    {
+      "id": "signal_storm",
+      "waves": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "goal": "用精英和地形提示测试构筑成型程度。",
+      "spawnTags": [
+        "elite_modem",
+        "glitch_pool",
+        "ring_swarm"
+      ],
+      "maxPressure": 0.76
+    },
+    {
+      "id": "midnight_broadcast",
+      "waves": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "goal": "进入高密度爽局，同时保留可读安全通道。",
+      "spawnTags": [
+        "heavy_noise",
+        "elite_anchor",
+        "spiral_wave"
+      ],
+      "maxPressure": 0.9
+    }
+  ],
+  "eventCards": [
+    {
+      "id": "stage_lights",
+      "name": "应援灯阵",
+      "tags": [
+        "stage_lights",
+        "fan_chant"
+      ],
+      "effect": "短时间提升经验掉落可见度，并生成低压小怪群。"
+    },
+    {
+      "id": "safe_circle",
+      "name": "电波安全圈",
+      "tags": [
+        "safe_circle",
+        "shield"
+      ],
+      "effect": "在玩家附近生成保护环，适合低血量或 worried mood。"
+    },
+    {
+      "id": "glitch_path",
+      "name": "乱码岔路",
+      "tags": [
+        "glitch_path",
+        "chain"
+      ],
+      "effect": "敌群路径短暂弯折，鼓励玩家把敌人拉进区域攻击。"
+    },
+    {
+      "id": "supply_drop",
+      "name": "月面补给",
+      "tags": [
+        "supply_drop",
+        "gift_spark"
+      ],
+      "effect": "掉落一个公开补给箱，奖励经验、护盾或临时加速。"
+    },
+    {
+      "id": "dream_cut",
+      "name": "梦核分镜",
+      "tags": [
+        "dream_cut",
+        "scene_rewrite"
+      ],
+      "effect": "标记数个扇区，延迟后清理其中一部分敌人。"
+    }
+  ]
+}

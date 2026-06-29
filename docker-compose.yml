@@ -23,11 +23,49 @@ services:
         required: false
     environment:
       REDIS_URL: redis://live-room-redis:6379/0
+      SQLITE_DB_PATH: /app/data/live-room.sqlite
+      HOSHIACLAW_BRIDGE_URL: http://live-room-hoshiaclaw:8080/live-room/generate
+      HOSHIACLAW_TOKEN: ${HOSHIACLAW_TOKEN:-}
+      HOSHIACLAW_TIMEOUT_MS: ${HOSHIACLAW_TIMEOUT_MS:-45000}
+      HOSHIACLAW_FALLBACK_TO_MOCK: ${HOSHIACLAW_FALLBACK_TO_MOCK:-true}
+      HOSHIACLAW_STREAMING_ENABLED: ${HOSHIACLAW_STREAMING_ENABLED:-true}
+    volumes:
+      - ./gateway/data:/app/data
     depends_on:
       - live-room-redis
+      - xiaomusic
+      - qqmusic-resolver
     networks:
       - live_room_dev_network
       - astrbot_astrbot_network
+
+  live-room-hoshiaclaw:
+    profiles:
+      - hoshiaclaw
+    build:
+      context: ./services/hoshiaclaw
+    container_name: live-room-dev-hoshiaclaw
+    restart: unless-stopped
+    environment:
+      HOSHIACLAW_LISTEN_ADDR: ${HOSHIACLAW_LISTEN_ADDR:-0.0.0.0:8080}
+      HOSHIACLAW_DATA_DIR: ${HOSHIACLAW_DATA_DIR:-/app/data}
+      HOSHIACLAW_LOG_DIR: ${HOSHIACLAW_LOG_DIR:-/app/logs}
+      HOSHIACLAW_TOKEN: ${HOSHIACLAW_TOKEN:-}
+      HOSHIACLAW_PROVIDER: ${HOSHIACLAW_PROVIDER:-fake}
+      HOSHIACLAW_OPENAI_BASE_URL: ${HOSHIACLAW_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      HOSHIACLAW_OPENAI_API_KEY: ${HOSHIACLAW_OPENAI_API_KEY:-}
+      HOSHIACLAW_OPENAI_MODEL: ${HOSHIACLAW_OPENAI_MODEL:-}
+      HOSHIACLAW_OPENAI_TIMEOUT_MS: ${HOSHIACLAW_OPENAI_TIMEOUT_MS:-30000}
+      HOSHIACLAW_OPENAI_MAX_TOKENS: ${HOSHIACLAW_OPENAI_MAX_TOKENS:-1200}
+      HOSHIACLAW_OPENAI_TEMPERATURE: ${HOSHIACLAW_OPENAI_TEMPERATURE:-0.7}
+    expose:
+      - "8080"
+    volumes:
+      - ./data/hoshiaclaw:/app/data
+      - ./logs/hoshiaclaw:/app/logs
+      - ./private/hoshiaclaw:/app/private:ro
+    networks:
+      - live_room_dev_network
 
   live-room-redis:
     image: redis:7-alpine
@@ -37,6 +75,66 @@ services:
     networks:
       - live_room_dev_network
 
+  xiaomusic:
+    image: hanxi/xiaomusic:latest
+    container_name: live-room-dev-xiaomusic
+    restart: unless-stopped
+    environment:
+      QQMUSIC_RESOLVER_URL: http://qqmusic-resolver:8190
+    ports:
+      - "127.0.0.1:58090:8090"
+    volumes:
+      - ../xiaomusic/music:/app/music
+      - ../xiaomusic/conf:/app/conf
+      - ./services/qqmusic-resolver/xiaomusic/QQMusicVIP.js:/app/conf/js_plugins/QQMusicVIP.js:ro
+    depends_on:
+      - qqmusic-resolver
+    networks:
+      - live_room_dev_network
+
+  qqmusic-resolver:
+    build:
+      context: ./services/qqmusic-resolver
+    container_name: live-room-dev-qqmusic-resolver
+    restart: unless-stopped
+    environment:
+      PORT: 8190
+      QQMUSIC_COOKIE_FILE: /app/private/cookies.txt
+    ports:
+      - "127.0.0.1:${QQMUSIC_RESOLVER_PORT:-58190}:8190"
+    volumes:
+      - ../qqmusic-resolver/private:/app/private
+    networks:
+      - live_room_dev_network
+
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: live-room-dev-rsshub
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+    networks:
+      - live_room_dev_network
+      - astrbot_astrbot_network
+
+  live-room-tunnel:
+    image: "cloudflare/cloudflared:latest"
+    restart: "unless-stopped"
+    entrypoint:
+      - "cloudflared"
+      - "--no-autoupdate"
+    command:
+      - "tunnel"
+      - "--no-autoupdate"
+      - "run"
+      - "--token"
+      - "${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}"
+    depends_on:
+      - live-room-web
+
+    networks:
+      - live_room_dev_network
 networks:
   live_room_dev_network:
     name: live_room_dev_network

@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    name: Gateway tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+
+      - name: Install dependencies
+        working-directory: gateway
+        run: npm ci
+
+      - name: Run tests
+        working-directory: gateway
+        run: npm test
+
+  frontend:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  hoshiaclaw:
+    name: Hoshiaclaw Go checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Run Go checks when service exists
+        shell: bash
+        run: |
+          if [ -f services/hoshiaclaw/go.mod ]; then
+            cd services/hoshiaclaw
+            test -z "$(gofmt -l .)"
+            go test ./...
+            go vet ./...
+          else
+            echo "services/hoshiaclaw/go.mod not found; skipping Go tests."
+          fi
+
+  astrbot-bridge:
+    name: AstrBot bridge syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile bridge
+        run: python -m compileall astrbot_plugin_live_room_bridge
+
+  docker:
+    name: Docker Compose checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate default compose config
+        run: docker compose config
+
+      - name: Validate Hoshiaclaw profile compose config
+        run: docker compose --profile hoshiaclaw config
+
+      - name: Build current Docker services
+        run: docker compose build live-room-gateway live-room-web qqmusic-resolver
+
+      - name: Build Hoshiaclaw image when Dockerfile exists
+        shell: bash
+        run: |
+          if [ -f services/hoshiaclaw/Dockerfile ]; then
+            docker compose --profile hoshiaclaw build live-room-hoshiaclaw
+          else
+            echo "services/hoshiaclaw/Dockerfile not found; skipping Hoshiaclaw image build."
+          fi
